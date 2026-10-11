@@ -6,7 +6,8 @@ const path = require('path');
 const express = require('express');
 const { db, logCall } = require('./db');
 const { buildPaymentLayer, decodeSettlement, PRICES } = require('./payments');
-const { makeRefusalRecorder, sanitizeChallengeErrors, aliasXPayment, _headerShape } = require('./lib/refusals');
+const { makeRefusalRecorder, sanitizeChallengeErrors, aliasXPayment, aliasAuthorizationPayment, makeMppOnX402Only, _headerShape } = require('./lib/refusals');
+const { makeDemand } = require('./lib/demand');
 const { makeV1 } = require('./lib/x402v1');
 const x402v1 = makeV1({ shapeOf: _headerShape });
 const { evmRails, railNames } = require('./lib/rails');
@@ -250,6 +251,11 @@ app.use((req, _res, next) => {
 // A plain unpaid challenge writes nothing. See lib/refusals.js. `mpp` is read
 // at request time, after the MPP block below has set it.
 app.use(makeRefusalRecorder({ logCall, PRICES, mppPayer: (req) => (mpp && mpp.credentialSource ? mpp.credentialSource(req) : null) }));
+// Demand telemetry (lib/demand.js): unknown GET paths and unpaid 402s, observed on 'finish'.
+app.use(makeDemand({ db, logCall, PRICES }));
+// An x402 payment sent as "Authorization: Payment <base64 JSON>" is read as X-PAYMENT and
+// the MPP header dropped for that request. Before the sanitizer, which then sees it.
+app.use(aliasAuthorizationPayment);
 // Rewrites at setHeader time, so the recorder above -- which reads the header
 // when the response finishes -- records the reason the buyer was actually sent.
 app.use(sanitizeChallengeErrors);
@@ -262,6 +268,9 @@ app.use(aliasXPayment);
 // once it is built below, and inert until then.
 app.use(x402v1.challengeBody);
 app.use(x402v1.payments);
+// An MPP credential on a route with no MPP gate gets that said in the challenge's error.
+// mppOn and MPP_ROUTES are read at request time, after the MPP block below has set them.
+app.use(makeMppOnX402Only({ mppPaths: () => (mppOn ? MPP_ROUTES.map((r) => r.replace(/^GET /, '')) : []) }));
 
 // ---- MPP solana/charge layer (additive, MPP_ENABLED-gated)
 // Mounted BEFORE the x402 layer so that a 402 can carry both challenges: MPP's

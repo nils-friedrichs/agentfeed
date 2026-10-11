@@ -114,7 +114,8 @@ test('MPP refusal: the problem+json reason and the credential payer', async () =
   assert.equal(status, 402);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].payer_wallet, MPP_SOURCE);
-  assert.equal(rows[0].error_msg, 'verification-failed: Verification Failed: Payment verification failed: the transfer does not match the challenge, or the transaction is not confirmed.');
+  // R1: the MPP credential's shape is appended to the reason; the reason itself is unchanged
+  assert.match(rows[0].error_msg, /^verification-failed: Verification Failed: Payment verification failed: the transfer does not match the challenge, or the transaction is not confirmed\.; mpp Authorization scheme=Payment len=\d+ /);
 });
 
 test('the v1 X-PAYMENT header and a path-parameter route are recognised', async () => {

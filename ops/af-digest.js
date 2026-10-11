@@ -39,7 +39,9 @@ const OWN_WALLETS = new Set([
 // addresses change, so they live in a file rather than here.
 const OWN_IPS = new Set(['167.233.69.154', '2a01:4f8:c015:eb5e::1', '127.0.0.1', '::1', '::ffff:127.0.0.1']);
 try { for (const l of fs.readFileSync(process.env.AF_OWN_IPS || '/opt/afwatch/own-ips.txt', 'utf8').split('\n')) { const ip = l.replace(/#.*/, '').trim(); if (ip) OWN_IPS.add(ip); } } catch { /* no file: box addresses only */ }
-const isOwn = (r) => OWN_WALLETS.has(r.payer_wallet) || OWN_IPS.has(r.ip);
+// an own-ips.txt entry ending in ':' is an IPv6 prefix (the Mac's /64 rotates its suffix)
+const OWN_PREFIXES = [...OWN_IPS].filter((ip) => ip.endsWith(':'));
+const isOwn = (r) => OWN_WALLETS.has(r.payer_wallet) || OWN_IPS.has(r.ip) || OWN_PREFIXES.some((p) => String(r.ip || '').startsWith(p));
 
 // ---- time: the box runs UTC; the digest's "yesterday" is a Chisinau calendar day
 function offsetMin(ms) {
@@ -64,10 +66,23 @@ function yesterday(now) {
 
 // ---- the decoded shape of a refusal, from the reason the recorder wrote
 function shapeOf(msg) {
-  const m = String(msg || '');
+  const full = String(msg || '');
+  // R1 rows carry '; mpp <shape>' when an MPP-style credential was presented
+  const at = full.indexOf('; mpp ');
+  if (at >= 0) {
+    const sh = full.slice(at + 6);
+    const pick = (re) => (sh.match(re) || [])[0];
+    const kind = [pick(/base64json=yes( x402Version=\d+)?/), /base64urljson=yes/.test(sh) && 'base64url JSON', /params=yes/.test(sh) && 'auth-params', /dots=2/.test(sh) && 'JWS-like'].filter(Boolean).join(', ') || 'undecodable';
+    return `${shapeOf(full.slice(0, at))} | mpp ${pick(/^\S+/)} (${kind})`;
+  }
+  const m = full;
+  if (/^x402 payment sent in /.test(m)) return `x402 in MPP header: ${shapeOf(m.replace(/^x402 payment sent in [^:]+: /, ''))}`;
+  if (/^MPP credential on an x402-only route/.test(m)) return 'MPP on an x402-only route';
   const h = m.match(/header (PAYMENT-SIGNATURE|X-PAYMENT) len=\d+ prefix=\S+ base64json=(yes|no)(?: x402Version=(\d+))?/);
   if (h) return `${h[1]} ${h[2] === 'no' ? 'undecodable' : `v${h[3] || '?'}`}`;
-  if (/not a decodable x402 v2 PAYMENT-SIGNATURE/.test(m)) return 'X-PAYMENT or undecodable header (no shape recorded)';
+  // Since the shape logging (S3) an x402 header always gets '; header <shape>', so a plain
+  // challenge with no shape means only an MPP-style credential was presented (3.14.8.71).
+  if (/not a decodable x402 v2 PAYMENT-SIGNATURE/.test(m)) return /; header /.test(m) ? 'x402 header, plain challenge' : 'MPP credential on an x402-only route (plain challenge, pre-R1)';
   if (/Cannot (destructure|read propert)/.test(m)) return 'payload without accepted (v1 layout under PAYMENT-SIGNATURE; JS error text, pre-S4)';
   if (/^x402 v1 /.test(m)) return `v1: ${m.replace(/^x402 v1 /, '').split(/[:;]/)[0]}`;
   const mpp = m.match(/^(malformed-credential|invalid-challenge|[a-z-]+-credential|payment-[a-z-]+):/);
@@ -125,19 +140,40 @@ function digestText(db, w, test) {
   if (tools.length > 15) L.push(`  ... ${tools.length - 15} more routes, ${usd(tools.slice(15).reduce((s, [, v]) => s + v.u, 0))}`);
   if (!ext.length) L.push('  (no external paid calls)');
   L.push('', `Refused payments: ${refused.length} (${refused.filter((r) => !isOwn(r)).length} external)`);
-  // grouped by IP or payer, user agent and decoded shape; the group's routes listed inline
-  const g = {};
-  for (const r of refused) {
-    const own = isOwn(r);
-    const k = [own ? `${who(r)} [own]` : who(r), (r.user_agent || '-').slice(0, 40), shapeOf(r.error_msg)].join(' | ');
-    const e = g[k] || (g[k] = { n: 0, own, routes: {} });
-    e.n++; e.routes[r.tool] = (e.routes[r.tool] || 0) + 1;
-  }
-  const groups = Object.entries(g).sort((a, b) => (a[1].own - b[1].own) || b[1].n - a[1].n);
+  // Three sections. "No funds" is the payer's side; a probe is a challenge we never
+  // issued, or a presenter whose every refusal is MPP-only and who has never paid.
+  const paidEver = new Set(db.prepare("SELECT DISTINCT payer_wallet k FROM calls WHERE status='paid' AND payer_wallet IS NOT NULL UNION SELECT DISTINCT ip FROM calls WHERE status='paid' AND ip IS NOT NULL").all().map((r) => r.k));
+  const NO_FUNDS = /execution reverted|InvalidAccountData|insufficient[_ ]funds/i;
+  const NOT_ISSUED = /invalid-challenge|challenge was not issued/i;
+  const mppOnlyRow = (m) => /^(malformed-credential|invalid-challenge|verification-failed|[a-z-]+-credential|MPP credential )/.test(m) || (/not a decodable x402 v2/.test(m) && !/; header /.test(m));
+  const extR = refused.filter((r) => !isOwn(r));
+  const keyOf = (r) => r.payer_wallet || r.ip || '?';
+  const mppOnlyKey = {};
+  for (const r of extR) { const k = keyOf(r); mppOnlyKey[k] = (mppOnlyKey[k] !== false) && mppOnlyRow(String(r.error_msg || '')); }
+  const sectionOf = (r) => {
+    const m = String(r.error_msg || '');
+    if (NOT_ISSUED.test(m)) return 'probe';
+    if (NO_FUNDS.test(m)) return 'funds';
+    if (mppOnlyKey[keyOf(r)] && !paidEver.has(r.payer_wallet) && !paidEver.has(r.ip)) return 'probe';
+    return 'failed';
+  };
   const routesOf = (rt) => Object.entries(rt).sort((a, b) => b[1] - a[1]).map(([t, n]) => (n > 1 ? `${t} x${n}` : t)).join(', ');
-  for (const [k, e] of groups.slice(0, 30)) L.push(`  ${e.n}x ${k}\n      routes: ${routesOf(e.routes).slice(0, 400)}`);
-  if (groups.length > 30) L.push(`  ... ${groups.length - 30} more groups`);
-  if (!refused.length) L.push('  (none)');
+  const SECTIONS = [['failed', 'Buyers we failed'], ['funds', 'Payer had no funds, their side'], ['probe', 'Probes, rejected as designed']];
+  for (const [id, title] of SECTIONS) {
+    const g = {};
+    for (const r of extR.filter((x) => sectionOf(x) === id)) {
+      const k = [who(r), (r.user_agent || '-').slice(0, 40), shapeOf(r.error_msg)].join(' | ');
+      const e = g[k] || (g[k] = { n: 0, routes: {} });
+      e.n++; e.routes[r.tool] = (e.routes[r.tool] || 0) + 1;
+    }
+    const groups = Object.entries(g).sort((a, b) => b[1].n - a[1].n);
+    L.push('', `${title}: ${groups.reduce((n, [, e]) => n + e.n, 0)}`);
+    for (const [k, e] of groups.slice(0, 15)) L.push(`  ${e.n}x ${k}\n      routes: ${routesOf(e.routes).slice(0, 400)}`);
+    if (groups.length > 15) L.push(`  ... ${groups.length - 15} more groups`);
+    if (!groups.length) L.push('  (none)');
+  }
+  const ownN = refused.length - extR.length;
+  if (ownN) L.push('', `Own/test refusals (not shown): ${ownN}`);
   return L.join('\n');
 }
 
