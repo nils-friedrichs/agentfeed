@@ -83,7 +83,7 @@ Notional uses `filled_qty × avg_fill_price` — what actually executed — not 
 
 Every paid route, cheapest question last. Generated from
 [`/.well-known/x402.json`](https://x402.ochinimus.app/.well-known/x402.json),
-read 2026-10-08 — names, prices and routes are the manifest's, not a copy kept
+read 2026-10-11 — names, prices and routes are the manifest's, not a copy kept
 in sync by hand. What each one returns is under
 [66 tools](#66-tools-59-paid-http-routes--7-free--pricing), word for word as
 the service publishes it.
@@ -130,9 +130,7 @@ the service publishes it.
 | `get_wallet_holdings` | $0.008 | `/api/wallet-holdings/:wallet` |
 | `get_base_balance` | $0.005 | `/api/base-balance` |
 | `get_base_gas` | $0.005 | `/api/base-gas` |
-| `get_btc_price` | $0.005 | `/api/btc-price` |
 | `get_dex_quote` | $0.005 | `/api/dex-quote` |
-| `get_eth_price` | $0.005 | `/api/eth-price` |
 | `get_funding_history` | $0.005 | `/api/funding-history` |
 | `get_funding_pulse` | $0.005 | `/api/funding-pulse` |
 | `get_funding_rate` | $0.005 | `/api/funding-rate` |
@@ -145,10 +143,12 @@ the service publishes it.
 | `get_priority_fees` | $0.005 | `/api/priority-fees` |
 | `get_recent_liquidations` | $0.005 | `/api/liquidations` |
 | `get_sol_network` | $0.005 | `/api/sol-network` |
-| `get_sol_price` | $0.005 | `/api/sol-price` |
-| `get_spot` | $0.005 | `/api/price` |
 | `get_token_metadata` | $0.005 | `/api/token-metadata/:mint` |
 | `get_tvl` | $0.005 | `/api/tvl` |
+| `get_btc_price` | $0.001 | `/api/btc-price` |
+| `get_eth_price` | $0.001 | `/api/eth-price` |
+| `get_sol_price` | $0.001 | `/api/sol-price` |
+| `get_spot` | $0.001 | `/api/price` |
 
 ## Two payment protocols on one 402
 
@@ -222,8 +222,8 @@ dependency, not a dev one, because a `--omit=dev` install would otherwise comple
 ## 66 tools (59 paid HTTP routes + 7 free) & pricing
 
 **59 paid + 7 free**, 66 total on the MCP rail. Every call is metered individually in USDC over
-x402 — no bundles, no minimums. Calling all 59 paid tools once costs **$0.913** — the entire
-market read for 91 cents. Counts and prices are summed from
+x402 — no bundles, no minimums. Calling all 59 paid tools once costs **$0.897** — the entire
+market read for 90 cents. Counts and prices are summed from
 [the live manifest](https://x402.ochinimus.app/.well-known/x402.json), read 2026-10-08.
 
 The flagship is [`get_squeeze_score`](#the-moat--our-own-liquidation-tape) — a 0-100 short-squeeze / long-flush composite built from funding, crowding, OI build and the liq-skew of our exclusive tape. One number, one dime, answers "is this trade crowded and about to hurt someone."
@@ -300,10 +300,10 @@ Sampled every 5 minutes since 19 July 2026. Deviation is measured against the un
 
 | Tool | Price | Route | What you get |
 |---|---|---|---|
-| `get_spot` | $0.005 | `/api/price` | Use when an agent needs a spot price without choosing a venue. Returns the price, the venue that actually served it, and a Pyth confidence when Pyth served. Coinbase, then Kraken, then Pyth Hermes. Serves SOL, BTC and ETH; anything else is declined. |
-| `get_sol_price` | $0.005 | `/api/sol-price` | SOL spot price (multi-source: Coinbase, Kraken, Pyth Hermes fallback) |
-| `get_btc_price` | $0.005 | `/api/btc-price` | BTC spot price (multi-source: Coinbase, Kraken, Pyth Hermes fallback) |
-| `get_eth_price` | $0.005 | `/api/eth-price` | ETH spot price in USD, aggregated across seven independent venues (CoinGecko, Coinbase, Kraken, Binance, OKX, Gemini, DefiLlama). Returns the lead figure plus every venue quote that answered, so a caller can see the spread rather than trust one exchange. Venues are ranked in a fixed declared order, not completion order, so identical market state always returns the same lead price. |
+| `get_spot` | $0.001 | `/api/price` | Use when an agent needs a spot price without choosing a venue. Returns the price, the venue that actually served it, and a Pyth confidence when Pyth served. Coinbase, then Kraken, then Pyth Hermes. Serves SOL, BTC and ETH; anything else is declined. |
+| `get_sol_price` | $0.001 | `/api/sol-price` | SOL spot price (multi-source: Coinbase, Kraken, Pyth Hermes fallback) |
+| `get_btc_price` | $0.001 | `/api/btc-price` | BTC spot price (multi-source: Coinbase, Kraken, Pyth Hermes fallback) |
+| `get_eth_price` | $0.001 | `/api/eth-price` | ETH spot price in USD, aggregated across seven independent venues (CoinGecko, Coinbase, Kraken, Binance, OKX, Gemini, DefiLlama). Returns the lead figure plus every venue quote that answered, so a caller can see the spread rather than trust one exchange. Venues are ranked in a fixed declared order, not completion order, so identical market state always returns the same lead price. |
 | `get_funding_rate` | $0.005 | `/api/funding-rate` | Funding rate for any USDT perp on Bybit + OKX + Hyperliquid, each at its own interval: raw rate, interval hours, 8h equivalent, annualised, next funding time, mark price. No symbol: SOL+BTC from Hyperliquid |
 | `get_market_snapshot` | $0.005 | `/api/market-snapshot` | Full market snapshot in one call |
 | `get_positioning` | $0.005 | `/api/positioning` | SOL+BTC long/short account ratio + open interest with 1h/24h OI change |

@@ -340,7 +340,7 @@ function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp }) {
         PAYTO_WARNING,
         'Response shape is always { "tool": "<name>", "data": { ... }, "paid": true }.',
         'Before paying, GET /api/sample/<route> for that route\'s real captured response, free. GET /api/sample lists them.',
-        'Start cheap: /api/perp, /api/liq-pulse, /api/funding-pulse and /api/price are $0.005 each and cover most questions. The premium routes are the liquidation tape, cascade detection and the tokenized-equity peg tape.',
+        'Start cheap: /api/price, /api/sol-price, /api/btc-price and /api/eth-price are $0.001; /api/perp, /api/liq-pulse and /api/funding-pulse are $0.005 and cover most questions. The premium routes are the liquidation tape, cascade detection and the tokenized-equity peg tape.',
         'A route that cannot answer returns 200 with a decline field naming the reason; it never returns fabricated or zero-filled data.',
         `Limits: GET only on /api/* (HEAD on a paid route answers the 402 challenge headers with no body, on a free route 405); per caller per minute ${LIMIT_GET} GET or POST /mcp and ${LIMIT_OTHER} of any other method; a 429 carries Retry-After.`,
       ].join(' '),

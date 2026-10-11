@@ -5,7 +5,7 @@
  "routes": {
   "GET /api/sol-price": {
    "tool": "get_sol_price",
-   "price_usd": 0.005,
+   "price_usd": 0.001,
    "input": {},
    "inputSchema": {
     "properties": {},
@@ -54,7 +54,7 @@
   },
   "GET /api/btc-price": {
    "tool": "get_btc_price",
-   "price_usd": 0.005,
+   "price_usd": 0.001,
    "input": {},
    "inputSchema": {
     "properties": {},
@@ -4089,7 +4089,7 @@
   },
   "GET /api/eth-price": {
    "tool": "get_eth_price",
-   "price_usd": 0.005,
+   "price_usd": 0.001,
    "input": {},
    "inputSchema": {
     "properties": {},
@@ -4624,7 +4624,7 @@
   },
   "GET /api/price": {
    "tool": "get_spot",
-   "price_usd": 0.005,
+   "price_usd": 0.001,
    "input": {
     "symbol": "SOL"
    },
@@ -5680,6 +5680,6 @@
    }
   }
  },
- "_schemas_regenerated_at": "2026-10-08T18:34:42.902Z",
+ "_schemas_regenerated_at": "2026-10-11T19:26:59.804Z",
  "_outputs_recaptured_at": "2026-10-08T18:34:42.538Z"
 }

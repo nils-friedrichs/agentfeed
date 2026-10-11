@@ -29,9 +29,9 @@ const { challengeDesc, ICON_URL } = require('./payments');
 const SERVER_VERSION = (() => { try { return require('./server.json').version; } catch { return '1.0.0'; } })();
 
 const TOOL_DEFS = [
-  { name: 'get_sol_price', usd: 0.005, desc: 'Live SOL/USD spot price (multi-source: Coinbase, Kraken, Pyth Hermes fallback). The confidence and publish_time fields are null unless Pyth Hermes served the request; Coinbase and Kraken publish neither.',
+  { name: 'get_sol_price', usd: 0.001, desc: 'Live SOL/USD spot price (multi-source: Coinbase, Kraken, Pyth Hermes fallback). The confidence and publish_time fields are null unless Pyth Hermes served the request; Coinbase and Kraken publish neither.',
     schema: {}, run: () => getPrice('SOL') },
-  { name: 'get_btc_price', usd: 0.005, desc: 'Live BTC/USD spot price (multi-source: Coinbase, Kraken, Pyth Hermes fallback). The confidence and publish_time fields are null unless Pyth Hermes served the request; Coinbase and Kraken publish neither.',
+  { name: 'get_btc_price', usd: 0.001, desc: 'Live BTC/USD spot price (multi-source: Coinbase, Kraken, Pyth Hermes fallback). The confidence and publish_time fields are null unless Pyth Hermes served the request; Coinbase and Kraken publish neither.',
     schema: {}, run: () => getPrice('BTC') },
   { name: 'get_funding_rate', usd: 0.005, desc: 'Funding rate for any USDT perp on Bybit, OKX and Hyperliquid, each at its own interval: raw rate, interval hours, 8h equivalent, annualised rate, next funding time and mark price per venue. Without a symbol, SOL and BTC from Hyperliquid with open interest.',
     schema: { symbol: z.string().optional().describe('USDT perp symbol e.g. ETHUSDT, ONDOUSDT (omit for SOL and BTC from Hyperliquid)') },
@@ -115,7 +115,7 @@ const DISPLAY_FIRST = [
 const INSTRUCTIONS = [
   'AgentFeed serves live crypto market data: a complete Bybit, OKX and Binance liquidation tape, tokenized-equity peg data and Solana on-chain reads.',
   'Free, start here: get_fear_greed, get_last_liquidation, get_cascade_forecast_free, get_forecast_question, get_forecast_record, get_exit_method, pricing.',
-  'Cheapest paid calls at $0.005: get_perp, get_liq_pulse, get_funding_pulse, get_spot. Call pricing for the full price list.',
+  'Cheapest paid calls at $0.001: get_spot, get_sol_price, get_btc_price, get_eth_price; then $0.005: get_perp, get_liq_pulse, get_funding_pulse. Call pricing for the full price list.',
   `A paid tool answers with an x402 payment request, payable in USDC on ${require('./lib/rails').railNames()}. No API key.`,
   'Same tools as HTTPS endpoints at https://x402.ochinimus.app; see /openapi.json.',
 ].join(' ');

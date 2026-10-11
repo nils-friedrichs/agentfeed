@@ -19,6 +19,9 @@ const { getWalletHoldings, getTokenMetadata } = require('./tools/onchain');
 const app = express();
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
+// /api/<route>|eip155:<id> (raw or %7C) is served as /api/<route>; see lib/compat.js.
+const compat = require('./lib/compat');
+app.use(compat.stripNetworkSuffix);
 const PORT = process.env.PORT || 3006;
 
 if (!process.env.HELIUS_API_KEY) {
@@ -184,6 +187,9 @@ app.use((req, res, next) => {
   res.set('Allow', 'GET');
   res.status(405).end();
 });
+
+// Paid routes are GET-only: any other verb on a priced path is a JSON 405 (lib/compat.js).
+app.use(compat.makeGetOnly({ PRICES }));
 
 // ---- the 402 challenge must always advertise https
 //
@@ -454,10 +460,12 @@ app.get('/favicon.ico', (_req, res) => sendIcon(res, 'image/png'));
 app.get('/favicon.png', (_req, res) => sendIcon(res, 'image/png'));
 
 // ---- x402 payment layer (mounted BEFORE the /api routes)
+let paymentLayer = null; // read by the discovery routes (lib/compat.js)
 const paymentsOn = (process.env.X402_MODE || 'on').toLowerCase() !== 'off';
 let x402Network = 'off';
 if (paymentsOn) {
   const layer = buildPaymentLayer();
+  paymentLayer = layer;
   x402Network = layer.network;
   const gate = mppOn ? mpp.wrapX402(layer.middleware) : layer.middleware;
   // A request lib/x402v1.js has verified is paid for; it settles after the handler.
@@ -473,8 +481,8 @@ const { makeTool } = require('./lib/tool');
 const { tool } = makeTool({ paymentsOn, PRICES, decodeSettlement, logCall });
 
 // ---- routes (patterns must match PRICES keys in payments.js exactly)
-app.get('/api/sol-price', tool('get_sol_price', 0.005, () => getPrice('SOL')));
-app.get('/api/btc-price', tool('get_btc_price', 0.005, () => getPrice('BTC')));
+app.get('/api/sol-price', tool('get_sol_price', 0.001, () => getPrice('SOL')));
+app.get('/api/btc-price', tool('get_btc_price', 0.001, () => getPrice('BTC')));
 
 app.get('/api/funding-rate', tool('get_funding_rate', 0.005, (req) => getFundingRate({ symbol: req.query.symbol })));
 
@@ -614,6 +622,29 @@ app.get('/.well-known/x402.json', (_req, res) => res.json({
     ],
   })),
 }));
+
+// ---- what the 404 log showed clients asking for (lib/compat.js, R2)
+// GET /mcp: no SSE stream here, so 405 per MCP Streamable HTTP. POST /mcp is mounted by initMcp.
+app.get('/mcp', compat.mcpGet405);
+// The CDP Bazaar discovery shape at the paths crawlers probe, from the payment layer itself.
+{
+  const concreteUrl = (pattern) => {
+    let p = pattern.replace('GET ', '');
+    const ex = (BAZAAR_META[pattern] && BAZAAR_META[pattern].pathParams) || {};
+    for (const [n, v] of Object.entries(ex)) p = p.replace(`:${n}`, encodeURIComponent(String(v)));
+    return discovery.ORIGIN + p;
+  };
+  const handler = compat.makeDiscovery({ getLayer: () => paymentLayer, concreteUrl });
+  for (const p of compat.DISCOVERY_PATHS) app.get(p, handler);
+}
+app.get('/.well-known/agent-card.json', compat.makeAgentCard({
+  PRICES, TAGS, TITLES: require('./tools/titles').TOOL_TITLES, questionFor: require('./tools/questions').questionFor,
+  version: (() => { try { return require('./server.json').version; } catch { return '1.0.0'; } })(),
+  ORIGIN: discovery.ORIGIN, railNames, mpp: { get active() { return mppOn; }, get routes() { return mppOn ? MPP_ROUTES : []; } },
+}));
+app.get('/api/sharp-move', compat.makeSharpMoveGone({ PRICES, ORIGIN: discovery.ORIGIN }));
+app.get('/pricing', compat.makePricing({ PRICES, FREE_TOOLS, ORIGIN: discovery.ORIGIN, railNames, mpp: { get active() { return mppOn; }, get routes() { return mppOn ? MPP_ROUTES : []; } } }));
+app.get('/terms', compat.termsHandler);
 
 // ---- MCP rail (Session 3): same tools at POST /mcp for agents in Claude/Cursor/frameworks
 const { initMcp } = require('./mcp');

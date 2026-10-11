@@ -248,7 +248,7 @@ const EXP = [
   // wallet balance on Base, and the Base gas price. They lived only in
   // telegraph.js and were never on the paid rail, so they are registered here
   // rather than lost when that mirror is unmounted.
-  { name: 'get_eth_price', route: 'GET /api/eth-price', usd: 0.005,
+  { name: 'get_eth_price', route: 'GET /api/eth-price', usd: 0.001,
     desc: 'ETH spot price in USD, aggregated across seven independent venues (CoinGecko, Coinbase, Kraken, Binance, OKX, Gemini, DefiLlama). Returns the lead figure plus every venue quote that answered, so a caller can see the spread rather than trust one exchange. Venues are ranked in a fixed declared order, not completion order, so identical market state always returns the same lead price.',
     tags: ['price', 'eth', 'ethereum', 'crypto', 'multi-venue'],
     schema: {},
@@ -290,7 +290,7 @@ const EXP = [
     schema: {},
     run: () => EN.getFundingPulse() },
 
-  { name: 'get_spot', route: 'GET /api/price', usd: 0.005,
+  { name: 'get_spot', route: 'GET /api/price', usd: 0.001,
     tags: ['price', 'spot', 'crypto', 'multi-venue'],
     desc: 'Use when an agent needs a spot price without choosing a venue. Returns the price, the venue that actually served it, and a Pyth confidence when Pyth served. Coinbase, then Kraken, then Pyth Hermes. Serves SOL, BTC and ETH; anything else is declined.',
     schema: { symbol: z.string().optional().describe('SOL, BTC or ETH (default SOL). Anything else is declined with the supported list') },

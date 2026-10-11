@@ -9,6 +9,30 @@ const HELIUS_ENH = () => process.env.HELIUS_ENH || 'https://api.helius.xyz';
 const JITO = () => process.env.JITO_API || 'https://bundles.jito.wtf';
 const BASE58_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
+// Mints whose holder set Helius will not rank: getTokenLargestAccounts answers "Too many
+// accounts requested (10000000 pubkeys)". Refused with a 400 BEFORE any upstream call (a
+// status of 400 or more never settles, so nobody is charged). Seeded with wSOL, USDC and
+// USDT; any mint that fails that way at runtime is added and kept in large-mints.json.
+const fs = require('fs');
+const path = require('path');
+const LARGE_MINTS_FILE = process.env.LARGE_MINTS_FILE || path.join(__dirname, '..', 'large-mints.json');
+const LARGE_MINTS = new Set([
+  'So11111111111111111111111111111111111111112',  // wSOL
+  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+  'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
+]);
+try { for (const m of JSON.parse(fs.readFileSync(LARGE_MINTS_FILE, 'utf8'))) if (BASE58_RE.test(m)) LARGE_MINTS.add(m); } catch { /* no file yet */ }
+function tooLarge(mint) {
+  const e = new Error(`token-holders: ${mint} has too many token accounts to rank. Helius getTokenLargestAccounts refuses mints above its 10,000,000-account limit (wSOL, USDC and USDT among them), so no holder concentration is available for this mint. Not charged.`);
+  e.kind = 'bad_request'; e.badRequest = true;
+  return e;
+}
+function rememberLarge(mint) {
+  if (LARGE_MINTS.has(mint)) return;
+  LARGE_MINTS.add(mint);
+  try { fs.writeFileSync(LARGE_MINTS_FILE + '.tmp', JSON.stringify([...LARGE_MINTS], null, 1)); fs.renameSync(LARGE_MINTS_FILE + '.tmp', LARGE_MINTS_FILE); } catch { /* kept in memory */ }
+}
+
 async function rpc(method, params) {
   const j = await fetchJson(HELIUS_RPC(), {
     method: 'POST',
@@ -46,10 +70,14 @@ async function getTokenHolders(p = {}) {
   // statusFor(), which otherwise reads an untagged throw as 502 and fails a
   // healthy registered endpoint when a validator probes it with no argument.
   if (!BASE58_RE.test(mint || '')) { const e = new Error('invalid mint address'); e.badRequest = true; throw e; }
+  if (LARGE_MINTS.has(mint)) throw tooLarge(mint);
   return cached(`holders:${mint}`, 60_000, async () => {
     const [asset, largest] = await Promise.all([
       rpc('getAsset', { id: mint }),
-      rpc('getTokenLargestAccounts', [mint]),
+      rpc('getTokenLargestAccounts', [mint]).catch((e) => {
+        if (e.badRequest && /too many accounts/i.test(e.message)) { rememberLarge(mint); throw tooLarge(mint); }
+        throw e;
+      }),
     ]);
     const ti = asset?.token_info || {};
     const decimals = ti.decimals ?? 0;
@@ -150,4 +178,4 @@ async function getSolNetwork() {
   });
 }
 
-module.exports = { getTokenHolders, getWalletActivity, getPriorityFees, getJitoTips, getSolNetwork };
+module.exports = { _LARGE_MINTS: LARGE_MINTS, getTokenHolders, getWalletActivity, getPriorityFees, getJitoTips, getSolNetwork };

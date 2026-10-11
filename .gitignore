@@ -87,3 +87,7 @@ macro.json.tmp
 # ---- 2026-10-08: directory claim values (lib/well-known-claims.js) ----
 # A verification hash or challenge token, written during a claim. Not source.
 well-known/
+
+# tools/solana2.js: mints Helius refused as too large, learned at runtime
+large-mints.json
+large-mints.json.tmp
