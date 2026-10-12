@@ -36,8 +36,10 @@ const ENS_RE = /^[a-z0-9-]([a-z0-9-]*\.)+eth$/i;
 // rather than silently answered from the wrong chain.
 const CHAINS = {
   base:     { name: 'Base',     id: 8453, rpcs: RPCS },
+  // dRPC first since 2026-10-12: its terms carry no redistribution clause, PublicNode's
+  // boilerplate is unclear (docs/SOURCES.md), so PublicNode is only the fallback.
   ethereum: { name: 'Ethereum', id: 1,
-              rpcs: ['https://ethereum-rpc.publicnode.com', 'https://eth.drpc.org'] },
+              rpcs: ['https://eth.drpc.org', 'https://ethereum-rpc.publicnode.com'] },
 };
 const CHAIN_ALIAS = { base: 'base', 'base-mainnet': 'base', '8453': 'base',
   eth: 'ethereum', ethereum: 'ethereum', mainnet: 'ethereum', 'eth-mainnet': 'ethereum', '1': 'ethereum' };
