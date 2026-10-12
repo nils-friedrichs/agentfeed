@@ -38,7 +38,7 @@ function must(file, re, label) {
   return m;
 }
 
-const m400 = must('lib/tool.js', /res\.status\(400\)\.json\(\{\s*tool:\s*name,\s*error:\s*e\.message\s*\}\)/, '400 emitter');
+const m400 = must('lib/tool.js', /res\.status\(400\)\.json\(\{\s*tool:\s*name,\s*error:\s*e\.message,\s*\.\.\.\(Array\.isArray\(e\.supported\) \? \{ supported: e\.supported \} : \{\}\)\s*\}\)/, '400 emitter');
 const m429 = must('server.js', /res\.status\(429\)\.json\(\{\s*error:\s*`rate limit: \$\{limit\} req\/min`,\s*retry_after:\s*retryAfter\s*\}\)/, '429 emitter');
 const m405 = must('server.js', /res\.set\('Allow',\s*'GET'\);\s*\n\s*res\.status\(405\)\.end\(\)/, '405 emitter');
 const m402v1 = must('lib/x402v1.js', /x402Version: 1,\s*error: pr\.error \|\| 'Payment required',\s*accepts:/, 'x402 v1 402 body');
@@ -69,8 +69,8 @@ const SHARED = [
   {
     status: 400,
     name: 'Bad Request',
-    when: 'The handler threw: a missing or malformed caller parameter, or an upstream data source failed.',
-    body: { tool: '<tool name>', error: '<human-readable reason>' },
+    when: 'The handler threw: a missing or malformed caller parameter, an unsupported symbol, or an upstream data source failed. Never charged: a status of 400 or more cancels the x402 settlement.',
+    body: { tool: '<tool name>', error: '<human-readable reason>', supported: ['<only when the symbol is unsupported: the symbols this route serves>'] },
   },
   {
     status: 429,

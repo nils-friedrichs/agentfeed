@@ -75,7 +75,7 @@ async function getFundingRate(p = {}) {
     symbol: x.symbol,
     venues,
     note: 'Each rate is quoted for its own interval: funding_rate_8h = raw x 8 / funding_interval_hours, annualized_pct = raw x 24 / funding_interval_hours x 365 x 100. /api/funding-cross adds the cross-venue spread and a crowding read.',
-    source: 'bybit+okx+hyperliquid public funding',
+    source: 'bybit+hyperliquid public funding',
   };
 }
 

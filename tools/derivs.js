@@ -1,14 +1,15 @@
 // tools/derivs.js — expansion: derivatives suite (9 tools).
-// Venues: Bybit v5 public REST (precedent: positioning.js), OKX public, Hyperliquid.
+// Venues: Bybit v5 public REST (precedent: positioning.js) and Hyperliquid.
 // NO Binance REST here — their ToS prohibits charging for their market data.
+// NO OKX since R6 D2 (13 Oct 2026): the OKX API Agreement §9.4 forbids redistributing its market data
+// (docs/SOURCES.md). Bybit stays; its API Terms §6.7 are recorded there too and the decision is the planning chat's.
 // All endpoints env-overridable for offline testing (same philosophy as liqcollector EP).
 'use strict';
 const { cached, fetchJson } = require('../lib/cache');
-// R5 C6: Hyperliquid as a second venue on every product that read only Bybit (and OKX)
+// R5 C6: Hyperliquid as a second venue on every product that read only Bybit
 const HLP = require('./hlperp');
 
 const BYBIT = () => process.env.BYBIT_REST || 'https://api.bybit.com';
-const OKX = () => process.env.OKX_REST || 'https://www.okx.com';
 const HL = () => process.env.HL_API || 'https://api.hyperliquid.xyz/info';
 
 const SYM_RE = /^[A-Z0-9]{2,20}USDT$/;
@@ -19,7 +20,6 @@ function normSym(s) {
   if (!SYM_RE.test(sym)) throw new Error(`invalid symbol: ${s}`);
   return sym;
 }
-const okxInst = (sym) => sym.replace(/USDT$/, '') + '-USDT-SWAP';
 const baseCoin = (sym) => sym.replace(/USDT$/, '');
 
 async function bybit(path) {
@@ -47,18 +47,6 @@ async function bybit(path) {
   }
   return j.result;
 }
-async function okx(path) {
-  const j = await fetchJson(OKX() + path);
-  if (j.code !== '0') {
-    const e = new Error(`okx: ${j.msg}`);
-    // 51001 is OKX's "instrument does not exist" (measured 2026-09-28 on
-    // funding-rate and mark-price alike): OKX answered and does not list the
-    // symbol, which is not the same thing as OKX being down.
-    e.okxCode = j.code;
-    throw e;
-  }
-  return j.data;
-}
 
 // all Bybit linear tickers in one call, filtered to USDT-quoted — funding, OI
 // value and 24h change for every Bybit USDT perp. No count here: the venue
@@ -72,14 +60,13 @@ const n = (v) => (v == null || v === '' ? null : Number(v));
 
 // ---- funding intervals ------------------------------------------------------
 // A venue quotes funding for ITS OWN interval, and about half the market is not
-// 8-hourly. Measured 2026-09-28 from each venue's own API: Bybit settles 376 of
-// its 777 USDT perps every 4h and one hourly; OKX 209 of 477 every 4h and one
-// every 2h. SOL, BTC and ETH are 8h on both, which is why tests on the majors
+// 8-hourly. Measured 2026-09-28 from the venues' own APIs: Bybit settles 376 of
+// its 777 USDT perps every 4h and one hourly (OKX, since dropped, 209 of 477 every
+// 4h). SOL, BTC and ETH are 8h on both, which is why tests on the majors
 // never showed a 4h rate being published as an 8h rate, at half its size. So
 // the interval is read from the venue for every symbol, and a rate whose
 // interval cannot be read says so and gets no 8h figure instead of a guess:
 //   Bybit        instruments-info fundingInterval (minutes), one cached sweep
-//   OKX          nextFundingTime - fundingTime, on its own funding-rate answer
 //   Hyperliquid  hourly, by protocol
 // Bybit also moves symbols between intervals (see get_funding_history), so the
 // sweep is cached for ten minutes, not for the day. instruments-info answers
@@ -103,14 +90,10 @@ const bybitIntervals = () =>
   });
 // A failed sweep leaves every Bybit interval unknown -- never 8h by default.
 const bybitIntervalMap = () => bybitIntervals().catch(() => ({}));
-const okxIntervalHours = (row) => {
-  const h = (n(row.nextFundingTime) - n(row.fundingTime)) / 3_600_000;
-  return Number.isFinite(h) && h > 0 ? h : null;
-};
 const HL_INTERVAL_HOURS = 1;
 
 // raw x 8 / interval, and raw x (24 / interval) x 365 x 100. Both are exact for
-// 1, 2, 4 and 8h, the only intervals the three venues use today: an 8h symbol's
+// 1, 2, 4 and 8h, the only intervals the venues use today: an 8h symbol's
 // figures are its raw rate bit for bit, and a 4h symbol's 8h figure is exactly
 // twice its raw rate.
 const to8h = (raw, ih) => (raw == null || ih == null ? null : (raw * 8) / ih);
@@ -121,20 +104,18 @@ const INTERVAL_UNKNOWN = 'no funding interval could be read for this rate, so fu
 const intervalNote = (ih) => (ih == null ? { funding_interval_note: INTERVAL_UNKNOWN } : {});
 const ROWS_INTERVAL_UNKNOWN = 'rows with funding_interval_hours null had no interval to read, so their funding_rate_8h is null rather than a guess';
 
-// ---- get_funding_cross ($0.01) — one symbol, funding across 3 venues
+// ---- get_funding_cross ($0.01) — one symbol, funding across 2 venues (Bybit, Hyperliquid)
 // Each venue lookup settles to its row, to NOT_LISTED when the venue answered
 // that it does not list the symbol, or to null when it could not be asked. The
-// symbol is the caller's mistake only when all three answered NOT_LISTED; while
+// symbol is the caller's mistake only when both answered NOT_LISTED; while
 // any venue went unanswered it may still list it, and that failure is ours.
 const NOT_LISTED = Symbol('not listed');
 const listed = (v) => v != null && v !== NOT_LISTED;
 async function getFundingCross(p = {}) {
   const sym = normSym(p.symbol);
   return cached(`fcross:${sym}`, 30_000, async () => {
-    const [by, ok, okMark, hl, ivs] = await Promise.all([
+    const [by, hl, ivs] = await Promise.all([
       bybit(`/v5/market/tickers?category=linear&symbol=${sym}`).then((r) => r.list[0] || NOT_LISTED).catch((e) => (e.upstreamParamError ? NOT_LISTED : null)),
-      okx(`/api/v5/public/funding-rate?instId=${okxInst(sym)}`).then((d) => d[0] || NOT_LISTED).catch((e) => (e.okxCode === '51001' ? NOT_LISTED : null)),
-      okx(`/api/v5/public/mark-price?instType=SWAP&instId=${okxInst(sym)}`).then((d) => d[0] || null).catch(() => null),
       cached('hl:ctxs', 60_000, () =>
         fetchJson(HL(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'metaAndAssetCtxs' }) }),
       ).then(([meta, ctxs]) => {
@@ -148,28 +129,21 @@ async function getFundingCross(p = {}) {
       const raw = n(by.fundingRate), ih = ivs[sym] ?? null;
       venues.bybit = { funding_rate_8h: to8h(raw, ih), ...rateBasis(raw, ih), ...intervalNote(ih), next_funding_time: n(by.nextFundingTime), mark_price: n(by.markPrice) };
     }
-    if (listed(ok)) {
-      const raw = n(ok.fundingRate), ih = okxIntervalHours(ok);
-      // OKX's fundingTime is its NEXT settlement and nextFundingTime the one
-      // after that. Measured 2026-09-28 09:25 UTC on SOL-USDT-SWAP: fundingTime
-      // 16:00, nextFundingTime 00:00 the next day, Bybit's nextFundingTime 16:00.
-      venues.okx = { funding_rate_8h: to8h(raw, ih), ...rateBasis(raw, ih), ...intervalNote(ih), next_funding_time: n(ok.fundingTime), mark_price: okMark ? n(okMark.markPx) : null };
-    }
     if (listed(hl)) {
       const raw = n(hl.funding);
       venues.hyperliquid = { funding_rate_1h: raw, funding_rate_8h_equiv: raw != null ? Number((raw * 8).toFixed(8)) : null, ...rateBasis(raw, HL_INTERVAL_HOURS), mark_price: n(hl.markPx) };
     }
     if (!Object.keys(venues).length) {
-      if (by === NOT_LISTED && ok === NOT_LISTED && hl === NOT_LISTED) {
-        const e = new Error(`no venue lists ${sym}: bybit, okx and hyperliquid each answered and none lists it`);
+      if (by === NOT_LISTED && hl === NOT_LISTED) {
+        const e = new Error(`no venue lists ${sym}: bybit and hyperliquid each answered and none lists it`);
         e.kind = 'bad_request';
         e.upstreamParamError = true;
         throw e;
       }
-      const silent = [['bybit', by], ['okx', ok], ['hyperliquid', hl]].filter(([, v]) => v == null).map(([k]) => k);
+      const silent = [['bybit', by], ['hyperliquid', hl]].filter(([, v]) => v == null).map(([k]) => k);
       throw new Error(`no venue lists ${sym} (no answer from ${silent.join(', ')})`);
     }
-    const rates = [venues.bybit?.funding_rate_8h, venues.okx?.funding_rate_8h, venues.hyperliquid?.funding_rate_8h_equiv].filter((x) => x != null);
+    const rates = [venues.bybit?.funding_rate_8h, venues.hyperliquid?.funding_rate_8h_equiv].filter((x) => x != null);
     return {
       symbol: sym, venues,
       spread_8h: rates.length > 1 ? Number((Math.max(...rates) - Math.min(...rates)).toFixed(8)) : null,
@@ -213,20 +187,18 @@ async function getFundingExtremes(p = {}) {
   };
 }
 
-// ---- get_open_interest ($0.01) — any symbol, OI + deltas, Bybit + OKX
+// ---- get_open_interest ($0.01) — any symbol, OI + deltas, Bybit + Hyperliquid
 async function getOpenInterest(p = {}) {
   const sym = normSym(p.symbol);
   return cached(`oi:${sym}`, 60_000, async () => {
-    const [hist, tick, ok] = await Promise.all([
+    const [hist, tick] = await Promise.all([
       bybit(`/v5/market/open-interest?category=linear&symbol=${sym}&intervalTime=1h&limit=25`),
       bybit(`/v5/market/tickers?category=linear&symbol=${sym}`).then((r) => r.list[0]),
-      okx(`/api/v5/public/open-interest?instId=${okxInst(sym)}`).then((d) => d[0]).catch(() => null),
     ]);
     const o = hist.list.map((x) => parseFloat(x.openInterest));
     return {
       symbol: sym,
       bybit: { oi_base: o[0], oi_usd: Math.round(n(tick.openInterestValue)), change_1h_pct: pct(o[0], o[1]), change_24h_pct: pct(o[0], o[24]) },
-      okx: ok ? { oi_base: n(ok.oiCcy), oi_usd: Math.round(n(ok.oiUsd)) } : null,
       mark_price: n(tick.markPrice),
       hyperliquid: await HLP.block(sym, async (c, x) => ({ oi_base: x.oi_base, oi_usd: x.oi_usd, mark_price: x.mark })),
     };

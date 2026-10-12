@@ -45,20 +45,23 @@ test('z-score is (current - mean) / sample std; flat history gives no z', () => 
   assert.equal(R._zScore(null, st).z, null);
 });
 
-test('radar row: spread, extreme venue and the |z| >= 2 flag', () => {
+test('radar row: spread, extreme venue and the |z| >= 2 flag; two venues, an okx reading never reaches the row (R6 D2)', () => {
   const row = R._radarRow('XUSDT', {
     bybit: { funding_rate_8h: 0.0003, z_30d: 2.4 },
-    okx: { funding_rate_8h: 0.0001, z_30d: -1.1 },
-    hyperliquid: null,
+    hyperliquid: { funding_rate_8h: 0.0001, z_30d: -1.1 },
+    okx: { funding_rate_8h: -0.01, z_30d: 9 }, // negative control: OKX is dropped, so this must be ignored
   }, { total: 1 });
+  assert.deepEqual(Object.keys(row.venues), ['bybit', 'hyperliquid']);
+  assert.equal(row.venues.okx, undefined);
   assert.equal(row.spread_8h, 0.0002);
   assert.equal(row.spread_high_venue, 'bybit');
-  assert.equal(row.spread_low_venue, 'okx');
+  assert.equal(row.spread_low_venue, 'hyperliquid');
   assert.equal(row.max_abs_z, 2.4);
   assert.equal(row.extreme_venue, 'bybit');
   assert.equal(row.flag, true);
   assert.deepEqual(row.flagged_venues, ['bybit']);
-  assert.equal(row.venues.hyperliquid, null);
+  // a venue with no reading is null, not dropped
+  assert.equal(R._radarRow('YUSDT', { bybit: { funding_rate_8h: 0.0001, z_30d: 0.5 } }, { total: 1 }).venues.hyperliquid, null);
 });
 
 test('sorted by largest |z|, rows without a z last', () => {

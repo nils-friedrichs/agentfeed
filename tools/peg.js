@@ -106,7 +106,9 @@ function statsOf(devs) {
 const REFERENCE_NOTE =
   'Deviation is measured against the underlying\'s last real trade. Outside US market ' +
   'hours that is the last print before the close, not a live quote. Token prices are read ' +
-  'on-chain by our collector since 2026-10-12; earlier samples come from the pegwatch collector.';
+  'on-chain by our collector since 2026-10-12; earlier samples come from the pegwatch collector. ' +
+  'The reference price itself is not returned (latest.reference is null): its source does not allow ' +
+  'redistribution, so only the deviation computed from it is served.';
 
 // ---- get_peg_deviation -----------------------------------------------------
 function getPegDeviation(args = {}) {
@@ -140,7 +142,10 @@ function getPegDeviation(args = {}) {
       iso: new Date(latest.ts * 1000).toISOString(),
       session: latest.session,
       onchain: r2(latest.onchain),
-      reference: r2(latest.ref),
+      // R6 D3 (13 Oct 2026): the underlying's reference price comes from a source whose terms forbid
+      // redistribution (Alpaca), so it stays on the internal tape and is NOT returned. deviation_bps below
+      // is computed from it; the route description says so.
+      reference: null,
       deviation_bps: r1(latest.dev_bps),
       direction: latest.dev_bps > 0 ? 'premium' : 'discount',
       liquidity_usd: Math.round(latest.liq_usd),

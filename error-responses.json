@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-12T20:17:53.036Z",
+  "generatedAt": "2026-10-12T21:49:22.102Z",
   "limits": {
     "get": 240,
     "other": 2400,
@@ -22,10 +22,13 @@
     {
       "status": 400,
       "name": "Bad Request",
-      "when": "The handler threw: a missing or malformed caller parameter, or an upstream data source failed.",
+      "when": "The handler threw: a missing or malformed caller parameter, an unsupported symbol, or an upstream data source failed. Never charged: a status of 400 or more cancels the x402 settlement.",
       "body": {
         "tool": "<tool name>",
-        "error": "<human-readable reason>"
+        "error": "<human-readable reason>",
+        "supported": [
+          "<only when the symbol is unsupported: the symbols this route serves>"
+        ]
       }
     },
     {
@@ -641,10 +644,18 @@
     },
     "GET /api/price": {
       "requiredInputs": [],
-      "callerError": null,
-      "probe": {
+      "callerError": {
+        "status": 400,
         "violated": "optional query param symbol = not-a-symbol",
-        "observedStatus": 200
+        "body": {
+          "tool": "get_spot",
+          "error": "unsupported symbol \"NOT-A-SYMBOL\": /api/price serves SOL, BTC, ETH from on-chain pools. For any USDT perp mark price use /api/perp.",
+          "supported": [
+            "SOL",
+            "BTC",
+            "ETH"
+          ]
+        }
       }
     }
   }

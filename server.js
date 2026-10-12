@@ -421,7 +421,7 @@ app.get('/api/sample/:route', (req, res) => {
     input_schema: m.inputSchema || { properties: {} },
     sample_response: m.output ? m.output.example : null,
     captured: 'a real response from this service, trimmed; field names and types are exactly what the paid route returns',
-    redacted: 'values from OKX and Binance, and the peg tape\'s US-market reference, are null in this stored sample: their terms forbid redistributing that data',
+    ...(m.redacted ? { redacted: 'values from OKX and Binance (the liquidation tape\'s prints) are null in this stored sample: their terms forbid redistributing that data' } : {}),
   });
 });
 

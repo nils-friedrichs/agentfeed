@@ -2,6 +2,8 @@
 // interval that venue quotes it for (Phase 7, 2026-09-28).
 //
 // Real Bybit, OKX and Hyperliquid answers, captured on 2026-09-28 and trimmed to
+// the test symbols (the OKX ones stay in the fixture but are no longer read: OKX was dropped in R6 D2,
+// 13 Oct 2026, and the tests assert it is absent from every answer);
 // the test symbols (test/fixtures/funding-venues.json), are served by a local
 // stub. The REAL tools/derivs.js and tools/liqdb.js are pointed at it through
 // the env overrides they already read (BYBIT_REST, OKX_REST, HL_API, LIQ_DB).
@@ -33,7 +35,7 @@ let server, D, L, tmp;
 
 test.before(async () => {
   // exact request -> captured answer. Two test-only rules: Bybit answers any
-  // symbol it does not list the way it answered ZQQ1USDT, and OKX answers 503
+  // symbol it does not list the way it answered ZQQ1USDT, and answers 503
   // for ZQQ2, standing in for a venue that could not be asked. The history rule
   // below lets the old code be judged by these same fixtures.
   server = http.createServer(async (req, res) => {
@@ -42,7 +44,7 @@ test.before(async () => {
     const [, venue, ...rest] = req.url.split('/');
     const url = '/' + rest.join('/');
     const send = (code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
-    if (venue === 'okx' && url.includes('ZQQ2')) return send(503, { msg: 'unavailable' });
+    if (venue === 'bybit' && url.includes('ZQQ2')) return send(503, { msg: 'unavailable' });
     const key = req.method === 'POST' ? `POST ${url} ${JSON.parse(body || '{}').type}` : `GET ${url}`;
     if (key in FX) return send(200, FX[key]);
     // Bybit's limit=N history is the first N rows of a longer answer (measured
@@ -61,7 +63,7 @@ test.before(async () => {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
   process.env.BYBIT_REST = `${base}/bybit`;
-  process.env.OKX_REST = `${base}/okx`;
+  process.env.OKX_REST = `${base}/okx`; // nothing reads it any more; a stray OKX call would land on a stub that 404s
   process.env.HL_API = `${base}/hl/info`;
 
   // squeeze-score reads the liquidation tape: an empty one is a quiet 24h
@@ -88,14 +90,13 @@ const ann = (raw, ih) => Number((raw * (24 / ih) * 365 * 100).toFixed(2));
 // 4h symbol must FAIL on the old code, which published the raw 4h rate as 8h.
 const venueRaw = (sym) => ({
   bybit: Number(fx(`GET /v5/market/tickers?category=linear&symbol=${sym}`).result.list[0].fundingRate),
-  okx: Number(fx(`GET /api/v5/public/funding-rate?instId=${sym.replace(/USDT$/, '')}-USDT-SWAP`).data[0].fundingRate),
 });
 
 test('values, 8h symbol: SOLUSDT 8h figures equal the venue raw rate (negative control, holds on old code too)', async () => {
   const raw = venueRaw('SOLUSDT');
   const x = await D.getFundingCross({ symbol: 'SOLUSDT' });
   assert.equal(x.venues.bybit.funding_rate_8h, raw.bybit);
-  assert.equal(x.venues.okx.funding_rate_8h, raw.okx);
+  assert.equal(x.venues.okx, undefined, 'OKX is no longer a venue (R6 D2)');
   assert.equal((await D.getBasis({ symbol: 'SOLUSDT' })).funding_rate_8h, raw.bybit);
   const hist = fx('GET /v5/market/funding/history?category=linear&symbol=SOLUSDT&limit=31').result.list;
   const h = await D.getFundingHistory({ symbol: 'SOLUSDT' });
@@ -106,7 +107,7 @@ test('values, 4h symbol: ONDOUSDT 8h figures are twice the venue raw rate', asyn
   const raw = venueRaw('ONDOUSDT');
   const x = await D.getFundingCross({ symbol: 'ONDOUSDT' });
   assert.equal(x.venues.bybit.funding_rate_8h, 2 * raw.bybit);
-  assert.equal(x.venues.okx.funding_rate_8h, 2 * raw.okx);
+  assert.equal(x.venues.okx, undefined, 'OKX is no longer a venue (R6 D2)');
   assert.equal((await D.getBasis({ symbol: 'ONDOUSDT' })).funding_rate_8h, 2 * raw.bybit);
   const hist = fx('GET /v5/market/funding/history?category=linear&symbol=ONDOUSDT&limit=31').result.list;
   const h = await D.getFundingHistory({ symbol: 'ONDOUSDT' });
@@ -116,14 +117,10 @@ test('values, 4h symbol: ONDOUSDT 8h figures are twice the venue raw rate', asyn
 test('SOLUSDT (8h): every 8h figure is the raw rate itself, never doubled (negative control)', async () => {
   const x = await D.getFundingCross({ symbol: 'SOLUSDT' });
   const by = fx('GET /v5/market/tickers?category=linear&symbol=SOLUSDT').result.list[0];
-  const ok = fx('GET /api/v5/public/funding-rate?instId=SOL-USDT-SWAP').data[0];
   assert.equal(x.venues.bybit.funding_interval_hours, 8);
   assert.equal(x.venues.bybit.funding_rate_raw, Number(by.fundingRate));
   assert.equal(x.venues.bybit.funding_rate_8h, Number(by.fundingRate));
-  assert.equal(x.venues.okx.funding_interval_hours, 8);
-  assert.equal(x.venues.okx.funding_rate_8h, Number(ok.fundingRate));
-  // OKX's fundingTime is its next settlement; nextFundingTime is the one after
-  assert.equal(x.venues.okx.next_funding_time, Number(ok.fundingTime));
+  assert.deepEqual(Object.keys(x.venues).sort(), ['bybit', 'hyperliquid'], 'two venues, no OKX (R6 D2)');
   assert.equal(x.venues.hyperliquid.funding_interval_hours, 1);
   assert.equal(x.venues.hyperliquid.funding_rate_raw, x.venues.hyperliquid.funding_rate_1h);
 
@@ -143,11 +140,11 @@ test('SOLUSDT (8h): every 8h figure is the raw rate itself, never doubled (negat
 
 test('ONDOUSDT (4h): every 8h figure is exactly twice the raw rate', async () => {
   const x = await D.getFundingCross({ symbol: 'ONDOUSDT' });
-  for (const v of ['bybit', 'okx']) {
+  for (const v of ['bybit']) {
     assert.equal(x.venues[v].funding_interval_hours, 4, v);
     assert.equal(x.venues[v].funding_rate_8h, 2 * x.venues[v].funding_rate_raw, v);
   }
-  const rates = [x.venues.bybit.funding_rate_8h, x.venues.okx.funding_rate_8h, x.venues.hyperliquid.funding_rate_8h_equiv];
+  const rates = [x.venues.bybit.funding_rate_8h, x.venues.hyperliquid.funding_rate_8h_equiv];
   assert.equal(x.spread_8h, Number((Math.max(...rates) - Math.min(...rates)).toFixed(8)), 'spread on like-for-like 8h rates');
 
   const b = await D.getBasis({ symbol: 'ONDOUSDT' });
@@ -217,9 +214,9 @@ test('funding-history reads each settlement at the interval it closed (AKEUSDT: 
 
 test('no venue lists it: a named caller error only when every venue answered (negative control)', async () => {
   await assert.rejects(D.getFundingCross({ symbol: 'ZQQ1USDT' }),
-    (e) => e.kind === 'bad_request' && /bybit, okx and hyperliquid each answered and none lists it/.test(e.message));
+    (e) => e.kind === 'bad_request' && /bybit and hyperliquid each answered and none lists it/.test(e.message));
   await assert.rejects(D.getFundingCross({ symbol: 'ZQQ2USDT' }),
-    (e) => e.kind === undefined && /no answer from okx/.test(e.message));
+    (e) => e.kind === undefined && /no answer from bybit/.test(e.message));
 });
 
 test('squeeze-score scores the 8h equivalent: ONDOUSDT at 2 x raw, SOLUSDT unchanged', async () => {

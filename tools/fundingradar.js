@@ -1,5 +1,7 @@
 // tools/fundingradar.js — get_funding_radar ($0.02): every perp's funding on
-// Bybit, OKX and Hyperliquid next to its own 30-day history.
+// Bybit and Hyperliquid next to its own 30-day history. (OKX was the third venue until
+// R6 D2, 13 Oct 2026: its API Agreement §9.4 forbids redistributing its market data. It is
+// no longer read; the OKX rows still in fundingradar.db are not used.)
 //
 // A funding rate on its own says little: 0.01% per 8h is ordinary on BTC and a
 // screaming outlier on a coin that has sat at -0.002% for a month. So per venue
@@ -13,7 +15,7 @@
 //                      settled funding history in fundingradar.db and writes a
 //                      precomputed snapshot to funding-radar.json.
 //   getFundingRadar()  the paid route. Reads the snapshot and nothing else, so a
-//                      paid request never waits on, or fails because of, three
+//                      paid request never waits on, or fails because of, two
 //                      exchanges' rate limits. A snapshot older than
 //                      STALE_AFTER_S says so in the answer (stale: true + age).
 //
@@ -35,15 +37,14 @@ const ROOT = path.join(__dirname, '..');
 const DB_PATH = () => process.env.FUNDING_RADAR_DB || path.join(ROOT, 'fundingradar.db');
 const SNAP_PATH = () => process.env.FUNDING_RADAR_SNAPSHOT || path.join(ROOT, 'funding-radar.json');
 const BYBIT = () => process.env.BYBIT_REST || 'https://api.bybit.com';
-const OKX = () => process.env.OKX_REST || 'https://www.okx.com';
 const HL = () => process.env.HL_API || 'https://api.hyperliquid.xyz/info';
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
 const WINDOW_DAYS = 30;
-// The tracked universe: listed on at least two of the three venues, with this
-// much combined open interest. Measured 2026-10-08: 184 symbols at $5M, 368 at
-// $1M. The floor bounds the collector's history calls, so min_oi_usd below it
+// The tracked universe: listed on both venues (Bybit and Hyperliquid), with this
+// much combined open interest. Measured 2026-10-08 on three venues: 184 symbols at $5M,
+// 368 at $1M; the two-venue count is lower (the report of R6 gives it). The floor bounds the collector's history calls, so min_oi_usd below it
 // cannot return symbols that were never tracked -- it is clamped and says so.
 const UNIVERSE_MIN_OI_USD = 5_000_000;
 const MIN_VENUES = 2;
@@ -52,7 +53,7 @@ const MIN_SAMPLES = 10;
 const STALE_AFTER_S = 15 * 60;
 const DEFAULT_TOP = 20;
 const DEFAULT_MIN_OI_USD = 10_000_000;
-const VENUES = ['bybit', 'okx', 'hyperliquid'];
+const VENUES = ['bybit', 'hyperliquid'];
 
 const num = (v) => (v == null || v === '' ? null : Number(v));
 const finite = (v) => (Number.isFinite(v) ? v : null);
@@ -146,8 +147,8 @@ function byExtremity(a, b) {
 // ---- venue access (collector only) -----------------------------------------
 
 // Spacing between calls per venue, well inside each published limit and shared
-// with every other reader on this box: OKX funding-rate-history allows 10 per
-// 2 s, Hyperliquid info is 1200 weight a minute and fundingHistory weighs 20+.
+// with every other reader on this box: Hyperliquid info is 1200 weight a minute and
+// fundingHistory weighs 20+.
 function pacer(gapMs) {
   let next = 0;
   return async () => {
@@ -168,11 +169,11 @@ function pacer(gapMs) {
 // `deadline` is the hard backstop on top: past it a client starts no new call, so
 // a slow venue can never stretch a run past ~270 s. Measured 2026-10-08: 45 + 40
 // calls at 4 s would have been ~340 s at the top of each hour during backfill.
-function venueClient({ fetchImpl = fetch, budget = { bybit: 150, okx: 60, hyperliquid: 30 }, gaps = { bybit: 150, okx: 400, hyperliquid: 3500 }, sharedPace = null, deadline = Infinity } = {}) {
+function venueClient({ fetchImpl = fetch, budget = { bybit: 150, hyperliquid: 30 }, gaps = { bybit: 150, hyperliquid: 3500 }, sharedPace = null, deadline = Infinity } = {}) {
   // sharedPace: a second client with its own budget but the SAME pacers, so two
   // budgets never add up to a faster request rate against one venue.
   const pace = sharedPace || Object.fromEntries(VENUES.map((v) => [v, pacer(gaps[v])]));
-  const used = { bybit: 0, okx: 0, hyperliquid: 0 };
+  const used = { bybit: 0, hyperliquid: 0 };
   const left = (v) => (Date.now() >= deadline ? 0 : budget[v] - used[v]);
   async function get(v, url, opts) {
     if (left(v) <= 0) { const e = new Error(`${v}: call budget for this run spent`); e.budget = true; throw e; }
@@ -183,15 +184,13 @@ function venueClient({ fetchImpl = fetch, budget = { bybit: 150, okx: 60, hyperl
     return r.json();
   }
   const bybit = async (p) => { const j = await get('bybit', BYBIT() + p); if (j.retCode !== 0) throw new Error(`bybit: ${j.retMsg}`); return j.result; };
-  const okx = async (p) => { const j = await get('okx', OKX() + p); if (j.code !== '0') { const e = new Error(`okx: ${j.msg}`); e.okxCode = j.code; throw e; } return j.data; };
   const hl = (body) => get('hyperliquid', HL(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  return { bybit, okx, hl, used, left, pace };
+  return { bybit, hl, used, left, pace };
 }
 
-const okxInst = (sym) => sym.replace(/USDT$/, '') + '-USDT-SWAP';
 const coinOf = (sym) => sym.replace(/USDT$/, '');
 
-/** Current funding, interval and OI on all three venues: six bulk calls. */
+/** Current funding, interval and OI on both venues: a few bulk calls. */
 async function readCurrent(c) {
   const byIv = {};
   for (const status of ['Trading', 'PreLaunch', 'Delivering']) {
@@ -209,22 +208,6 @@ async function readCurrent(c) {
     const raw = num(t.fundingRate), ih = byIv[t.symbol] ?? null;
     bybit[t.symbol] = { raw, ih, next: num(t.nextFundingTime), oi: num(t.openInterestValue) || 0 };
   }
-  const okx = {};
-  for (const d of await c.okx('/api/v5/public/funding-rate?instId=ANY')) {
-    if (!/-USDT-SWAP$/.test(d.instId)) continue;
-    const ih = (num(d.nextFundingTime) - num(d.fundingTime)) / HOUR;
-    // fundingTime is OKX's NEXT settlement (measured 2026-09-28, see derivs.js)
-    okx[d.instId.replace('-USDT-SWAP', 'USDT')] = { raw: num(d.fundingRate), ih: Number.isFinite(ih) && ih > 0 ? ih : null, next: num(d.fundingTime), oi: 0 };
-  }
-  // OKX's SWAP open-interest list is not complete (500 rows against 737
-  // funding rows on 2026-10-08), so a missing figure is 0 toward the total,
-  // never a guess.
-  try {
-    for (const d of await c.okx('/api/v5/public/open-interest?instType=SWAP')) {
-      const s = d.instId.replace('-USDT-SWAP', 'USDT');
-      if (okx[s] && /-USDT-SWAP$/.test(d.instId)) okx[s].oi = num(d.oiUsd) || 0;
-    }
-  } catch { /* OI only filters; funding stands without it */ }
   const hyperliquid = {};
   const [meta, ctxs] = await c.hl({ type: 'metaAndAssetCtxs' });
   meta.universe.forEach((u, i) => {
@@ -232,7 +215,7 @@ async function readCurrent(c) {
     const x = ctxs[i];
     hyperliquid[u.name + 'USDT'] = { raw: num(x.funding), ih: 1, next: null, oi: (num(x.openInterest) || 0) * (num(x.markPx) || 0) };
   });
-  return { bybit, okx, hyperliquid };
+  return { bybit, hyperliquid };
 }
 
 // ---- history store ---------------------------------------------------------
@@ -260,18 +243,6 @@ async function fetchHistory(c, venue, symbol, since) {
       if (r.list.length < 200) break;
       end = Math.min(...r.list.map((x) => num(x.fundingRateTimestamp))) - 1;
     }
-  } else if (venue === 'okx') {
-    // realizedRate is what settled; fundingRate in history is the prediction.
-    let after = '';
-    for (let page = 0; page < 3; page++) {
-      const d = await c.okx(`/api/v5/public/funding-rate-history?instId=${okxInst(symbol)}&limit=400${after ? `&after=${after}` : ''}`);
-      for (const x of d) {
-        const ts = num(x.fundingTime);
-        if (ts > since) rows.push({ ts, rate: num(x.realizedRate !== '' && x.realizedRate != null ? x.realizedRate : x.fundingRate) });
-      }
-      if (d.length < 400 || Math.min(...d.map((x) => num(x.fundingTime))) <= since) break;
-      after = String(Math.min(...d.map((x) => num(x.fundingTime))));
-    }
   } else {
     let start = since + 1;
     for (let page = 0; page < 4; page++) {
@@ -297,7 +268,7 @@ async function collect({ now = Date.now(), client = null, log = () => {} } = {})
   client = client || venueClient({ deadline: t0 + 200_000 });
   const db = openDb();
   const cur = await readCurrent(client);
-  const symbols = new Set([...Object.keys(cur.bybit), ...Object.keys(cur.okx), ...Object.keys(cur.hyperliquid)]);
+  const symbols = new Set([...Object.keys(cur.bybit), ...Object.keys(cur.hyperliquid)]);
   const universe = [];
   for (const s of symbols) {
     const listed = VENUES.filter((v) => cur[v][s]);
@@ -390,7 +361,7 @@ async function collect({ now = Date.now(), client = null, log = () => {} } = {})
   try {
     // its own call budget, the crypto client's pacers: the crypto radar's hourly
     // Hyperliquid updates can no longer starve the HIP-3 markets of calls
-    const tradfiClient = venueClient({ budget: { bybit: 0, okx: 0, hyperliquid: 32 }, sharedPace: client.pace, deadline: t0 + 235_000 });
+    const tradfiClient = venueClient({ budget: { bybit: 0, hyperliquid: 32 }, sharedPace: client.pace, deadline: t0 + 235_000 });
     const t = await require('./tradfi').collectTradfi({ client: tradfiClient, db, now, log, fr: module.exports });
     tradfi = t.section; tradfiSummary = t.summary;
   } catch (e) { log(`tradfi: ${e.message}`); }

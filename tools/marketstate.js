@@ -44,7 +44,7 @@ async function getMarketState(p = {}, { now = Date.now() } = {}) {
       return { value: q.price, source: q.source || q.venue || 'multi-source spot', as_of: q.publish_time ? iso(q.publish_time * 1000) : iso(now) };
     }),
     part(async () => { const v = await D.getVolatility({ symbol: sym }); return { rv_7d_ann_pct: v.realized_vol_7d_ann_pct, rv_30d_ann_pct: v.realized_vol_30d_ann_pct, today_range_pct: v.today_range_pct, source: v.source, as_of: iso(now) }; }),
-    part(async () => { const o = await D.getOpenInterest({ symbol: sym }); return { bybit_usd: o.bybit && o.bybit.oi_usd, bybit_change_24h_pct: o.bybit && o.bybit.change_24h_pct, okx_usd: o.okx && o.okx.oi_usd, mark_price: o.mark_price, source: 'Bybit + OKX open interest', as_of: iso(now) }; }),
+    part(async () => { const o = await D.getOpenInterest({ symbol: sym }); return { bybit_usd: o.bybit && o.bybit.oi_usd, bybit_change_24h_pct: o.bybit && o.bybit.change_24h_pct, hyperliquid_usd: (o.hyperliquid && o.hyperliquid.oi_usd) ?? null, mark_price: o.mark_price, source: 'Bybit + Hyperliquid open interest', as_of: iso(now) }; }),
     part(async () => { const l = await D.getLongShort({ symbol: sym }); return { long_pct: l.long_pct, short_pct: l.short_pct, long_pct_24h_ago: l.long_pct_24h_ago, period: l.period, source: l.source, as_of: l.ts ? iso(l.ts) : iso(now) }; }),
     part(async () => { const b = await D.getBasis({ symbol: sym }); return { mark_price: b.mark_price, price_24h_note: null, ...b }; }),
     part(async () => { const f = await getFearGreed(); return { value: f.value, classification: f.classification, source: f.source || 'alternative.me', as_of: f.timestamp ? iso(Number(f.timestamp) * 1000) : iso(now) }; }),

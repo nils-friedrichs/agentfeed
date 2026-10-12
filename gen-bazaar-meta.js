@@ -439,7 +439,7 @@ function redactOnly() {
   for (const [pattern, e] of Object.entries(prev.routes)) {
     if (!e.output || !e.output.example) continue;
     const red = redactBanned(e.output.example, e.tool);
-    if (JSON.stringify(red) !== JSON.stringify(e.output.example)) { changed++; console.log(`  redacted: ${pattern}`); e.output.example = red; }
+    if (JSON.stringify(red) !== JSON.stringify(e.output.example)) { changed++; console.log(`  redacted: ${pattern}`); e.output.example = red; e.redacted = true; }
   }
   prev._redacted_at = new Date().toISOString();
   fs.writeFileSync(OUT_FILE, JSON.stringify(prev, null, 1) + '\n');
@@ -471,7 +471,12 @@ async function recapture(tools) {
     const c = await captureExample(r, { ...input, ...pathParams });
     process.stdout.write(`  ${c.status.padEnd(5)} ${r.pattern.replace('GET ', '').padEnd(30)} ex=${String(c.example ? bytes(c.example) : 0).padStart(4)}B  ${c.note}\n`);
     if (c.status !== 'OK' || !c.example) { console.error(`FATAL: ${r.pattern} did not capture cleanly; nothing written`); process.exit(1); }
-    next.push([r.pattern, { ...old, output: { example: redactBanned(c.example, r.tool), schema: schemaOf(c.example) } }]);
+    const redExample = redactBanned(c.example, r.tool);
+    const entryNext = { ...old, output: { example: redExample, schema: schemaOf(c.example) } };
+    // R6: `redacted` marks a stored sample whose values were nulled (it lives on the entry, never inside `output`,
+    // which payments.js spreads into the 402 challenge); /api/sample says so only for those routes
+    if (JSON.stringify(redExample) !== JSON.stringify(c.example)) entryNext.redacted = true; else delete entryNext.redacted;
+    next.push([r.pattern, entryNext]);
   }
   for (const [pattern, entry] of next) prev.routes[pattern] = entry;
   prev._outputs_recaptured_at = new Date().toISOString();
@@ -514,7 +519,11 @@ async function main() {
       // one real invocable URL per route in /.well-known/x402.
       entry.pathParams = pathParams;
     }
-    if (example) entry.output = { example: redactBanned(example, r.tool), schema: schemaOf(example) };
+    if (example) {
+      const redExample = redactBanned(example, r.tool);
+      entry.output = { example: redExample, schema: schemaOf(example) };
+      if (JSON.stringify(redExample) !== JSON.stringify(example)) entry.redacted = true; // see --recapture: on the entry, not in `output`
+    }
 
     meta[r.pattern] = entry;
     report.push({

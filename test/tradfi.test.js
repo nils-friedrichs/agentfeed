@@ -28,13 +28,14 @@ function snap(now, markets) {
 }
 const M = (venue, ticker, cls, f8, oi, mark = 100) => ({ venue, market: venue === 'hyperliquid' ? `xyz:${ticker}` : undefined, symbol: `${ticker}USDT`, ticker, asset_class: cls, funding_rate_8h: f8, oi_usd: oi, volume_24h_usd: 1e6, mark });
 
-test('radar ranks by |funding 8h|, filters by class and venue; Binance (no OI) survives min_oi 0 only', () => {
+test('radar ranks by |funding 8h|, filters by class and venue; a venue with no OI survives min_oi 0 only (venues: hyperliquid, bybit)', () => {
   const now = Date.now();
-  snap(now, [M('hyperliquid', 'TSLA', 'stock', 0.0001, 5e6), M('binance', 'XAU', 'commodity', -0.003, null), M('okx', 'US500', 'index', 0.001, 2e6)]);
+  snap(now, [M('hyperliquid', 'TSLA', 'stock', 0.0001, 5e6), M('bybit', 'XAU', 'commodity', -0.003, null), M('bybit', 'US500', 'index', 0.001, 2e6)]);
   const r = T.getTradfiRadar({}, { now });
   assert.deepEqual(r.markets.map((m) => m.ticker), ['XAU', 'US500', 'TSLA']);
   assert.deepEqual(T.getTradfiRadar({ class: 'stock' }, { now }).markets.map((m) => m.ticker), ['TSLA']);
-  assert.deepEqual(T.getTradfiRadar({ venue: 'okx' }, { now }).markets.map((m) => m.ticker), ['US500']);
+  assert.deepEqual(T.getTradfiRadar({ venue: 'bybit' }, { now }).markets.map((m) => m.ticker), ['XAU', 'US500']);
+  assert.deepEqual(T.getTradfiRadar({}, { now }).venues, ['hyperliquid (HIP-3 dexes)', 'bybit'], 'Binance and OKX are not venues any more (R6 D2)');
   assert.deepEqual(T.getTradfiRadar({ min_oi_usd: 1e6 }, { now }).markets.map((m) => m.ticker), ['US500', 'TSLA']);
   assert.throws(() => T.getTradfiRadar({ class: 'crypto' }, { now }), (e) => e.kind === 'bad_request');
 });

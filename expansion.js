@@ -64,7 +64,7 @@ const EXP = [
     schema: { symbol: sym('SOLUSDT'), scope: z.enum(['symbol', 'all']).optional().describe('symbol = just this symbol (default), all = every recorded USDT perp'), hours: z.number().optional().describe('1-72, default 24'), min_usd: z.number().optional().describe('min event USD, default 100k (250k for scope=all)'), gap_s: z.number().optional().describe('max gap seconds within an event, default 60') },
     run: (a) => L.getCascadeHistory(a) },
   { name: 'get_squeeze_score', route: 'GET /api/squeeze-score', usd: 0.10,
-    desc: 'Short squeeze score and long flush score, 0-100, for any USDT perp. Composite of the funding rate, long/short crowding, 24h open-interest build, and liquidation skew from our own tape. One number for whether a trade is crowded and about to hurt someone.',
+    desc: 'Short squeeze score and long flush score, 0-100, for any USDT perp. Composite of the funding rate, long/short crowding, 24h open-interest build, and liquidation skew from our own tape. One number for whether a trade is crowded and about to hurt someone. A symbol no venue lists answers 400 with the supported list and is never billed; a listed symbol whose inputs did not resolve returns 200 with a decline naming them.',
     tags: ['squeeze', 'signal', 'liquidations', 'funding', 'trading', 'exclusive'],
     schema: { symbol: symDefault },
     run: (a) => L.getSqueezeScore(a) },
@@ -76,7 +76,7 @@ const EXP = [
 
   // ---- derivatives suite ----
   { name: 'get_funding_cross', route: 'GET /api/funding-cross', usd: 0.01,
-    desc: 'Funding rate for ANY USDT perp across Bybit, OKX and Hyperliquid in one call, with the cross-venue spread and a crowding read.',
+    desc: 'Funding rate for ANY USDT perp across Bybit and Hyperliquid in one call, with the cross-venue spread and a crowding read.',
     tags: ['funding', 'perps', 'cross-exchange', 'trading'],
     schema: { symbol: symDefault }, run: (a) => D.getFundingCross(a) },
   { name: 'get_funding_extremes', route: 'GET /api/funding-extremes', usd: 0.02,
@@ -87,7 +87,7 @@ const EXP = [
   // Served from a snapshot the cron collector (bin/funding-radar-collect.js)
   // writes every 5 minutes; a paid request never calls a venue.
   { name: 'get_funding_radar', route: 'GET /api/funding-radar', usd: 0.02,
-    desc: "Funding rates radar across Bybit, OKX and Hyperliquid. It tracks every USDT perp listed on at least two of them from $5M combined open interest and, by default, shows the ones with $10M and up; min_oi_usd changes that. Per symbol: the current funding per venue at its 8h equivalent, each venue's 30-day z-score against its own settled history, the cross-venue spread, and a flag on any |z| of 2 or more, most extreme first. Precomputed every 5 minutes, with as_of and stale.",
+    desc: "Funding rates radar across Bybit and Hyperliquid. It tracks every USDT perp listed on both of them from $5M combined open interest and, by default, shows the ones with $10M and up; min_oi_usd changes that. Per symbol: the current funding per venue at its 8h equivalent, each venue's 30-day z-score against its own settled history, the cross-venue spread, and a flag on any |z| of 2 or more, most extreme first. Precomputed every 5 minutes, with as_of and stale.",
     tags: ['funding', 'perps', 'screener', 'cross-exchange', 'z-score', 'trading'],
     schema: { top: z.number().optional().describe('symbols returned, most extreme first, 1-100, default 20'),
               min_oi_usd: z.number().optional().describe('minimum combined open interest in USD across the venues: default 10000000 ($10M); the radar tracks pairs from 5000000 ($5M), and lower values return that floor') },
@@ -117,22 +117,22 @@ const EXP = [
               days: z.number().optional().describe('days ahead, 1-400, default 90') },
     run: (a) => MAC.getMacroCalendar(a) },
   // TradFi perps: HIP-3 markets ride the funding-radar collector and snapshot;
-  // Bybit, Binance and OKX TradFi perps are read in the same run.
+  // Bybit TradFi perps are read in the same run (Binance and OKX were dropped in R6 D2).
   { name: 'get_tradfi_radar', route: 'GET /api/tradfi-radar', usd: 0.02,
-    desc: 'Stock perps, S&P 500, Nasdaq, gold and oil perps ranked by funding rate: every stock, index, commodity and FX perp on Hyperliquid HIP-3 dexes (trade[XYZ], Paragon, Markets by Kinetiq, Entropy), Bybit, Binance and OKX, with funding at its 8h equivalent, a 30-day funding z-score on HIP-3, open interest and its 24h change, mark minus oracle basis and 24h volume. Filter by asset class or venue. Precomputed every 5 minutes; stale data answers 503.',
+    desc: 'Stock perps, S&P 500, Nasdaq, gold and oil perps ranked by funding rate: every stock, index, commodity and FX perp on Hyperliquid HIP-3 dexes (trade[XYZ], Paragon, Markets by Kinetiq, Entropy) and Bybit, with funding at its 8h equivalent, a 30-day funding z-score on HIP-3, open interest and its 24h change, mark minus oracle basis and 24h volume. Filter by asset class or venue. Precomputed every 5 minutes; stale data answers 503.',
     tags: ['stock-perps', 'funding', 'tradfi', 'commodities', 'indices', 'hyperliquid', 'trading'],
     schema: { class: z.string().optional().describe('comma list of stock, index, commodity, fx, rates, pre_ipo, crypto_index, other (default all)'),
-              venue: z.string().optional().describe('comma list of hyperliquid, bybit, binance, okx (default all)'),
+              venue: z.string().optional().describe('comma list of hyperliquid, bybit (default all)'),
               top: z.number().optional().describe('markets returned, 1-200, default 25'),
               min_oi_usd: z.number().optional().describe('minimum open interest in USD; venues that publish no OI are then left out (default 0)') },
     run: (a) => TF.getTradfiRadar(a) },
   { name: 'get_equity_24h', route: 'GET /api/equity-24h', usd: 0.01,
-    desc: "Weekend price for US stocks: an indicative 24/7 price for a stock or index (TSLA, NVDA, S&P 500, Nasdaq) from stock perps on Hyperliquid, Bybit, Binance and OKX and our tokenized stocks DEX price, with the last regular-session price, its time and source, the implied gap in %, each source's liquidity and the session (open, pre, after, overnight, weekend). Indicative, never an exchange quote; 503 when no source has liquidity.",
+    desc: "Weekend price for US stocks: an indicative 24/7 price for a stock or index (TSLA, NVDA, S&P 500, Nasdaq) from stock perps on Hyperliquid and Bybit and our tokenized stocks DEX price, with the last regular-session price, its time and source, the implied gap in %, each source's liquidity and the session (open, pre, after, overnight, weekend). Indicative, never an exchange quote; 503 when no source has liquidity.",
     tags: ['tokenized-stocks', 'stock-perps', 'weekend-price', 'equities', 'indicative-price'],
     schema: { symbol: z.string().describe('US stock or index ticker as the venues list it, e.g. TSLA, NVDA, SP500, XYZ100') },
     run: (a) => TF.getEquity24h(a) },
   { name: 'get_open_interest', route: 'GET /api/open-interest', usd: 0.01,
-    desc: 'Open interest for ANY USDT perp: Bybit OI in base units and in USD with 1h and 24h change, plus OKX and Hyperliquid open interest and the mark price. /api/positioning covers SOL and BTC only.',
+    desc: 'Open interest for ANY USDT perp: Bybit OI in base units and in USD with 1h and 24h change, plus Hyperliquid open interest and the mark price. /api/positioning covers SOL and BTC only.',
     tags: ['open-interest', 'perps', 'crypto', 'trading'],
     schema: { symbol: symDefault }, run: (a) => D.getOpenInterest(a) },
   { name: 'get_oi_spike_scan', route: 'GET /api/oi-spike-scan', usd: 0.02,
@@ -180,7 +180,7 @@ const EXP = [
     schema: { symbol: symDefault, min_usd: z.number().optional().describe('min print USD, default 100k'), limit: z.number().optional().describe('max trades returned, 1-50, default 20') },
     run: (a) => M.getWhaleTrades(a) },
   { name: 'get_spread_arb', route: 'GET /api/spread-arb', usd: 0.02,
-    desc: 'Cross-exchange spread and arbitrage edge for any USDT perp: the best bid and ask on Bybit, OKX and Hyperliquid, with the best cross-venue edge in bps, pre-fee.',
+    desc: 'Cross-exchange spread and arbitrage edge for any USDT perp: the best bid and ask on Bybit and Hyperliquid, with the best cross-venue edge in bps, pre-fee.',
     tags: ['arbitrage', 'spread', 'cross-exchange', 'trading'],
     schema: { symbol: symDefault }, run: (a) => M.getSpreadArb(a) },
 
@@ -212,7 +212,7 @@ const EXP = [
 
   // ---- MOAT: our own tokenized-equity peg tape ----
   { name: 'get_peg_deviation', route: 'GET /api/peg-deviation', usd: 0.02,
-    desc: 'Tokenized stock peg deviation on Solana: the on-chain DEX price of a tokenized US equity versus the underlying\'s last real trade, in bps, with 24h stats split into market-open and off-hours. Sampled every 5 minutes by our own collector; the token price is read on-chain.',
+    desc: 'Tokenized stock peg deviation on Solana: the on-chain DEX price of a tokenized US equity versus the underlying\'s last real trade, in bps, with 24h stats split into market-open and off-hours. Sampled every 5 minutes by our own collector; the token price is read on-chain. latest.reference is null: the underlying\'s reference price is not returned (its source does not allow redistribution), only the deviation computed from it.',
     tags: ['rwa','tokenized-stocks','peg','solana','exclusive'],
     schema: { symbol: z.string().describe('Tokenized equity symbol e.g. CRCLx, MSTRx, COINx'), hours: z.number().optional().describe('lookback 1-168, default 24') },
     run: (a) => P.getPegDeviation(a) },
@@ -331,7 +331,7 @@ const EXP = [
   // the premium tape tools above keep their prices.
   { name: 'get_perp', route: 'GET /api/perp', usd: 0.005,
     tags: ['perps', 'funding', 'open-interest', 'liquidations', 'crypto', 'trading'],
-    desc: 'Use when an agent needs one perp market in a single call. Returns cross-venue funding (Bybit, OKX, Hyperliquid), open interest with 1h/24h change, long/short ratio, and 24h liquidations with long/short split and biggest print from our own tape.',
+    desc: 'Use when an agent needs one perp market in a single call. Returns cross-venue funding (Bybit, Hyperliquid), open interest with 1h/24h change, long/short ratio, and 24h liquidations with long/short split and biggest print from our own tape. A symbol no venue lists answers 400 and is never billed.',
     schema: { symbol: z.string().optional().describe('USDT perp symbol e.g. SOLUSDT, BTCUSDT (default SOLUSDT)') },
     run: (a) => EN.getPerp(a) },
 
@@ -349,8 +349,8 @@ const EXP = [
 
   { name: 'get_spot', route: 'GET /api/price', usd: 0.001,
     tags: ['price', 'spot', 'crypto', 'onchain', 'dex'],
-    desc: 'Use when an agent needs a spot price without choosing a venue. Returns the on-chain DEX price for SOL, BTC or ETH, the median of deep USDC pools on Solana, Ethereum and Base read from chain state, and the pools that served it. Anything else is declined.',
-    schema: { symbol: z.string().optional().describe('SOL, BTC or ETH (default SOL). Anything else is declined with the supported list') },
+    desc: 'Use when an agent needs a spot price without choosing a venue. Returns the on-chain DEX price for SOL, BTC or ETH, the median of deep USDC pools on Solana, Ethereum and Base read from chain state, and the pools that served it. Any other symbol answers 400 with the supported list and is never billed.',
+    schema: { symbol: z.string().optional().describe('SOL, BTC or ETH (default SOL). Any other symbol answers 400 with the supported list') },
     run: (a) => EN.getSpot(a) },
 ];
 

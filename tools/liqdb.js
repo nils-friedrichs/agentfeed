@@ -7,6 +7,7 @@
 const Database = require('better-sqlite3');
 const { cached } = require('../lib/cache');
 const { _normSym: normSym, getOpenInterest, getLongShort, getFundingCross } = require('./derivs');
+const { CORE } = require('../universe');
 
 const DB_PATH = process.env.LIQ_DB || '/opt/agentfeed/liquidations.db';
 let db = null;
@@ -156,12 +157,16 @@ async function getSqueezeScore(p = {}) {
         .prepare('SELECT 1 AS hit FROM liquidations WHERE symbol = ? LIMIT 1')
         .get(sym);
       const unknown = missing.length === 3 && !seen;
+      // R6 D1: a symbol no venue quotes and the tape never recorded is the CALLER's mistake, not an
+      // answer: 400 with the symbols that work, thrown before anything settles, so it is never billed.
+      // A listed symbol whose inputs did not resolve (below) still declines with 200: that is the product.
+      if (unknown) {
+        throw Object.assign(new Error(`unsupported symbol "${sym}": no venue (Bybit, Hyperliquid) quotes it and it has never appeared in the liquidation tape, so there is nothing to score. Any listed USDT perp works, e.g. ${CORE.join(', ')}.`), { kind: 'bad_request', supported: [...CORE] });
+      }
       return {
         symbol: sym,
-        decline: unknown ? 'symbol_not_found' : 'insufficient_inputs',
-        reason: unknown
-          ? `no venue quotes ${sym} and it has never appeared in the liquidation tape, so there is nothing to score`
-          : `${missing.join(', ')} did not resolve for ${sym}, and this composite is not reported on partial inputs`,
+        decline: 'insufficient_inputs',
+        reason: `${missing.join(', ')} did not resolve for ${sym}, and this composite is not reported on partial inputs`,
         missing_inputs: missing,
         // A Bybit rate whose interval could not be read has no 8h figure, and
         // that is named rather than left looking like a missing rate.

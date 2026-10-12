@@ -14,9 +14,16 @@
 // DECLINES, NEVER FAKES. A route that cannot serve a request returns HTTP 200
 // with a `decline` field naming the reason and what it can serve instead, the
 // same shape get_squeeze_score uses. It never returns zeros dressed as data.
+//
+// R6 D1 (13 Oct 2026): ONE EXCEPTION, THE CALLER'S SYMBOL. A symbol the route does
+// not serve (price: not SOL, BTC or ETH; perp: listed nowhere and never in our tape)
+// is a caller error, not an answer: HTTP 400 with {error, supported:[...]}, thrown before
+// anything settles, so it is never billed. A symbol we DO serve where the data cannot
+// answer still declines with 200, because that decline is the product.
 'use strict';
 const Database = require('better-sqlite3');
 const { cached } = require('../lib/cache');
+const { CORE } = require('../universe');
 const { _normSym: normSym, getFundingCross, getOpenInterest, getLongShort, getFundingExtremes } = require('./derivs');
 const { getPrice, SYMBOLS } = require('./prices');
 
@@ -81,17 +88,23 @@ async function getPerp(p = {}) {
     if (oi._error) missing.push(`open_interest (${oi._error})`);
     if (ls._error) missing.push(`long_short (${ls._error})`);
     if (funding._error && oi._error && ls._error && liq.prints === 0) {
-      return { symbol: sym, decline: `no venue served ${sym} and our tape has no liquidation for it in 24h`, tried: ['bybit', 'okx', 'hyperliquid'], tape_age_sec: age.age_sec };
+      // No venue served it. A symbol that has never appeared in our tape either is the caller's
+      // mistake (400, unbilled); one we have recorded before is ours to decline (200).
+      const seen = tape().prepare('SELECT 1 AS hit FROM liquidations WHERE symbol = ? LIMIT 1').get(sym);
+      if (!seen) {
+        throw Object.assign(new Error(`unsupported symbol "${sym}": no venue (Bybit, Hyperliquid) lists it and it has never appeared in our liquidation tape. Any USDT perp listed on Bybit or Hyperliquid works, e.g. ${CORE.join(', ')}.`), { kind: 'bad_request', supported: [...CORE] });
+      }
+      return { symbol: sym, decline: `no venue served ${sym} and our tape has no liquidation for it in 24h`, tried: ['bybit', 'hyperliquid'], tape_age_sec: age.age_sec };
     }
     return {
       symbol: sym,
       funding: funding._error ? null : { venues: funding.venues, spread_8h: funding.spread_8h, crowding: funding.crowding },
-      open_interest: oi._error ? null : { bybit: oi.bybit, okx: oi.okx, mark_price: oi.mark_price },
+      open_interest: oi._error ? null : { bybit: oi.bybit, hyperliquid: oi.hyperliquid, mark_price: oi.mark_price },
       long_short: ls._error ? null : { long_pct: ls.long_pct, short_pct: ls.short_pct, long_pct_1h_ago: ls.long_pct_1h_ago, long_pct_24h_ago: ls.long_pct_24h_ago, source: ls.source },
       liquidations_24h: liq,
       tape_age_sec: age.age_sec,
       partial: missing.length ? missing : null,
-      source: 'bybit+okx+hyperliquid venues, liquidations from our own tape',
+      source: 'bybit+hyperliquid venues, liquidations from our own tape',
     };
   });
 }
@@ -174,8 +187,8 @@ async function getSpot(p = {}) {
   const raw = String(p.symbol || 'SOL').trim().toUpperCase();
   const sym = raw.replace(/USDT?$/, '') || raw;
   if (!SUPPORTED.includes(sym)) {
-    return { decline: `no price source configured for "${raw}"`, requested: raw, supported: SUPPORTED,
-      note: 'This route serves only the symbols the multi-source price module has a feed for. For any USDT perp mark price use /api/perp.' };
+    // R6 D1: the caller's symbol, so 400 before any settlement (never billed), with the list it can use
+    throw Object.assign(new Error(`unsupported symbol "${raw.slice(0, 40)}": /api/price serves ${SUPPORTED.join(', ')} from on-chain pools. For any USDT perp mark price use /api/perp.`), { kind: 'bad_request', supported: [...SUPPORTED] });
   }
   return cached(`entry:spot:${sym}`, TTL, async () => {
     const q = await getPrice(sym);

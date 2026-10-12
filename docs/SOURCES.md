@@ -44,11 +44,11 @@ decides the computed products from the table below.
 | Federal Reserve, BLS, BEA | macro-calendar, market-state | federalreserve.gov/disclaimer.htm (2 Aug 2024); bls.gov/opub/copyright-information.htm; bea.gov/help/faq/147 | public domain, may be copied and distributed; cite the agency; no use of seals or names implying endorsement; BLS blocks robots without contact details | raw dates | clean (our collector sends a contact User-Agent) |
 | Coinbase Exchange public API (api.coinbase.com) | sol-price, btc-price, /api/price, eth-price, market-snapshot, trade-context, market-state (first venue) | coinbase.com/legal/market_data (Market Data Terms, 6 Feb 2023; the Exchange docs bind public market-data use to them). The page answers 403 to our fetch; read through its indexed text and the tosdr mirror | licence for internal purposes only; no redistribution or display of Market Data, or works derived from it, to third parties without prior written consent | raw (spot price, `source`) | banned |
 | Kraken public API (api.kraken.com) | same routes as Coinbase (fallback venue), eth-price | kraken.com/legal/global-terms (6 Oct 2026) §8 "Our Content" | Our Content may be used "only for your own benefit"; any other use needs prior permission; no scraping or data extraction | raw (spot price) | banned |
-| Binance (api.binance.com, fapi.binance.com, fstream.binance.com) | eth-price, tradfi-radar, equity-24h, the liquidation tape | Binance Terms of Use (ADGM, effective 21 Jul 2026) cl. 27 and 14.1.2(b); Binance Vision Dataset Terms v1.0 (26 Aug 2026) | licence of Binance IP "for non-commercial personal or internal business use"; API use is "subject to separate API terms" (not located); the Vision datasets are non-commercial | raw (eth quote, perp marks and funding, liquidation prints) and computed | banned (the separate API terms were not found) |
-| OKX (www.okx.com, ws.okx.com) | eth-price, funding-rate, funding-cross, funding-radar, open-interest, market-state, spread-arb, perp, tradfi-radar, equity-24h, the liquidation tape | OKX API Agreement (28 Jul 2026) §9.3, §9.4 | Market Data "solely for your own personal, non-commercial trading"; no resell, redistribute, publish or display to any third party (§9.4(a)); no competing price feeds or aggregators (§9.4(b)); public endpoints bound the same way | raw and computed | banned |
+| Binance (api.binance.com, fapi.binance.com, fstream.binance.com) | the liquidation tape only (eth-price left in Phase C; tradfi-radar and equity-24h in R6 D2, 13 Oct 2026) | Binance Terms of Use (ADGM, effective 21 Jul 2026) cl. 27 and 14.1.2(b); Binance Vision Dataset Terms v1.0 (26 Aug 2026) | licence of Binance IP "for non-commercial personal or internal business use"; API use is "subject to separate API terms" (not located); the Vision datasets are non-commercial | raw (eth quote, perp marks and funding, liquidation prints) and computed | banned (the separate API terms were not found) |
+| OKX (www.okx.com, ws.okx.com) | the liquidation tape only (eth-price left in Phase C; funding-rate, funding-cross, funding-radar, open-interest, market-state, spread-arb, perp, tradfi-radar and equity-24h in R6 D2, 13 Oct 2026) | OKX API Agreement (28 Jul 2026) §9.3, §9.4 | Market Data "solely for your own personal, non-commercial trading"; no resell, redistribute, publish or display to any third party (§9.4(a)); no competing price feeds or aggregators (§9.4(b)); public endpoints bound the same way | raw and computed | banned |
 | Gemini (api.gemini.com) | eth-price | gemini.com/legal/market-data-agreement (undated) | Permitted Use is personal or internal, informational, or analysis; Prohibited Use (ii) no benchmark, reference rate or index, (vi) no distribute, redistribute, sell or sublicense; commercial use and redistribution need the Redistribution Agreement | raw (eth quote) | banned |
-| Bybit (api.bybit.com, stream.bybit.com) | funding, OI, long/short, basis, top-movers, orderbook, whale trades, spread-arb, volatility, positioning, squeeze-score, market-state, tradfi-radar, equity-24h, the liquidation tape | not read (research stopped by the planning chat on 12 Oct) | — | raw and computed | unclear |
-| Deribit (www.deribit.com) | options-summary, options-gex, market-state (DVOL) | deribit.com/kb/deribit-api-terms renders client-side; not read | — | raw (index price, DVOL) and computed (IV, Greeks, GEX) | unclear |
+| Bybit (api.bybit.com, stream.bybit.com) | funding, OI, long/short, basis, top-movers, orderbook, whale trades, spread-arb, volatility, positioning, squeeze-score, market-state, tradfi-radar, equity-24h, the liquidation tape | read 13 Oct 2026 (R6 D2): Bybit "API Terms & Conditions, Schedule - Trading Application Programming Interface Agreement" (legal site, Service-Specific Terms, v1, 16 Jan 2026), PDF 7 pages; the platform Terms and Conditions (Bybit Technology Limited, effective 2 Sep 2026, 42 pages) add no market-data licence, only a ban on scraping | §6.7: "You or your API Client shall not, under any circumstances, through your API Client or otherwise, repackage or resell the services, or any part thereof, API or Service Data." §6.9: "You or your API Client shall not commercially exploit the APIs." "Service Data" (§3.1) is "any data, or information within the dataset and content that is given by using the API". §5.1 grants only a "limited, non-exclusive, non-sublicensable, non-transferable, non-assignable and revocable license" to "use the APIs to develop, test, and support your Use"; §9.2 makes "all output and executables of the APIs" Bybit's property. The schedule is written for account (API-key) use; the keyless public endpoints are licensed nowhere else I found, so they are treated as Service Data | raw and computed | banned (R6). Withdrawn: nothing, by the planning chat's rule of 13 Oct; every route that passes a Bybit raw value is marked raw-banned (Bybit) below |
+| Deribit (www.deribit.com) | options-summary, options-gex, market-state (DVOL) | read 13 Oct 2026 (R6 D2, report only): Deribit Exchange Membership Terms (Deribit FZE, updated 12 Aug 2026) cl. 2.10, and Terms of Service (DRB Panama Inc., updated 4 Mar 2026) cl. 32.3; deribit.com/kb/deribit-api-terms redirects to the support site, where these are the texts | "The use of market data and/or derived data is for personal use only. You are not allowed to aggregate, resell, publish, forward or in any other way process market data and/or derived data (except for personal use) without prior written approval from us." The clause names derived data, so the computed IV, Greeks and GEX are inside it as well | raw (index price, DVOL) and computed (IV, Greeks, GEX) | banned (R6, no route changed) |
 | Hyperliquid (api.hyperliquid.xyz, stats-data.hyperliquid.xyz) | hl-whales, funding, spread-arb, perp, tradfi-radar, equity-24h | app.hyperliquid.xyz/terms (15 Jun 2026) | the terms govern the Interface; no data, resale or redistribution restriction; §3.1.8 bans automated use beyond reasonable usage | raw positions (public account state) and computed aggregates | clean |
 | trade.xyz and other HIP-3 deployers (Paragon, Entropy, markets.xyz), read through api.hyperliquid.xyz | tradfi-radar, equity-24h (stock-perp rows, `oracle`) | read in R5, see "Added in R5 Phase B": their terms cover their own sites only | the deployer sets the market's oracle; the host's terms are Hyperliquid's | raw (mark, oracle, funding) | clean when read through api.hyperliquid.xyz (R5) |
 | Pegwatch upstreams: DexScreener, Alpaca, Yahoo Finance, Stooq | peg-deviation, peg-sessions, peg-universe, equity-24h (the peg tape) | DexScreener API terms (18 Aug 2023) cl. 2; Alpaca Terms "Disclaimer" and support note (Nov 2022) "you cannot redistribute Alpaca API data"; Yahoo terms (4 Aug 2026) §2 no commercial use or redistribution; Stooq: no terms reachable (bot wall) and the keyless CSV now answers "page does not exist" | computed peg metrics; equity-24h also returns the last regular-session price | banned (DexScreener, Alpaca, Yahoo), unclear (Stooq) | unchanged in R4: computed product, decision for the planning chat |
@@ -76,6 +76,8 @@ R5. It is based on the deployed code.
 | Solana standard RPC: getAccountInfo, getTokenLargestAccounts, getSignaturesForAddress, getTransaction, getRecentPrioritizationFees, getRecentPerformanceSamples, getEpochInfo | token-metadata, token-risk, token-holders, wallet-activity, priority-fees, jito-tips (via cron), sol-network | Chain state. Replaces DAS getAsset, the enhanced transactions API, getPriorityFeeEstimate and Jito's tip_floor. | clean |
 | Hyperliquid info API: metaAndAssetCtxs, l2Book, candleSnapshot, fundingHistory | the second venue on open-interest, basis, volatility, funding-history, top-movers, funding-extremes, orderbook-imbalance, orderbook-walls, positioning, funding-pulse, oi-spike-scan; HYPE spot in market-state (oracle); equity-24h's last regular-session price (HIP-3 hourly candle) | app.hyperliquid.xyz/terms (15 Jun 2026): no data or redistribution restriction | clean |
 
+**Dropped in R6 D2 (13 Oct 2026, planning chat decision (a)):** OKX and Binance venue blocks and rows from funding-rate, funding-cross, funding-radar, open-interest, spread-arb, perp, market-state, tradfi-radar and equity-24h. Both venues remain only in the liquidation tape (C7, kept by decision). The funding radar is now a two-venue product (Bybit, Hyperliquid), so its universe is the symbols listed on both. Bybit and Deribit were read in R6 and are both banned (see the table above); no route was withdrawn for them, by the same decision. R6 D3: peg-deviation no longer returns `latest.reference`. R6 D4: wallet-holdings no longer passes Helius's `price_usd`, `value_usd` or native `total_price`.
+
 **Dropped in Phase C:**
 - Coinbase, Kraken, Binance spot, OKX spot and Gemini, from every price route.
 - Bybit spot, from market-state HYPE.
@@ -92,41 +94,41 @@ R5. It is based on the deployed code.
 | /api/eth-price | $0.001 | Uniswap V3 WETH/USDC on Ethereum and Base | clean | — |
 | /api/price | $0.001 | as the three above | clean | — |
 | /api/market-snapshot | $0.005 | DEX pools; Hyperliquid funding; alternative.me (attributed) | clean | — |
-| /api/funding-rate | $0.005 | Hyperliquid; with `symbol`, also Bybit and OKX | raw-banned | `venues.okx.*` (OKX), `venues.bybit.*` (Bybit) |
-| /api/funding-cross | $0.01 | Bybit, OKX, Hyperliquid | raw-banned | `venues.okx.*`, `venues.bybit.*` |
-| /api/funding-radar | $0.02 | Bybit, OKX, Hyperliquid (collector) | raw-banned | `venues.okx.*` rates, `oi_usd.okx`; Bybit likewise |
-| /api/funding-extremes | $0.02 | Bybit; Hyperliquid (second venue) | raw-unclear | Bybit ticker rates |
-| /api/funding-pulse | $0.005 | Bybit; Hyperliquid (second venue) | raw-unclear | Bybit rates |
-| /api/funding-history | $0.005 | Bybit; Hyperliquid (second venue) | raw-unclear | Bybit settlements |
-| /api/open-interest | $0.01 | Bybit, OKX, Hyperliquid | raw-banned | `okx.oi_base/oi_usd`, `bybit.*` |
-| /api/oi-spike-scan | $0.02 | Bybit; Hyperliquid (second venue) | raw-unclear | Bybit `oi_usd`, funding |
-| /api/long-short | $0.01 | Bybit only (Hyperliquid publishes no long/short ratio) | raw-unclear | Bybit ratios |
-| /api/positioning | $0.005 | Bybit; Hyperliquid OI | raw-unclear | Bybit ratios and OI |
-| /api/basis | $0.01 | Bybit perp and spot; Hyperliquid mark vs oracle | raw-unclear | Bybit mark and spot |
+| /api/funding-rate | $0.005 | Hyperliquid; with `symbol`, also Bybit (OKX dropped in R6) | raw-banned | `venues.bybit.*` (Bybit) |
+| /api/funding-cross | $0.01 | Bybit, Hyperliquid (OKX dropped in R6) | raw-banned | `venues.bybit.*` |
+| /api/funding-radar | $0.02 | Bybit, Hyperliquid (collector; OKX dropped in R6, so the tracked universe is symbols listed on both) | raw-banned | `venues.bybit.*` rates, `oi_usd.bybit` |
+| /api/funding-extremes | $0.02 | Bybit; Hyperliquid (second venue) | raw-banned (Bybit, R6) | Bybit ticker rates |
+| /api/funding-pulse | $0.005 | Bybit; Hyperliquid (second venue) | raw-banned (Bybit, R6) | Bybit rates |
+| /api/funding-history | $0.005 | Bybit; Hyperliquid (second venue) | raw-banned (Bybit, R6) | Bybit settlements |
+| /api/open-interest | $0.01 | Bybit, Hyperliquid (OKX dropped in R6) | raw-banned | `bybit.*` |
+| /api/oi-spike-scan | $0.02 | Bybit; Hyperliquid (second venue) | raw-banned (Bybit, R6) | Bybit `oi_usd`, funding |
+| /api/long-short | $0.01 | Bybit only (Hyperliquid publishes no long/short ratio) | raw-banned (Bybit, R6) | Bybit ratios |
+| /api/positioning | $0.005 | Bybit; Hyperliquid OI | raw-banned (Bybit, R6) | Bybit ratios and OI |
+| /api/basis | $0.01 | Bybit perp and spot; Hyperliquid mark vs oracle | raw-banned (Bybit, R6) | Bybit mark and spot |
 | /api/volatility | $0.01 | Bybit and Hyperliquid daily candles | computed | — |
-| /api/top-movers | $0.01 | Bybit; Hyperliquid (second venue) | raw-unclear | Bybit last price, turnover, funding |
+| /api/top-movers | $0.01 | Bybit; Hyperliquid (second venue) | raw-banned (Bybit, R6) | Bybit last price, turnover, funding |
 | /api/orderbook-imbalance | $0.01 | Bybit and Hyperliquid books | computed | — |
-| /api/orderbook-walls | $0.01 | Bybit and Hyperliquid books | raw-unclear | Bybit wall prices and sizes |
-| /api/whale-trades | $0.02 | Bybit only (Hyperliquid's public API serves its last 10 trades, about 10 s) | raw-unclear | Bybit prints |
-| /api/spread-arb | $0.02 | Bybit, OKX, Hyperliquid | raw-banned | `venues.okx.bid/ask`, Bybit bid/ask |
-| /api/perp | $0.005 | Bybit, OKX, Hyperliquid, our tape | raw-banned | OKX funding and OI, Bybit, the tape's biggest print |
-| /api/squeeze-score | $0.10 | Bybit, our tape | raw-unclear | `inputs.funding_rate_raw`, `long_account_pct` (Bybit) |
-| /api/market-state | $0.02 | DEX pools (spot), Hyperliquid (HYPE oracle), Bybit, OKX, Deribit, our tape, snapshots | raw-banned | `open_interest.okx_usd`, `funding.venues.okx` (OKX); Bybit OI, long/short and basis; DVOL (Deribit) |
-| /api/trade-context | $0.01 | DEX pools; Hyperliquid funding; Bybit positioning; our tape | raw-unclear | Bybit positioning; the tape's biggest prints |
+| /api/orderbook-walls | $0.01 | Bybit and Hyperliquid books | raw-banned (Bybit, R6) | Bybit wall prices and sizes |
+| /api/whale-trades | $0.02 | Bybit only (Hyperliquid's public API serves its last 10 trades, about 10 s) | raw-banned (Bybit, R6) | Bybit prints |
+| /api/spread-arb | $0.02 | Bybit, Hyperliquid (OKX dropped in R6) | raw-banned | Bybit bid/ask |
+| /api/perp | $0.005 | Bybit, Hyperliquid, our tape (OKX dropped in R6) | raw-banned | Bybit, the tape's biggest print |
+| /api/squeeze-score | $0.10 | Bybit, our tape | raw-banned (Bybit, R6) | `inputs.funding_rate_raw`, `long_account_pct` (Bybit) |
+| /api/market-state | $0.02 | DEX pools (spot), Hyperliquid (HYPE oracle, OI), Bybit, Deribit, our tape, snapshots (OKX dropped in R6) | raw-banned | Bybit OI, long/short and basis; DVOL (Deribit) |
+| /api/trade-context | $0.01 | DEX pools; Hyperliquid funding; Bybit positioning; our tape | raw-banned (Bybit, R6) | Bybit positioning; the tape's biggest prints |
 | /api/liquidations | $0.005 | our CEX tape (Bybit, OKX, Binance) | raw-banned | individual prints (C7: kept, see below) |
 | /api/cascade, /api/cascade-scan, /api/liquidation-leaders, /api/liquidation-stats, /api/liq-history, /api/liq-heatmap, /api/cascade-history, /api/venue-liq-share | $0.01 to $0.05 | our CEX tape | raw-banned (raw?) | single MAX/MIN prints (C7) |
 | /api/liq-pulse | $0.005 | our CEX tape | computed | — |
 | /api/cascade-forecast | $0.02 | our CEX tape via caliper | computed | — |
-| /api/options-summary | $0.02 | Deribit (collector) | raw-unclear | `spot` (index price), DVOL |
-| /api/options-gex | $0.03 | Deribit (collector) | raw-unclear | `spot` |
-| /api/tradfi-radar | $0.02 | Hyperliquid HIP-3, Bybit, Binance, OKX (collector) | raw-banned | rows with venue okx or binance; Bybit rows |
-| /api/equity-24h | $0.01 | Hyperliquid HIP-3 (and its candles for the regular-session close), our on-chain xStock tape, Bybit, Binance, OKX | raw-banned | `sources[]` entries from OKX and Binance (and Bybit) |
+| /api/options-summary | $0.02 | Deribit (collector) | raw-banned (Deribit, R6) | `spot` (index price), DVOL; IV and Greeks are derived data, which Deribit's clause also names |
+| /api/options-gex | $0.03 | Deribit (collector) | raw-banned (Deribit, R6) | `spot`; GEX is derived data, which Deribit's clause also names |
+| /api/tradfi-radar | $0.02 | Hyperliquid HIP-3, Bybit (collector; Binance and OKX dropped in R6) | raw-banned (Bybit) | Bybit rows |
+| /api/equity-24h | $0.01 | Hyperliquid HIP-3 (and its candles for the regular-session close), our on-chain xStock tape, Bybit (Binance and OKX dropped in R6) | raw-banned (Bybit) | `sources[]` entries from Bybit |
 | /api/tradfi-perps | $0.005 | Hyperliquid HIP-3 | clean | — |
 | /api/fx-rates | $0.002 | ECB (notice), Hyperliquid HIP-3 | clean | — |
-| /api/peg-deviation | $0.02 | our on-chain xStock tape; reference from pegwatch (Alpaca) | raw-banned | `latest.reference` (Alpaca) |
+| /api/peg-deviation | $0.02 | our on-chain xStock tape; deviation computed against the pegwatch reference (Alpaca), which is NOT returned since R6 D3 | computed | — (`latest.reference` is null) |
 | /api/peg-sessions, /api/peg-universe | $0.03, $0.05 | pegwatch history before our cutover, our tape after | computed | — |
 | /api/exit-quote | $0.02 | overhang (Kamino oracle, unnamed router) | raw-unclear | as in the R4 table |
-| /api/wallet-holdings/:wallet | $0.008 | Helius DAS getAssetsByOwner | raw-unclear | balances (chain state) and `price_usd`/`value_usd` (Helius price) |
+| /api/wallet-holdings/:wallet | $0.008 | Helius DAS getAssetsByOwner (balances and on-chain token metadata); native SOL valued with our own on-chain SOL price | clean (since R6 D4) | — (Helius `price_usd`/`value_usd` are no longer passed on) |
 | /api/token-metadata/:mint, /api/token-risk/:mint, /api/token-holders/:mint, /api/wallet-activity/:wallet | $0.005 to $0.02 | Solana chain state | clean | — |
 | /api/priority-fees, /api/jito-tips, /api/sol-network | $0.005 | Solana chain state | clean | — |
 | /api/base-gas, /api/base-balance | $0.005 | Base/Ethereum RPC (PublicNode only as a fallback; ENS resolvers) | raw-unclear (fallback only) | as in the R4 table |
@@ -143,7 +145,7 @@ R5. It is based on the deployed code.
 
 ### C7: the CEX liquidation tape stays, and its risk
 
-- **What it is:** liqcollector.js stores every liquidation print from the public WebSocket streams of Bybit (terms unclear), OKX and Binance (terms forbid redistribution: OKX API Agreement §9.4(a); Binance licence cl. 27 and the Vision dataset terms).
+- **What it is:** liqcollector.js stores every liquidation print from the public WebSocket streams of Bybit (API Terms §6.7, read in R6: no repackaging or reselling of Service Data), OKX and Binance (terms forbid redistribution: OKX API Agreement §9.4(a); Binance licence cl. 27 and the Vision dataset terms).
 - **What is exposed raw:**
   - /api/liquidations and the free /api/last-liquidation return single prints (ts, symbol, exchange, side, size, price, usd);
   - nine routes return a single MAX or MIN print without naming the exchange.

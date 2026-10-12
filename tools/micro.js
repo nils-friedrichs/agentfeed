@@ -1,13 +1,11 @@
 // tools/micro.js — expansion: microstructure suite (4 tools).
-// Bybit v5 public orderbook/trades + OKX ticker + Hyperliquid l2Book.
+// Bybit v5 public orderbook/trades + Hyperliquid l2Book. (OKX ticker dropped in R6 D2, 13 Oct 2026: its API Agreement §9.4.)
 'use strict';
 const { cached, fetchJson } = require('../lib/cache');
 const { _normSym: normSym } = require('./derivs');
 
 const BYBIT = () => process.env.BYBIT_REST || 'https://api.bybit.com';
-const OKX = () => process.env.OKX_REST || 'https://www.okx.com';
 const HL = () => process.env.HL_API || 'https://api.hyperliquid.xyz/info';
-const okxInst = (sym) => sym.replace(/USDT$/, '') + '-USDT-SWAP';
 const n = (v) => (v == null || v === '' ? null : Number(v));
 
 async function bybit(path) {
@@ -104,16 +102,14 @@ async function getWhaleTrades(p = {}) {
 async function getSpreadArb(p = {}) {
   const sym = normSym(p.symbol);
   return cached(`spread:${sym}`, 5_000, async () => {
-    const [by, ok, hl] = await Promise.all([
+    const [by, hl] = await Promise.all([
       bybit(`/v5/market/tickers?category=linear&symbol=${sym}`).then((r) => r.list[0]).catch(() => null),
-      fetchJson(`${OKX()}/api/v5/market/ticker?instId=${okxInst(sym)}`).then((j) => (j.code === '0' ? j.data[0] : null)).catch(() => null),
       fetchJson(HL(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'l2Book', coin: sym.replace(/USDT$/, '') }) })
         .then((b) => ({ bid: n(b?.levels?.[0]?.[0]?.px), ask: n(b?.levels?.[1]?.[0]?.px) }))
         .catch(() => null),
     ]);
     const venues = {};
     if (by) venues.bybit = { bid: n(by.bid1Price), ask: n(by.ask1Price) };
-    if (ok) venues.okx = { bid: n(ok.bidPx), ask: n(ok.askPx) };
     if (hl && hl.bid) venues.hyperliquid = hl;
     const names = Object.keys(venues).filter((v) => venues[v].bid && venues[v].ask);
     if (names.length < 2) throw new Error(`fewer than 2 venues quote ${sym}`);

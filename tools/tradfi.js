@@ -29,10 +29,9 @@ const round = (v, d) => (v == null || !Number.isFinite(v) ? null : Number(v.toFi
 // Only symbols the venue's own metadata marks as TradFi are taken, so tokenized gold
 // (PAXG, XAUT) and look-alike crypto tickers (SPX = SPX6900) never get in:
 //   Bybit    instruments-info symbolType: stock | ETF | commodity | forex
-//   Binance  exchangeInfo contractType TRADIFI_PERPETUAL, underlyingType EQUITY* | COMMODITY | FX | PREMARKET
-//   OKX      instruments instCategory 3 (stocks, ETFs, indices, pre-market) | 4 (commodities); the code
-//            meanings are read from the instruments they contain, not from OKX documentation
-const OKX_INDEX = new Set(['US500', 'US100', 'JP225', 'KR200']);
+// Binance and OKX were read here until R6 D2 (13 Oct 2026) and are not any more: Binance's
+// Terms cl. 27 allow its data for "non-commercial personal or internal business use" and OKX's
+// API Agreement §9.4 forbids redistributing its market data (docs/SOURCES.md).
 async function getJson(url) {
   const r = await fetch(url, { signal: AbortSignal.timeout(20000), headers: { 'user-agent': 'agentfeed-tradfi/1.0 (+https://x402.ochinimus.app)' } });
   if (!r.ok) throw new Error(`${new URL(url).host} HTTP ${r.status}`);
@@ -53,34 +52,6 @@ async function readCex(log) {
       out.push({ venue: 'bybit', symbol: t.symbol, ticker: t.symbol.replace(/USDT$/, ''), asset_class: { stock: 'stock', ETF: 'index', commodity: 'commodity', forex: 'fx' }[m.symbolType], class_evidence: `Bybit symbolType ${m.symbolType}`, mark: num(t.markPrice), funding_rate_raw: num(t.fundingRate), funding_interval_hours: ih, oi_usd: Math.round(num(t.openInterestValue) || 0), volume_24h_usd: Math.round(num(t.turnover24h) || 0) });
     }
   } catch (e) { errors.push(`bybit: ${e.message}`); }
-  try { // Binance USD-M
-    const info = await getJson('https://fapi.binance.com/fapi/v1/exchangeInfo');
-    const tf = new Map(info.symbols.filter((x) => x.contractType === 'TRADIFI_PERPETUAL' && x.status === 'TRADING').map((x) => [x.symbol, x]));
-    const prem = await getJson('https://fapi.binance.com/fapi/v1/premiumIndex');
-    const d24 = await getJson('https://fapi.binance.com/fapi/v1/ticker/24hr');
-    const fi = await getJson('https://fapi.binance.com/fapi/v1/fundingInfo');
-    const vol = new Map(d24.map((x) => [x.symbol, num(x.quoteVolume)]));
-    const ivl = new Map(fi.map((x) => [x.symbol, num(x.fundingIntervalHours)]));
-    const cls = (u) => (/EQUITY$/.test(u) ? 'stock' : u === 'COMMODITY' ? 'commodity' : u === 'FX' ? 'fx' : u === 'PREMARKET' ? 'pre_ipo' : 'other');
-    for (const pr of prem) {
-      const m = tf.get(pr.symbol); if (!m) continue;
-      out.push({ venue: 'binance', symbol: pr.symbol, ticker: pr.symbol.replace(/USDT$/, ''), asset_class: cls(m.underlyingType), class_evidence: `Binance contractType TRADIFI_PERPETUAL, underlyingType ${m.underlyingType}`, mark: num(pr.markPrice), funding_rate_raw: num(pr.lastFundingRate), funding_interval_hours: ivl.get(pr.symbol) || 8, oi_usd: null, oi_note: 'Binance publishes open interest per symbol only; not read', volume_24h_usd: Math.round(vol.get(pr.symbol) || 0) });
-    }
-  } catch (e) { errors.push(`binance: ${e.message}`); }
-  try { // OKX
-    const inst = (await getJson('https://www.okx.com/api/v5/public/instruments?instType=SWAP')).data.filter((x) => (x.instCategory === '3' || x.instCategory === '4') && x.settleCcy === 'USDT');
-    await pause(250);
-    const tk = await getJson('https://www.okx.com/api/v5/market/tickers?instType=SWAP');
-    const mk = await getJson('https://www.okx.com/api/v5/public/mark-price?instType=SWAP');
-    const fr = await getJson('https://www.okx.com/api/v5/public/funding-rate?instId=ANY');
-    const oi = await getJson('https://www.okx.com/api/v5/public/open-interest?instType=SWAP');
-    const T = new Map(tk.data.map((x) => [x.instId, x])), M = new Map(mk.data.map((x) => [x.instId, x])), F = new Map(fr.data.map((x) => [x.instId, x])), O = new Map(oi.data.map((x) => [x.instId, x]));
-    for (const i of inst) {
-      const base = i.instId.split('-')[0], t = T.get(i.instId) || {}, f = F.get(i.instId) || {}, o = O.get(i.instId);
-      const ih = (num(f.nextFundingTime) - num(f.fundingTime)) / HOUR;
-      out.push({ venue: 'okx', symbol: i.instId, ticker: base, asset_class: i.instCategory === '4' ? 'commodity' : (OKX_INDEX.has(base) ? 'index' : i.ruleType === 'pre_market' ? 'pre_ipo' : 'stock'), class_evidence: `OKX instCategory ${i.instCategory}${i.ruleType === 'pre_market' ? ', ruleType pre_market' : ''} (code meaning inferred from listed instruments)`, mark: num((M.get(i.instId) || {}).markPx), funding_rate_raw: num(f.fundingRate), funding_interval_hours: Number.isFinite(ih) && ih > 0 ? ih : null, oi_usd: o ? Math.round(num(o.oiUsd) || 0) : null, ...(o ? {} : { oi_note: 'not in the OKX open-interest list' }), volume_24h_usd: t.volCcy24h && t.last ? Math.round(num(t.volCcy24h) * num(t.last)) : null });
-    }
-  } catch (e) { errors.push(`okx: ${e.message}`); }
   for (const r of out) r.funding_rate_8h = r.funding_rate_raw != null && r.funding_interval_hours ? round((r.funding_rate_raw * 8) / r.funding_interval_hours, 8) : null;
   if (errors.length) log(`tradfi cex: ${errors.join(' | ')}`);
   return { rows: out, errors };
@@ -196,16 +167,16 @@ function getTradfiRadar(p = {}, { now = Date.now() } = {}) {
   const top = Math.min(Math.max(parseInt(p.top, 10) || 25, 1), 200);
   const minOi = Math.max(Number(p.min_oi_usd) || 0, 0);
   const venues = p.venue ? String(p.venue).toLowerCase().split(',').map((x) => x.trim()) : null;
-  // a venue that publishes no OI (Binance) is kept unless a minimum OI is asked for
+  // a venue that publishes no OI is kept unless a minimum OI is asked for
   const rows = s.markets.filter((m) => (!cls || cls.includes(m.asset_class)) && (!venues || venues.includes(m.venue)) && (minOi === 0 || (m.oi_usd ?? 0) >= minOi))
     .sort((a, b) => (Math.abs(b.funding_rate_8h || 0) - Math.abs(a.funding_rate_8h || 0)) || ((b.oi_usd || 0) - (a.oi_usd || 0)));
   const counts = {}; for (const m of s.markets) counts[m.asset_class] = (counts[m.asset_class] || 0) + 1;
   return {
-    as_of: s.as_of, age_s: age, venues: ['hyperliquid (HIP-3 dexes)', 'bybit', 'binance', 'okx'],
+    as_of: s.as_of, age_s: age, venues: ['hyperliquid (HIP-3 dexes)', 'bybit'],
     classes: counts, matched: rows.length, returned: Math.min(top, rows.length), markets: rows.slice(0, top),
     dexes: s.dexes,
     ...(s.cex_errors && s.cex_errors.length ? { venue_errors: s.cex_errors } : {}),
-    method: `Ranked by |funding| at its 8h equivalent (each venue's own interval: Hyperliquid HIP-3 hourly, Bybit, Binance and OKX 4h or 8h), then by OI. z_30d (Hyperliquid HIP-3 only so far) compares funding with that market's own 30 days. basis_bps = (mark - oracle) / oracle. oi_change_24h_pct compares with our own OI sample from 24h ago. Markets need $${s.min_track_usd.toLocaleString('en-US')} of OI or 24h volume to be tracked. Each deployer sets its own oracle; see class_evidence and the dex list.`,
+    method: `Ranked by |funding| at its 8h equivalent (each venue's own interval: Hyperliquid HIP-3 hourly, Bybit 4h or 8h), then by OI. z_30d (Hyperliquid HIP-3 only so far) compares funding with that market's own 30 days. basis_bps = (mark - oracle) / oracle. oi_change_24h_pct compares with our own OI sample from 24h ago. Markets need $${s.min_track_usd.toLocaleString('en-US')} of OI or 24h volume to be tracked. Each deployer sets its own oracle; see class_evidence and the dex list.`,
   };
 }
 
@@ -273,7 +244,7 @@ async function equity24h(p = {}, { now = Date.now(), fetchImpl = fetch } = {}) {
   const sources = [...perps, ...(dex ? [dex] : [])];
   const liquid = sources.filter((x) => (x.liquidity.open_interest_usd || 0) > 0 || (x.liquidity.pool_liquidity_usd || 0) > 0 || (x.liquidity.volume_24h_usd || 0) > 0);
   if (!liquid.length) throw unavailable(`no source with liquidity for ${sym}: ${sources.length ? 'every source has zero open interest or pool liquidity' : 'not listed as a HIP-3 perp and not a tokenized stock we track'}`);
-  // deepest source first: OI plus pool liquidity; a venue without OI (Binance) counts a tenth of its 24h volume
+  // deepest source first: OI plus pool liquidity; a venue without OI counts a tenth of its 24h volume
   const depth = (x) => (x.liquidity.open_interest_usd || 0) + (x.liquidity.pool_liquidity_usd || 0) + (x.liquidity.open_interest_usd == null ? (x.liquidity.volume_24h_usd || 0) / 10 : 0);
   const best = liquid.slice().sort((a, b) => depth(b) - depth(a))[0];
   return {

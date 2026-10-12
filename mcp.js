@@ -33,7 +33,7 @@ const TOOL_DEFS = [
     schema: {}, run: () => getPrice('SOL') },
   { name: 'get_btc_price', usd: 0.001, desc: 'Live BTC/USD spot price read on-chain: the median of three Uniswap V3 reads on Base and Ethereum (cbBTC/USDC, cbBTC and WBTC through WETH/USDC). confidence is null: a pool publishes none.',
     schema: {}, run: () => getPrice('BTC') },
-  { name: 'get_funding_rate', usd: 0.005, desc: 'Funding rate for any USDT perp on Bybit, OKX and Hyperliquid, each at its own interval: raw rate, interval hours, 8h equivalent, annualised rate, next funding time and mark price per venue. Without a symbol, SOL and BTC from Hyperliquid with open interest.',
+  { name: 'get_funding_rate', usd: 0.005, desc: 'Funding rate for any USDT perp on Bybit and Hyperliquid, each at its own interval: raw rate, interval hours, 8h equivalent, annualised rate, next funding time and mark price per venue. Without a symbol, SOL and BTC from Hyperliquid with open interest.',
     schema: { symbol: z.string().optional().describe('USDT perp symbol e.g. ETHUSDT, ONDOUSDT (omit for SOL and BTC from Hyperliquid)') },
     run: (a) => getFundingRate(a) },
   { name: 'get_fear_greed', usd: 0, desc: 'Crypto Fear & Greed index (0-100) with classification.',
@@ -44,7 +44,7 @@ const TOOL_DEFS = [
         getPrice('SOL'), getPrice('BTC'), getFunding('SOL'), getFunding('BTC'), getFearGreed()]);
       return { sol, btc, funding: { sol: fs_, btc: fb }, fear_greed: fg };
     } },
-  { name: 'get_wallet_holdings', usd: 0.008, desc: 'Solana wallet holdings: native SOL, SPL tokens with USD values, NFT count (Helius DAS).',
+  { name: 'get_wallet_holdings', usd: 0.008, desc: 'Solana wallet holdings: native SOL with its USD value at AgentFeed\'s own on-chain SOL price, SPL tokens with mint, symbol and amount (no token prices), NFT count (Helius DAS balances).',
     schema: { wallet: z.string().describe('Solana wallet address (base58)') },
     run: (a) => getWalletHoldings(a.wallet) },
   { name: 'get_token_metadata', usd: 0.005, desc: 'SPL token metadata: name, symbol, URI, decimals, supply, mint and freeze authority, mutability. Read from the mint account and its metadata account.',
@@ -155,7 +155,7 @@ const METfByTool = new Map(Object.values(BAZAAR_META).map((m) => [m.tool, m]));
 // A tool with two answer shapes names both, so the envelope's `data` says which
 // one comes back. The envelope itself already admits either.
 const OUTPUT_SHAPES = {
-  get_funding_rate: 'without symbol: {sol, btc} from Hyperliquid; with symbol: {symbol, venues: {bybit, okx, hyperliquid}}',
+  get_funding_rate: 'without symbol: {sol, btc} from Hyperliquid; with symbol: {symbol, venues: {bybit, hyperliquid}}',
 };
 function outputSchemaFor(def) {
   const shape = OUTPUT_SHAPES[def.name] ? ` (${OUTPUT_SHAPES[def.name]})` : '';

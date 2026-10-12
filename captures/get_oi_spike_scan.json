@@ -3,94 +3,149 @@
  "baseline_min_ago": 30,
  "spikes": [
   {
-   "symbol": "FLOCKUSDT",
-   "oi_usd": 3173189,
-   "oi_change_pct": 16.48,
-   "funding_rate_8h": 0.0001,
-   "funding_rate_raw": 0.00005,
-   "funding_interval_hours": 4,
-   "price_24h_pct": -9.9
-  },
-  {
-   "symbol": "ALGOUSDT",
-   "oi_usd": 14571114,
-   "oi_change_pct": 5.44,
-   "funding_rate_8h": -0.00022272,
-   "funding_rate_raw": -0.00022272,
+   "symbol": "BLURUSDT",
+   "oi_usd": 3161153,
+   "oi_change_pct": -3.9,
+   "funding_rate_8h": -0.01541675,
+   "funding_rate_raw": -0.01541675,
    "funding_interval_hours": 8,
-   "price_24h_pct": 8.95
+   "price_24h_pct": -24.6
   },
   {
-   "symbol": "MARSCOINUSDT",
-   "oi_usd": 12820971,
-   "oi_change_pct": -5.37,
-   "funding_rate_8h": 0.0001,
-   "funding_rate_raw": 0.00005,
-   "funding_interval_hours": 4,
-   "price_24h_pct": 10.81
-  },
-  {
-   "symbol": "AKEUSDT",
-   "oi_usd": 9099134,
-   "oi_change_pct": 4.34,
-   "funding_rate_8h": 0.0001,
-   "funding_rate_raw": 0.00005,
-   "funding_interval_hours": 4,
-   "price_24h_pct": -9.02
-  },
-  {
-   "symbol": "CCUSDT",
-   "oi_usd": 15837450,
-   "oi_change_pct": -4.21,
-   "funding_rate_8h": 0.0001,
-   "funding_rate_raw": 0.00005,
-   "funding_interval_hours": 4,
-   "price_24h_pct": 2.57
-  },
-  {
-   "symbol": "HBARUSDT",
-   "oi_usd": 47737097,
-   "oi_change_pct": 3.99,
-   "funding_rate_8h": -0.00000436,
-   "funding_rate_raw": -0.00000436,
-   "funding_interval_hours": 8,
-   "price_24h_pct": 20.73
-  },
-  {
-   "symbol": "MUBARAKUSDT",
-   "oi_usd": 5201841,
-   "oi_change_pct": 3.77,
-   "funding_rate_8h": 0.0001,
-   "funding_rate_raw": 0.00005,
-   "funding_interval_hours": 4,
-   "price_24h_pct": 11.8
-  },
-  {
-   "symbol": "METUSDT",
-   "oi_usd": 5190491,
-   "oi_change_pct": -3.62,
-   "funding_rate_8h": -0.00040852,
-   "funding_rate_raw": -0.00020426,
-   "funding_interval_hours": 4,
-   "price_24h_pct": -9.7
-  },
-  {
-   "symbol": "QNTUSDT",
-   "oi_usd": 20901508,
-   "oi_change_pct": 3.2,
-   "funding_rate_8h": 0.0001,
-   "funding_rate_raw": 0.0001,
-   "funding_interval_hours": 8,
-   "price_24h_pct": 25.63
-  },
-  {
-   "symbol": "XDCUSDT",
-   "oi_usd": 3608787,
+   "symbol": "PLUMEUSDT",
+   "oi_usd": 6560408,
    "oi_change_pct": 3.03,
    "funding_rate_8h": 0.0001,
    "funding_rate_raw": 0.00005,
    "funding_interval_hours": 4,
-   "price_24h_pct": 11
+   "price_24h_pct": -5.41
+  },
+  {
+   "symbol": "WLFIUSDT",
+   "oi_usd": 18962292,
+   "oi_change_pct": 3.01,
+   "funding_rate_8h": -0.00000284,
+   "funding_rate_raw": -0.00000142,
+   "funding_interval_hours": 4,
+   "price_24h_pct": -0.67
+  },
+  {
+   "symbol": "BEAMUSDT",
+   "oi_usd": 3486952,
+   "oi_change_pct": 2.74,
+   "funding_rate_8h": -0.00040888,
+   "funding_rate_raw": -0.00020444,
+   "funding_interval_hours": 4,
+   "price_24h_pct": -1.52
+  },
+  {
+   "symbol": "USUSDT",
+   "oi_usd": 4651339,
+   "oi_change_pct": -2.69,
+   "funding_rate_8h": 0.0001,
+   "funding_rate_raw": 0.00005,
+   "funding_interval_hours": 4,
+   "price_24h_pct": -12.54
+  },
+  {
+   "symbol": "ARBUSDT",
+   "oi_usd": 29671351,
+   "oi_change_pct": 2.43,
+   "funding_rate_8h": 0.0001,
+   "funding_rate_raw": 0.0001,
+   "funding_interval_hours": 8,
+   "price_24h_pct": -7.38
+  },
+  {
+   "symbol": "SOONUSDT",
+   "oi_usd": 5065241,
+   "oi_change_pct": 1.8,
+   "funding_rate_8h": 0.0001,
+   "funding_rate_raw": 0.00005,
+   "funding_interval_hours": 4,
+   "price_24h_pct": -1.47
+  },
+  {
+   "symbol": "RENDERUSDT",
+   "oi_usd": 12557240,
+   "oi_change_pct": 1.79,
+   "funding_rate_8h": 0.0001,
+   "funding_rate_raw": 0.00005,
+   "funding_interval_hours": 4,
+   "price_24h_pct": 5.91
+  },
+  {
+   "symbol": "NIGHTUSDT",
+   "oi_usd": 3188187,
+   "oi_change_pct": 1.77,
+   "funding_rate_8h": 0.00009828,
+   "funding_rate_raw": 0.00004914,
+   "funding_interval_hours": 4,
+   "price_24h_pct": -6.44
+  },
+  {
+   "symbol": "OGNUSDT",
+   "oi_usd": 5292170,
+   "oi_change_pct": 1.67,
+   "funding_rate_8h": -0.0030609,
+   "funding_rate_raw": -0.0030609,
+   "funding_interval_hours": 8,
+   "price_24h_pct": 12.77
   }
- ]
+ ],
+ "hyperliquid": {
+  "spikes": [
+   {
+    "coin": "STX",
+    "oi_usd": 3545250,
+    "oi_change_pct": 3.9
+   },
+   {
+    "coin": "RENDER",
+    "oi_usd": 4056943,
+    "oi_change_pct": -3.56
+   },
+   {
+    "coin": "FIL",
+    "oi_usd": 10568329,
+    "oi_change_pct": -2.27
+   },
+   {
+    "coin": "SEI",
+    "oi_usd": 4881983,
+    "oi_change_pct": 2.11
+   },
+   {
+    "coin": "XRP",
+    "oi_usd": 278895958,
+    "oi_change_pct": -2.09
+   },
+   {
+    "coin": "APT",
+    "oi_usd": 6548837,
+    "oi_change_pct": 1.93
+   },
+   {
+    "coin": "WLFI",
+    "oi_usd": 10319468,
+    "oi_change_pct": 1.87
+   },
+   {
+    "coin": "TIA",
+    "oi_usd": 9454335,
+    "oi_change_pct": -1.74
+   },
+   {
+    "coin": "ZK",
+    "oi_usd": 3115965,
+    "oi_change_pct": 1.65
+   },
+   {
+    "coin": "DOT",
+    "oi_usd": 6581706,
+    "oi_change_pct": 1.38
+   }
+  ],
+  "source": "Hyperliquid info API (public chain state)"
+ }
 }
