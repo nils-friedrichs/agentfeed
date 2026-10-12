@@ -465,7 +465,7 @@ function catalogueLines({ PRICES, TAGS, META, bullet }) {
   return out;
 }
 
-function buildLlmsTxt({ PRICES, TAGS, META, FREE_TOOLS, mpp, network }) {
+function buildLlmsTxt({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo, network }) {
   const total = Object.values(PRICES).reduce((n, p) => n + p.usd, 0);
   const lines = [
     '# AgentFeed',
@@ -487,6 +487,7 @@ function buildLlmsTxt({ PRICES, TAGS, META, FREE_TOOLS, mpp, network }) {
     `- Solana ${network === 'mainnet' ? 'mainnet' : network} — USDC`,
     ...evmRails().map((r) => `- ${r.name} (${r.network}) — USDC`),
     '',
+    ...(tempo && tempo.active ? [`MPP tempo/charge is offered on every paid route, in WWW-Authenticate of the same 402: Tempo mainnet (chain 4217), OUSD or USDC.e at the route's price, pull mode only (sign the transfer, the server broadcasts it after a response below 400, so a failed call is never charged; no fee payer).`, ''] : []),
     ...(mpp && mpp.active ? [`MPP (solana/charge) is also offered on the same 402, in WWW-Authenticate, for: ${mpp.routes.join(', ')}.`, ''] : []),
     'Machine-readable:',
     '',
@@ -516,7 +517,7 @@ function buildLlmsTxt({ PRICES, TAGS, META, FREE_TOOLS, mpp, network }) {
   return lines.join('\n');
 }
 
-function buildSkillMd({ PRICES, TAGS, META, FREE_TOOLS, mpp, network }) {
+function buildSkillMd({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo, network }) {
   const routes = Object.entries(PRICES);
   const total = routes.reduce((n, [, p]) => n + p.usd, 0);
   const cheapest = Math.min(...routes.map(([, p]) => p.usd));
@@ -569,6 +570,7 @@ function buildSkillMd({ PRICES, TAGS, META, FREE_TOOLS, mpp, network }) {
     `${evmRails().length + 1} rails are accepted on every paid route: **USDC on ${solana}**${evmRails().map((r) => `, **USDC on ${r.name}** (\`${r.network}\`)`).join('')}.`,
     '',
     `**${PAYTO_WARNING}**`,
+    ...(tempo && tempo.active ? ['', `**MPP** (\`tempo/charge\`) is offered alongside x402 on every paid route: Tempo mainnet (chain 4217), OUSD or USDC.e, pull mode only, broadcast by the server after a response below 400.`] : []),
     ...(mpp && mpp.active
       ? ['', `**MPP** (\`solana/charge\`) is offered alongside x402 on ${mpp.routes.map((r) => `\`${r.replace('GET ', '')}\``).join(' and ')}, carried in the \`WWW-Authenticate\` header of the same 402. Clients that speak only x402 never see it.`]
       : []),

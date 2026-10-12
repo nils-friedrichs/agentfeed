@@ -567,12 +567,18 @@ app.get('/', (req, res, next) => {
   next();
 });
 
+// MPP tempo/charge as mounted right now (mpp/tempo.js): every paid route, or nothing.
+function tempoInfo() {
+  const on = !!(tempo && tempo.isReady());
+  return { active: on, intent: 'tempo/charge', chainId: 4217, currencies: on ? tempo.TOKENS.map((t) => t.symbol) : [], modes: ['pull'], routes: on ? 'every paid route' : [] };
+}
+
 app.get('/', (_req, res) => res.json({
   service: 'agentfeed',
-  description: `Live crypto market data for AI agents - liquidations, positioning, funding, prices, token risk. Paid per-call in USDC via x402 on ${railNames()}; /api/sol-price and /api/btc-price also carry an MPP solana/charge challenge on the same 402. No API keys. Copy payTo only from a fresh 402 response, never from transaction history.`,
+  description: `Live crypto market data for AI agents - liquidations, positioning, funding, prices, token risk. Paid per-call in USDC via x402 on ${railNames()}. Every paid route also carries MPP tempo/charge challenges (Tempo mainnet, OUSD or USDC.e, pull mode) and /api/sol-price and /api/btc-price MPP solana/charge, on the same 402. No API keys. Copy payTo only from a fresh 402 response, never from transaction history.`,
   x402: { active: paymentsOn, network: x402Network, chains: ['solana:mainnet', ...evmRails().map((r) => r.network)] },
   // DERIVED, not restated: whatever is actually mounted is what is advertised.
-  mpp: { active: mppOn, intent: 'solana/charge', routes: mppOn ? MPP_ROUTES : [] },
+  mpp: { active: mppOn, intent: 'solana/charge', routes: mppOn ? MPP_ROUTES : [], tempo: tempoInfo() },
   // The three routes that are genuinely unpriced over HTTP. This used to read
   // ['get_fear_greed','pricing'], which missed two of them and listed `pricing`,
   // an MCP-only tool with no HTTP route — so `/` told callers the wrong thing
@@ -616,11 +622,11 @@ app.get('/.well-known/glama.json', (_req, res) => res.json({
 app.get('/.well-known/x402.json', (_req, res) => res.json({
   x402Version: 2,
   service: 'agentfeed',
-  description: `Crypto market, liquidations, and Solana on-chain data for AI agents. Pay per call in USDC via x402 on ${railNames()}. /api/sol-price and /api/btc-price also carry an MPP solana/charge challenge on the same 402. No API keys. Copy payTo only from a fresh 402 response, never from transaction history.`,
+  description: `Crypto market, liquidations, and Solana on-chain data for AI agents. Pay per call in USDC via x402 on ${railNames()}. Every paid route also carries MPP tempo/charge challenges (Tempo mainnet, OUSD or USDC.e, pull mode) and /api/sol-price and /api/btc-price MPP solana/charge, on the same 402. No API keys. Copy payTo only from a fresh 402 response, never from transaction history.`,
   website: 'https://x402.ochinimus.app',
   // Derived from what is mounted, so the manifest cannot advertise a protocol
   // the service is not actually speaking.
-  mpp: { active: mppOn, intent: 'solana/charge', routes: mppOn ? MPP_ROUTES : [] },
+  mpp: { active: mppOn, intent: 'solana/charge', routes: mppOn ? MPP_ROUTES : [], tempo: tempoInfo() },
   mcp: 'https://x402.ochinimus.app/mcp',
   resources: Object.entries(PRICES).map(([route, p]) => ({
     resource: 'https://x402.ochinimus.app' + route.replace('GET ', ''),
@@ -653,10 +659,10 @@ app.get('/mcp', compat.mcpGet405);
 app.get('/.well-known/agent-card.json', compat.makeAgentCard({
   PRICES, TAGS, TITLES: require('./tools/titles').TOOL_TITLES, questionFor: require('./tools/questions').questionFor,
   version: (() => { try { return require('./server.json').version; } catch { return '1.0.0'; } })(),
-  ORIGIN: discovery.ORIGIN, railNames, mpp: { get active() { return mppOn; }, get routes() { return mppOn ? MPP_ROUTES : []; } },
+  ORIGIN: discovery.ORIGIN, railNames, mpp: { get active() { return mppOn; }, get routes() { return mppOn ? MPP_ROUTES : []; } }, tempo: { get active() { return !!(tempo && tempo.isReady()); } },
 }));
 app.get('/api/sharp-move', compat.makeSharpMoveGone({ PRICES, ORIGIN: discovery.ORIGIN }));
-app.get('/pricing', compat.makePricing({ PRICES, FREE_TOOLS, ORIGIN: discovery.ORIGIN, railNames, mpp: { get active() { return mppOn; }, get routes() { return mppOn ? MPP_ROUTES : []; } } }));
+app.get('/pricing', compat.makePricing({ PRICES, FREE_TOOLS, ORIGIN: discovery.ORIGIN, railNames, mpp: { get active() { return mppOn; }, get routes() { return mppOn ? MPP_ROUTES : []; } }, tempo: { get active() { return !!(tempo && tempo.isReady()); } } }));
 app.get('/terms', compat.termsHandler);
 
 // ---- MCP rail (Session 3): same tools at POST /mcp for agents in Claude/Cursor/frameworks
