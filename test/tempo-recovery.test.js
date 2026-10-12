@@ -26,7 +26,7 @@ function memStore() {
 
 // receiptAt: how many polls return null before the receipt appears (Infinity = never)
 function boot({ broadcast = async () => { throw http502(); }, receipt = { status: '0x1', transactionHash: HASH, logs: [] },
-  receiptAt = 0, match = () => null, store = memStore(), recovery = { pollMs: 20, windowMs: 600, resendAfterMs: 100 } } = {}) {
+  receiptAt = 0, match = () => null, store = memStore(), recovery = { pollMs: 20, noExpiryMs: 600, capMs: 3000, afterExpiryMs: 2000, resendAfterMs: 100 }, validBefore = null } = {}) {
   const calls = { broadcast: 0, receipts: 0, sends: 0, rows: [] };
   const inst = (symbol, address) => ({ symbol, address, mppx: {
     charge: () => async () => ({ status: 402, challenge: { headers: new Headers({ 'WWW-Authenticate': `Payment id="x", method="tempo", intent="charge", request="${symbol}"` }) } }),
@@ -39,7 +39,7 @@ function boot({ broadcast = async () => { throw http502(); }, receipt = { status
     Credential: { deserialize: dec }, Receipt: { serialize: (r) => Buffer.from(JSON.stringify(r)).toString('base64url') },
     realm: 'x402.ochinimus.app', recipient: PAYTO, PaymentError,
     settled: {}, tryClaim: store.tryClaim,
-    decode: async () => ({ from: PAYER, hash: HASH, canonical: '0x76abcd', validBefore: null }),
+    decode: async () => ({ from: PAYER, hash: HASH, canonical: '0x76abcd', validBefore: typeof validBefore === 'function' ? validBefore() : validBefore }),
     matchTransfer: (r, x) => { calls.expect = x; return match(r, x); },
     rpc: async (url, method) => {
       if (method === 'eth_sendRawTransaction') { calls.sends++; return { result: HASH }; }
@@ -101,8 +101,8 @@ test('no receipt ever: 402 inside the window, the raw tx re-sent once, hash in t
   assert.equal(calls.rows[0].tx_sig, HASH);
 });
 
-test('the production window is 15 s, polling every 500 ms, re-send after 3 s, on two RPCs', () => {
-  assert.deepEqual(T.RECOVERY, { pollMs: 500, windowMs: 15000, resendAfterMs: 3000 });
+test('production: poll every 500 ms until validBefore + 2 s, capped at 30 s (15 s without expiry), re-send after 3 s, two RPCs', () => {
+  assert.deepEqual(T.RECOVERY, { pollMs: 500, resendAfterMs: 3000, afterExpiryMs: 2000, capMs: 30000, noExpiryMs: 15000 });
   assert.deepEqual(T.RECEIPT_RPCS, ['https://rpc.tempo.xyz', 'https://rpc.mainnet.tempo.xyz']);
 });
 
@@ -168,4 +168,39 @@ test('real matcher: only the exact challenge-bound TransferWithMemo matches', as
   assert.match(match(rc([log({ token: '0x20c000000000000000000000b9537d11c60e8b50' })]), x), /no matching transfer/);
   assert.match(match(rc([log({ memo: A.encode({ challengeId: 'other', serverId: 'x402.ochinimus.app' }) })]), x), /no matching transfer/);
   assert.match(match({ ...rc([log()]), transactionHash: '0x' + 'cd'.repeat(32) }, x), /another transaction/);
+});
+
+test('A5: the poll ends at the signed validBefore + 2 s, so a refusal is never followed by a landing', async (t) => {
+  const vb = () => Math.floor(Date.now() / 1000) + 1; // expires within ~1 s
+  const { app } = boot({ receiptAt: Infinity, validBefore: vb, recovery: { pollMs: 20, capMs: 10000, afterExpiryMs: 2000, resendAfterMs: 100 } });
+  const { r, ms } = await call(t, app);
+  assert.equal(r.status, 402);
+  assert.ok(ms >= 1500 && ms < 4500, `refused after ${ms} ms (validBefore + 2 s)`);
+});
+
+test('A5: a far-off validBefore is capped', async (t) => {
+  const vb = () => Math.floor(Date.now() / 1000) + 3600;
+  const { app } = boot({ receiptAt: Infinity, validBefore: vb, recovery: { pollMs: 20, capMs: 700, afterExpiryMs: 2000, resendAfterMs: 100 } });
+  const { r, ms } = await call(t, app);
+  assert.equal(r.status, 402);
+  assert.ok(ms < 700 + 1500, `capped at ${ms} ms`);
+});
+
+test('A5: the normal path refuses when the durable claim is already taken (no double delivery)', async (t) => {
+  const store = memStore();
+  store.m.set(HASH, 1); // this transaction was already settled once
+  const { app, calls } = boot({ store, broadcast: async () => ({ method: 'tempo', status: 'success', reference: HASH }) });
+  const { r, body } = await call(t, app);
+  assert.equal(r.status, 402);
+  assert.match(body.detail, /already settled once/);
+  assert.equal(body.ok, undefined, 'data withheld');
+  assert.equal(calls.receipts, 0);
+});
+
+test('A5: a store error on the normal path still delivers (the buyer paid)', async (t) => {
+  const store = { m: new Map(), tryClaim: async () => { throw new Error('disk I/O error'); } };
+  const { app } = boot({ store, broadcast: async () => ({ method: 'tempo', status: 'success', reference: HASH }) });
+  const { r, body } = await call(t, app);
+  assert.equal(r.status, 200);
+  assert.equal(body.ok, true);
 });

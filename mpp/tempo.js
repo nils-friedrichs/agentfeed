@@ -22,7 +22,7 @@
 //   paid and the data was withheld. Now a broadcast error that is not one of mppx's own
 //   payment errors (transport, 5xx, timeout, unknown) is not a refusal yet: the hash of the
 //   signed transaction (keccak256 of its canonical serialization, as mppx computes it) is
-//   polled with eth_getTransactionReceipt every 500 ms for up to 15 s on rpc.tempo.xyz and
+//   polled with eth_getTransactionReceipt every 500 ms on rpc.tempo.xyz and
 //   rpc.mainnet.tempo.xyz (chainlist's second mainnet URL, chain id 4217 verified; same
 //   Cloudflare front), and after 3 s without a receipt the same raw transaction is sent
 //   once more with plain eth_sendRawTransaction. It settles ONLY if the receipt succeeded
@@ -35,7 +35,10 @@
 //   claimed in the durable store (mpp_consumed, key tempo:settled:<hash>), and the recovery
 //   settles only if it wins that claim, so a replay after a restart is refused too.
 //   mppx's client signs with validBefore = now + 25 s (or the challenge expiry, if sooner),
-//   so a refused transaction cannot land later than that.
+//   so a refused transaction cannot land later than that. R5: the poll runs until the signed
+//   transaction's own validBefore + 2 s (capped at 30 s; 15 s when it carries no expiry), so
+//   a refusal is never followed by a landing. The normal path also refuses when it loses the
+//   durable claim: one payment never delivers data twice.
 //
 // The challenge goes in WWW-Authenticate only (appended to any solana challenge already
 // there); PAYMENT-REQUIRED is never touched.
@@ -51,7 +54,7 @@ const TOKENS = [
 const DECIMALS = 6;
 const PROBLEM_BASE = 'https://paymentauth.org/problems/';
 const RECEIPT_RPCS = ['https://rpc.tempo.xyz', 'https://rpc.mainnet.tempo.xyz'];
-const RECOVERY = { pollMs: 500, windowMs: 15000, resendAfterMs: 3000 };
+const RECOVERY = { pollMs: 500, resendAfterMs: 3000, afterExpiryMs: 2000, capMs: 30000, noExpiryMs: 15000 };
 const SETTLED_TTL_MS = 30 * 24 * 3600e3;
 
 let state = null; // { instances: [{ symbol, address, mppx }], routes: [[re, pattern, amount]], Credential, Receipt }
@@ -230,7 +233,14 @@ function hold(req, res, inst, tc, options, fresh, route) {
     inst.mppx.broadcastCredential(tc.serialized, options).then(async (receipt) => {
       const signed = await signedP;
       const source = (receipt && (receipt.source || receipt.sender)) || (signed && signed.from) || null;
-      if (signed && state.settled) { try { await state.tryClaim(state.settled, signed.hash.toLowerCase(), Date.now() + SETTLED_TTL_MS); } catch { /* the claim only guards the recovery path */ } }
+      if (signed && state.settled) {
+        let won = true;
+        try { won = await state.tryClaim(state.settled, signed.hash.toLowerCase(), Date.now() + SETTLED_TTL_MS); } catch (e) {
+          // a store failure must not cost a buyer whose transaction landed their data
+          console.error(`[mpp] tempo durable claim failed for ${signed.hash}: ${String(e && e.message).slice(0, 120)}`);
+        }
+        if (won === false) return refuseNow(new Error('this transaction was already settled once; data is never delivered twice for one payment'), signed);
+      }
       return settle(receipt, source);
     }, async (e) => {
       const signed = await signedP;
@@ -255,12 +265,15 @@ function isPaymentError(e) {
 
 // Poll for the receipt of exactly this signed transaction; re-send it once after 3 s.
 async function recover(req, signed, inst, route, challenge) {
-  const { pollMs, windowMs, resendAfterMs } = state.recovery || RECOVERY;
+  const { pollMs, resendAfterMs, afterExpiryMs, capMs, noExpiryMs } = { ...RECOVERY, ...(state.recovery || {}) };
   const t0 = Date.now();
+  // until the signed transaction can no longer land, never past the cap
+  const deadline = signed.validBefore ? Math.min(signed.validBefore * 1000 + afterExpiryMs, t0 + capMs) : t0 + noExpiryMs;
+  const windowMs = Math.max(0, deadline - t0);
   const expect = { hash: signed.hash, from: signed.from, currency: inst.address, recipient: state.recipient, units: route.units,
     realm: challenge && challenge.realm, challengeId: challenge && challenge.id };
   let resent = false; let i = 0;
-  while (Date.now() - t0 < windowMs) {
+  while (Date.now() < deadline) {
     const url = RECEIPT_RPCS[i++ % RECEIPT_RPCS.length];
     const r = await state.rpc(url, 'eth_getTransactionReceipt', [signed.hash]).catch(() => null);
     if (r && r.result) {

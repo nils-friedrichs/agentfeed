@@ -575,7 +575,7 @@ function tempoInfo() {
 
 app.get('/', (_req, res) => res.json({
   service: 'agentfeed',
-  description: `Live crypto market data for AI agents - liquidations, positioning, funding, prices, token risk. Paid per-call in USDC via x402 on ${railNames()}. Every paid route also carries MPP tempo/charge challenges (Tempo mainnet, OUSD or USDC.e, pull mode) and /api/sol-price and /api/btc-price MPP solana/charge, on the same 402. No API keys. Copy payTo only from a fresh 402 response, never from transaction history.`,
+  description: `Live crypto market data for AI agents - liquidations, positioning, funding, prices, token risk. Paid per-call in USDC via x402 on ${require('./lib/rails').httpRailNames()}.${require('./lib/hf').hfSentence()} Every paid route also carries MPP tempo/charge challenges (Tempo mainnet, OUSD or USDC.e, pull mode) and /api/sol-price and /api/btc-price MPP solana/charge, on the same 402. No API keys. Copy payTo only from a fresh 402 response, never from transaction history.`,
   x402: { active: paymentsOn, network: x402Network, chains: ['solana:mainnet', ...evmRails().map((r) => r.network)] },
   // DERIVED, not restated: whatever is actually mounted is what is advertised.
   mpp: { active: mppOn, intent: 'solana/charge', routes: mppOn ? MPP_ROUTES : [], tempo: tempoInfo() },
@@ -622,7 +622,7 @@ app.get('/.well-known/glama.json', (_req, res) => res.json({
 app.get('/.well-known/x402.json', (_req, res) => res.json({
   x402Version: 2,
   service: 'agentfeed',
-  description: `Crypto market, liquidations, and Solana on-chain data for AI agents. Pay per call in USDC via x402 on ${railNames()}. Every paid route also carries MPP tempo/charge challenges (Tempo mainnet, OUSD or USDC.e, pull mode) and /api/sol-price and /api/btc-price MPP solana/charge, on the same 402. No API keys. Copy payTo only from a fresh 402 response, never from transaction history.`,
+  description: `Crypto market, liquidations, and Solana on-chain data for AI agents. Pay per call in USDC via x402 on ${require('./lib/rails').httpRailNames()}.${require('./lib/hf').hfSentence()} Every paid route also carries MPP tempo/charge challenges (Tempo mainnet, OUSD or USDC.e, pull mode) and /api/sol-price and /api/btc-price MPP solana/charge, on the same 402. No API keys. Copy payTo only from a fresh 402 response, never from transaction history.`,
   website: 'https://x402.ochinimus.app',
   // Derived from what is mounted, so the manifest cannot advertise a protocol
   // the service is not actually speaking.

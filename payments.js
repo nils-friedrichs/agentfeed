@@ -1,12 +1,14 @@
 // payments.js — x402 payment layer (Session 2).
 // Swappable by design: facilitator via .env, all pricing in one table.
-// Verified against @x402/express 2.17.0 + @x402/svm 2.17.0 real APIs.
+// Verified against @x402/express 2.28.0 + @x402/svm 2.28.0 real APIs (R5: upgraded from 2.17
+// for batch-settlement; the full suite and a scratch boot ran on every rail).
 const { paymentMiddleware, x402ResourceServer } = require('@x402/express');
 const { HTTPFacilitatorClient } = require('@x402/core/server');
 const { bazaarResourceServerExtension, declareDiscoveryExtension } = require('@x402/extensions/bazaar');
 const { SOLANA_MAINNET_CAIP2, SOLANA_DEVNET_CAIP2 } = require('@x402/svm');
 const { ExactSvmScheme } = require('@x402/svm/exact/server');
 const { ExactEvmScheme } = require('@x402/evm/exact/server');
+const { ExactAvmScheme } = require('@x402/avm/exact/server');
 
 // ---- pricing table: single source of truth (spec §2)
 //
@@ -240,9 +242,29 @@ function buildPaymentLayer() {
     facilitators.push(c);
     console.log(`[payments] Arc rail: Circle Facilitator Service (${c.mode}), payTo ${c.payTo}`);
   }
-  const resourceServer = new x402ResourceServer(facilitators)
+  // R5: the high-frequency tier (lib/hf.js). Gateway's scheme is `exact` like CDP's and
+  // Circle FS's, so those clients are wrapped to hand Gateway payments to Circle Gateway.
+  const { hfConfig, hfAccepts, batchSchemes, routeGateway } = require('./lib/hf');
+  const HF = hfConfig();
+  let facs = facilitators;
+  if (HF.gateway) {
+    const { BatchFacilitatorClient, isBatchPayment } = require('@circle-fin/x402-batching/server');
+    const gw = new BatchFacilitatorClient();
+    facs = facilitators.map((f) => routeGateway(f, gw, isBatchPayment));
+    console.log(`[payments] Gateway nanopayments: ${HF.gateway.networks.join(',')} payTo ${HF.gateway.payTo}`);
+  }
+  // R5 A4: Algorand mainnet through GoPlausible, after CDP and Circle (no overlap).
+  const { algoRail } = require('./lib/rails');
+  const ALGO = algoRail();
+  if (ALGO) facs = [...facs, new HTTPFacilitatorClient({ url: ALGO.facilitator })];
+  const resourceServer = new x402ResourceServer(facs)
     .register(network, new ExactSvmScheme());
   for (const r of EVM) resourceServer.register(r.network, new ExactEvmScheme());
+  if (ALGO) resourceServer.register(ALGO.network, new ExactAvmScheme());
+  if (HF.batch) {
+    for (const { network: n, scheme } of batchSchemes(HF.batch, require('./db').db)) resourceServer.register(n, scheme);
+    console.log(`[payments] batch-settlement: ${HF.batch.networks.join(',')} receiver ${HF.batch.receiver} authorizer ${HF.batch.authorizer.address}`);
+  }
   resourceServer
     .registerExtension(bazaarResourceServerExtension);
 
@@ -268,6 +290,9 @@ function buildPaymentLayer() {
           network: r.network,
           payTo: railPayTo(r),
         })),
+        ...(ALGO ? [{ scheme: 'exact', price: `$${p.usd}`, network: ALGO.network, payTo: ALGO.payTo }] : []),
+        // after every exact accept of the same chain (Agent402 pays the first one)
+        ...hfAccepts(HF, p.usd),
       ],
       description: challengeDesc(challengeLead(p)), // challenge only; p.desc stays whole
       // NO errors key. MEASURED 2026-09-26: @x402/extensions strips unknown keys
@@ -293,9 +318,9 @@ function buildPaymentLayer() {
   const middleware = paymentMiddleware(routes, resourceServer);
 
   const withOutput = Object.keys(routes).filter((r) => BAZAAR_META[r] && BAZAAR_META[r].output).length;
-  console.log(`[payments] x402 active: network=${networkName} facilitator=${facilitatorUrl} payTo=${payTo} evm=${EVM.map((r) => r.name).join(',') || 'none'}`);
+  console.log(`[payments] x402 active: network=${networkName} facilitator=${facilitatorUrl} payTo=${payTo} evm=${EVM.map((r) => r.name).join(',') || 'none'}${ALGO ? ' algorand=GoPlausible' : ''}`);
   console.log(`[payments] bazaar: ${Object.keys(routes).length} routes declared, ${withOutput} with an output example, icon=${ICON_URL}`);
-  return { middleware, PRICES, network: networkName, resourceServer, routes, facilitator };
+  return { middleware, PRICES, network: networkName, resourceServer, routes, facilitator, HF, ALGO };
 }
 
 // decode X-PAYMENT-RESPONSE / PAYMENT-RESPONSE header (base64 JSON) for audit logging

@@ -102,3 +102,11 @@ base-launches.json.tmp
 # Circle payments left settlement_pending, for ops/arc-reconcile.js. Not source.
 arc-pending.jsonl
 arc-pending.done.jsonl
+
+# R5 runtime state (lib/hf.js, ops/batch-claim.js, bin/hl-whales-refresh.js)
+batch-claims.jsonl
+batch-claim-state.json
+batch-claim.log
+hl-whales.json
+hl-whales-list.json
+hl-whales.log

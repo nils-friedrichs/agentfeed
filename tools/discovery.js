@@ -365,7 +365,7 @@ function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp, tempo }) {
     info: {
       title: 'AgentFeed',
       version: '1.0.0',
-      description: `Live crypto market, liquidation, tokenized-equity and Solana on-chain data for AI agents. Paid per call in USDC over x402 on ${railNames()}. No API keys, no accounts.`,
+      description: `Live crypto market, liquidation, tokenized-equity and Solana on-chain data for AI agents. Paid per call in USDC over x402 on ${require('../lib/rails').httpRailNames()}.${require('../lib/hf').hfSentence()} No API keys, no accounts.`,
       'x-generated-from': 'payments.PRICES + bazaar-examples.json, at boot',
       // x402scan verifies ownership from info.contact; it names the operator, a
       // reachable address and the studio site, not the repository.
@@ -420,10 +420,12 @@ function buildWellKnown({ PRICES, META }) {
     if (/\/:[A-Za-z0-9_]+/.test(p)) { skipped.push(p); continue; }
     resources.push(ORIGIN + p);
     const pr = PRICES[pattern];
-    // the catalogue URL carries the route's published example query too, so a router
-    // that buys it gets an answer rather than a 400 for a missing required input
-    const qs = new URLSearchParams(Object.entries((m && m.input) || {}).map(([k, v]) => [k, String(v)])).toString();
-    catalog.push({ url: ORIGIN + p + (qs ? `?${qs}` : ''), method: 'GET', name: pr.tool, description: firstSentences(pr.desc, 400), price_usd: pr.usd });
+    // ONE entry per paid route (R5 A8): the bare URL, which answers a valid 402 with no
+    // parameters; a path-parameter route keeps its concrete example path, the one Agent402
+    // needs to price it. R3 appended each route's example query here, and Agent402 then
+    // listed every query route twice (bare from the spec, again with the query): 93 paid
+    // tools for 59 routes.
+    catalog.push({ url: ORIGIN + p, method: 'GET', name: pr.tool, description: firstSentences(pr.desc, 400), price_usd: pr.usd });
   }
   if (skipped.length) {
     console.warn(`[discovery] ${skipped.length} route(s) left out of /.well-known/x402, no path-parameter example: ${skipped.join(', ')}`);
@@ -437,7 +439,7 @@ function buildWellKnown({ PRICES, META }) {
   // description. Indexers that read only the flat list learn the price from each
   // 402; Agent402 reads this catalogue and otherwise listed the path-parameter
   // examples (/api/token-risk/DezX...) as price_unknown, which its router never
-  // buys (R3, 2026-10-11). Same paths, plus each route's example query.
+  // buys (R3, 2026-10-11). Same paths, one per route (R5).
   return {
     version: 1,
     resources,

@@ -12,6 +12,13 @@
 // refreshes it (a few seconds); a refresh that fails leaves the cache to age, and data older
 // than 5 minutes answers 503 (never settled).
 //
+// CRON (R5 A6). bin/hl-whales-refresh.js runs this same refresh from root crontab every 5 min
+// and writes the snapshot to HL_WHALES_SNAPSHOT (default hl-whales.json beside this repo); the
+// whale list itself is kept in hl-whales-list.json and re-read from the leaderboard hourly.
+// A request reads the file when it is younger than SNAPSHOT_MAX_MS (6.5 min: one cron period
+// plus a run), so a paid call never waits for a refresh; only a missing or stale file falls
+// back to the on-demand refresh above.
+//
 // SOLD. Aggregates we compute (net long/short USD per coin, counts, size-weighted entries,
 // liquidation distance and liquidation clusters by price band, uPnL) and, for one coin, the
 // top positions as Hyperliquid's public account state shows them.
@@ -22,6 +29,20 @@ const INFO = () => process.env.HL_API || 'https://api.hyperliquid.xyz/info';
 const TOP_N = Number(process.env.HL_WHALES_TOP || 250);
 const CACHE_MS = 5 * 60 * 1000;
 const LIST_MS = 60 * 60 * 1000;
+const path = require('path');
+const fs = require('fs');
+const SNAPSHOT = () => process.env.HL_WHALES_SNAPSHOT || path.join(__dirname, '..', 'hl-whales.json');
+const LIST_FILE = () => process.env.HL_WHALES_LIST || path.join(__dirname, '..', 'hl-whales-list.json');
+const SNAPSHOT_MAX_MS = 6.5 * 60 * 1000;
+let fileSnap = null; // { mtimeMs, snap }
+function readSnapshotFile() {
+  try {
+    const st = fs.statSync(SNAPSHOT());
+    if (!fileSnap || fileSnap.mtimeMs !== st.mtimeMs) fileSnap = { mtimeMs: st.mtimeMs, snap: JSON.parse(fs.readFileSync(SNAPSHOT(), 'utf8')) };
+    return Date.now() - fileSnap.snap.at < SNAPSHOT_MAX_MS ? fileSnap.snap : null;
+  } catch { return null; }
+}
+function writeJsonAtomic(file, obj) { fs.writeFileSync(file + '.tmp', JSON.stringify(obj)); fs.renameSync(file + '.tmp', file); }
 
 const bad = (msg) => Object.assign(new Error(msg), { kind: 'bad_request' });
 const unavailable = (msg) => Object.assign(new Error(msg), { status: 503 });
@@ -104,6 +125,8 @@ async function refresh(fetchImpl = fetch) {
 }
 
 async function current(fetchImpl) {
+  const fromFile = readSnapshotFile();
+  if (fromFile) return fromFile;
   if (snap && Date.now() - snap.at < CACHE_MS) return snap;
   if (!inflight) inflight = refresh(fetchImpl).finally(() => { inflight = null; });
   try { return await inflight; } catch (e) {
@@ -173,4 +196,15 @@ async function getHlWhales(p = {}, { fetchImpl = fetch } = {}) {
   return { ...base, coins };
 }
 
-module.exports = { getHlWhales, _readLeaderboard: readLeaderboard, _clusters: clusters, _side: side, _reset: () => { whaleList = null; snap = null; inflight = null; } };
+// bin/hl-whales-refresh.js: one refresh, written to the snapshot file (the list file keeps the
+// 40 MB leaderboard read to once an hour across cron runs).
+async function refreshToFile(fetchImpl = fetch) {
+  try { const l = JSON.parse(fs.readFileSync(LIST_FILE(), 'utf8')); if (Date.now() - l.at < LIST_MS && Array.isArray(l.accounts) && l.accounts.length) whaleList = l; } catch { /* first run */ }
+  const before = whaleList;
+  const s = await refresh(fetchImpl);
+  if (whaleList !== before) writeJsonAtomic(LIST_FILE(), whaleList);
+  writeJsonAtomic(SNAPSHOT(), s);
+  return s;
+}
+
+module.exports = { getHlWhales, refreshToFile, _readLeaderboard: readLeaderboard, _clusters: clusters, _side: side, _reset: () => { whaleList = null; snap = null; inflight = null; } };
