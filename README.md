@@ -83,9 +83,9 @@ Notional uses `filled_qty × avg_fill_price` — what actually executed — not 
 
 Every paid route, cheapest question last. Generated from
 [`/.well-known/x402.json`](https://x402.ochinimus.app/.well-known/x402.json),
-read 2026-10-11 — names, prices and routes are the manifest's, not a copy kept
+read 2026-10-12 — names, prices and routes are the manifest's, not a copy kept
 in sync by hand. What each one returns is under
-[66 tools](#66-tools-59-paid-http-routes--7-free--pricing), word for word as
+[70 tools](#70-tools-63-paid-http-routes--7-free--pricing), word for word as
 the service publishes it.
 
 | Tool | Price | Route |
@@ -97,6 +97,7 @@ the service publishes it.
 | `get_cascade_history` | $0.03 | `/api/cascade-history` |
 | `get_options_gex` | $0.03 | `/api/options-gex` |
 | `get_peg_sessions` | $0.03 | `/api/peg-sessions` |
+| `get_base_launches` | $0.02 | `/api/base-launches` |
 | `get_cascade_forecast` | $0.02 | `/api/cascade-forecast` |
 | `get_exit_quote` | $0.02 | `/api/exit-quote` |
 | `get_funding_extremes` | $0.02 | `/api/funding-extremes` |
@@ -117,11 +118,14 @@ the service publishes it.
 | `get_cascade_alert` | $0.01 | `/api/cascade` |
 | `get_equity_24h` | $0.01 | `/api/equity-24h` |
 | `get_funding_cross` | $0.01 | `/api/funding-cross` |
+| `get_honeypot_check` | $0.01 | `/api/honeypot-check` |
+| `get_launch_odds` | $0.01 | `/api/launch-odds` |
 | `get_liquidation_stats` | $0.01 | `/api/liquidation-stats` |
 | `get_long_short` | $0.01 | `/api/long-short` |
 | `get_open_interest` | $0.01 | `/api/open-interest` |
 | `get_orderbook_imbalance` | $0.01 | `/api/orderbook-imbalance` |
 | `get_orderbook_walls` | $0.01 | `/api/orderbook-walls` |
+| `get_rwa_yields` | $0.01 | `/api/rwa-yields` |
 | `get_stablecoin_flows` | $0.01 | `/api/stablecoin-flows` |
 | `get_token_risk` | $0.01 | `/api/token-risk/:mint` |
 | `get_top_movers` | $0.01 | `/api/top-movers` |
@@ -156,9 +160,13 @@ Every paid route answers `402` with an x402 v2 challenge in the `PAYMENT-REQUIRE
 the same challenge as an x402 v1 body (`{x402Version: 1, accepts}`) for Base and Solana. Pay with
 `PAYMENT-SIGNATURE` (v2, any rail) or `X-PAYMENT` (v1 on Base or Solana, verified and settled
 through the CDP facilitator's v1 kinds; Polygon and Arbitrum have no v1 kind there and stay v2).
-`/api/sol-price` and `/api/btc-price` additionally carry an MPP `solana`/`charge` challenge in
-`WWW-Authenticate` on the *same* response, so a client settles with whichever protocol it
-speaks. The two live in disjoint header namespaces, so an x402-only client never sees the MPP
+Every paid route also carries MPP `tempo`/`charge` challenges in `WWW-Authenticate` (Tempo
+mainnet, chain 4217, OUSD first, then USDC.e, at the route's price; no fee payer, the payer pays
+gas). Only signed transactions (pull mode) are accepted: the server validates the transfer, runs
+the request, and broadcasts it only when the response is below 400, so a failed call is never
+charged; an already-broadcast hash credential is refused. `/api/sol-price` and `/api/btc-price`
+additionally carry an MPP `solana`/`charge` challenge. All of them ride the *same* response, so
+a client settles with whichever protocol it speaks. The two live in disjoint header namespaces, so an x402-only client never sees the MPP
 one and is unaffected.
 
 ```
@@ -219,12 +227,12 @@ The pay-kit fix ships here as `mpp/patches/@solana+mpp+0.7.0.patch`, applied by
 dependency, not a dev one, because a `--omit=dev` install would otherwise complete silently
 *unpatched*.
 
-## 66 tools (59 paid HTTP routes + 7 free) & pricing
+## 70 tools (63 paid HTTP routes + 7 free) & pricing
 
-**59 paid + 7 free**, 66 total on the MCP rail. Every call is metered individually in USDC over
-x402 — no bundles, no minimums. Calling all 59 paid tools once costs **$0.897** — the entire
-market read for 90 cents. Counts and prices are summed from
-[the live manifest](https://x402.ochinimus.app/.well-known/x402.json), read 2026-10-08.
+**63 paid + 7 free**, 70 total on the MCP rail. Every call is metered individually in USDC over
+x402 — no bundles, no minimums. Calling all 63 paid tools once costs **$0.947** — the entire
+market read for 95 cents. Counts and prices are summed from
+[the live manifest](https://x402.ochinimus.app/.well-known/x402.json), read 2026-10-12.
 
 The flagship is [`get_squeeze_score`](#the-moat--our-own-liquidation-tape) — a 0-100 short-squeeze / long-flush composite built from funding, crowding, OI build and the liq-skew of our exclusive tape. One number, one dime, answers "is this trade crowded and about to hurt someone."
 
@@ -315,7 +323,8 @@ Sampled every 5 minutes since 19 July 2026. Deviation is measured against the un
 |---|---|---|---|
 | `get_wallet_holdings` | $0.008 | `/api/wallet-holdings/:wallet` | Solana wallet holdings via Helius DAS |
 | `get_token_metadata` | $0.005 | `/api/token-metadata/:mint` | SPL token metadata via Helius DAS |
-| `get_token_risk` | $0.01 | `/api/token-risk/:mint` | Token rug-risk signals: mint/freeze authority status, top-holder concentration, risk flags |
+| `get_token_risk` | $0.01 | `/api/token-risk/:mint` | Token rug-risk signals: mint/freeze authority status, top-holder concentration, risk flags; for mints in our launch ledger, a `launch` block with launchpad, t0 snapshot and 1/7/30-day outcome labels |
+| `get_launch_odds` | $0.01 | `/api/launch-odds` | Odds that a Solana launch survives: per launchpad (pump-fun, pumpswap, meteora-dbc, ...), the share of followed pools whose liquidity was removed, collapsed, went inactive or stayed active at 1, 7 and 30 days with n, optionally in a t0 liquidity band; or one mint's pools, t0 snapshot and labels. Only pools past our ledger's traction threshold are followed; an untracked mint answers 422, never charged. |
 | `get_token_holders` | $0.02 | `/api/token-holders/:mint` | Top holders of any SPL token with per-account share and top1/top5/top10 concentration. Deeper cut than get_token_risk's summary. |
 | `get_wallet_activity` | $0.02 | `/api/wallet-activity/:wallet` | Recent transactions of any Solana wallet, parsed human-readable: type, protocol, description, fee, failures (Helius enhanced). |
 | `get_priority_fees` | $0.005 | `/api/priority-fees` | Solana priority-fee estimate right now, all levels (min to unsafeMax) in micro-lamports/CU, with a recommended tip. For bots that need txs to land. |
@@ -329,6 +338,9 @@ Sampled every 5 minutes since 19 July 2026. Deviation is measured against the un
 | `get_base_gas` | $0.005 | `/api/base-gas` | Current gas price on Base (chain 8453) in BOTH gwei and wei, with base fee, priority fee and block number when the node supplies them. Both units are returned because a caller asking in wei and a caller asking in gwei are asking the same question. Served from keyless public RPC with three-node fallback, so there is no API key to rotate or expire. |
 | `get_base_balance` | $0.005 | `/api/base-balance` | Native ETH or any ERC20 balance for an address on Base or Ethereum mainnet. decimals() and symbol() are read from the contract at request time rather than assumed, because assuming 18 reports a USDC balance a trillion times too large. Accepts a 0x address or an ENS name; ENS is resolved through two independent resolvers and the answer is used only when they agree, so a wrong address can never produce a confident balance for the wrong wallet. An unsupported chain is refused rather than silently answered from the wrong one. |
 
+| `get_honeypot_check` | $0.01 | `/api/honeypot-check` | Can this Base token be sold? Our own buy-then-sell simulation (an eth_call with a state override, nothing broadcast) on its deepest pool across Uniswap V2/V3/V4 and Aerodrome: verdict, measured buy and sell tax, wallet-transfer test, bytecode flags (mintable, blacklist, proxy, pausable, owner) and where the two disagree, each with its block. Simulator source: `contracts/HoneypotSim.sol`. |
+| `get_base_launches` | $0.02 | `/api/base-launches` | New Base pools from the last 24 hours (Uniswap V4, V3, V2, Aerodrome), newest first: pair, creation time, launchpad named from the V4 hook (Zora, Clanker, Doppler, Flaunch, from their own published addresses), quote-side liquidity, 24h volume and swaps, and the honeypot simulation for the busiest. Read from Base logs every minute; stale data answers 503. |
+
 ### DeFi / macro
 
 | Tool | Price | Route | What you get |
@@ -336,6 +348,7 @@ Sampled every 5 minutes since 19 July 2026. Deviation is measured against the un
 | `get_tvl` | $0.005 | `/api/tvl` | TVL for any DeFi protocol (with 1d/7d change) or top-15 chains ranking. DefiLlama-backed. |
 | `get_stablecoin_flows` | $0.01 | `/api/stablecoin-flows` | Total stablecoin supply with 7d/30d deltas and top stables — the macro risk-on/risk-off dial for crypto. |
 | `get_dex_quote` | $0.005 | `/api/dex-quote` | Live Jupiter swap quote for any SPL pair: output amount, price impact, route. The real executable price on Solana, not an index price. |
+| `get_rwa_yields` | $0.01 | `/api/rwa-yields` | Yields on tokenized treasuries and money-market funds (BUIDL, USDY, OUSG, USYC, TBILL, Invesco USTB and more): APY, TVL and its 7-day change, chains, issuer, as_of; NAV, price, premium and pool depth where a source exists, null with the reason where not. DefiLlama via our RWAYield index, current state only. |
 | `get_macro_calendar` | $0.005 | `/api/macro-calendar` | FOMC, CPI, NFP and PCE calendar for traders: the next Fed rate decisions and the CPI, nonfarm payrolls and PCE release dates with UTC times converted from New York time (DST-aware), each with its official Fed, BLS or BEA source URL and the time we verified it. Read daily from the agencies' own pages and never entered by hand; data verified more than 35 days ago answers 503 and is never charged. |
 
 ### TradFi perps & stocks
