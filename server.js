@@ -276,7 +276,10 @@ app.use(x402v1.challengeBody);
 app.use(x402v1.payments);
 // An MPP credential on a route with no MPP gate gets that said in the challenge's error.
 // mppOn and MPP_ROUTES are read at request time, after the MPP block below has set them.
-app.use(makeMppOnX402Only({ mppPaths: () => (mppOn ? MPP_ROUTES.map((r) => r.replace(/^GET /, '')) : []) }));
+// MPP tempo/charge (mpp/tempo.js): adds its challenge to every paid 402 and takes pull credentials.
+// Here, before the solana gates and the x402 layer; inert until the MPP block below loads it.
+app.use((req, res, next) => (tempo && tempo.isReady() ? tempo.gate(req, res, next).catch(next) : next()));
+app.use(makeMppOnX402Only({ mppPaths: () => (mppOn ? MPP_ROUTES.map((r) => r.replace(/^GET /, '')) : []), isTempo: (req) => !!(tempo && tempo.isReady() && tempo.isTempoCredential(req)) }));
 
 // ---- MPP solana/charge layer (additive, MPP_ENABLED-gated)
 // Mounted BEFORE the x402 layer so that a 402 can carry both challenges: MPP's
@@ -314,8 +317,17 @@ if (!mppWanted && mppLoadError) {
 const mppOn = Boolean(mpp && mpp.isEnabled());
 const MPP_ROUTES = ['GET /api/sol-price', 'GET /api/btc-price'];
 let mppReady = null;
+// MPP tempo/charge on every paid route (mpp/tempo.js), same flag and secret as solana/charge.
+let tempo = null;
+let tempoReady = null;
 if (mppOn) {
   mppReady = mpp.init({ db, prices: PRICES, routes: MPP_ROUTES });
+  try {
+    tempo = require('./mpp/tempo');
+    tempoReady = tempo.init({ prices: PRICES, recipient: process.env.PAY_TO_EVM, secretKey: process.env.MPP_SECRET_KEY, realm: process.env.MPP_REALM || 'x402.ochinimus.app' })
+      .then(() => { _docs = null; }) // the catalog documents tempo once it is up
+      .catch((e) => { console.error('[mpp] tempo DISABLED:', e.message); tempo = null; _docs = null; });
+  } catch (e) { console.error('[mpp] tempo DISABLED (load):', e.message); tempo = null; }
   app.get('/api/sol-price', mpp.gate('GET /api/sol-price'));
   app.get('/api/btc-price', mpp.gate('GET /api/btc-price'));
 }
@@ -353,6 +365,7 @@ function docs() {
     META: BAZAAR_META,
     FREE_TOOLS,
     mpp: { active: mppOn, routes: mppOn ? MPP_ROUTES : [] },
+    tempo: { active: !!(tempo && tempo.isReady()) },
     network: x402Network,
   };
   _docs = {
@@ -469,7 +482,7 @@ if (paymentsOn) {
   x402Network = layer.network;
   const gate = mppOn ? mpp.wrapX402(layer.middleware) : layer.middleware;
   // A request lib/x402v1.js has verified is paid for; it settles after the handler.
-  app.use((req, res, next) => (req.x402v1 ? next() : gate(req, res, next)));
+  app.use((req, res, next) => (req.x402v1 || req.tempoPending ? next() : gate(req, res, next)));
   x402v1.bind(layer)
     .then((nets) => console.log(`[x402v1] active on ${nets.join(', ') || 'no network (facilitator lists no v1 kind)'}`))
     .catch((e) => console.error('[x402v1] DISABLED: facilitator /supported failed:', e.message));

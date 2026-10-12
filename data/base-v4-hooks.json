@@ -1,0 +1,202 @@
+{
+ "note": "Uniswap V4 hook and launchpad factory addresses on Base (8453), each listed in the launchpad's own docs or repo (source) and confirmed to have code on-chain on 2026-10-12. A V4 pool whose hook is listed is labelled with that launchpad; one whose creating transaction was sent to a listed factory is labelled by tx_to. Anything else is shown as its raw hook address.",
+ "hooks": [
+  {
+   "address": "0xdd5eeaff7bd481ad55db083062b13a3cdf0a68cc",
+   "launchpad": "clanker",
+   "contract": "v4.0 ClankerHookStaticFee",
+   "source": "https://clanker.gitbook.io/clanker-documentation/references/deployed-contracts"
+  },
+  {
+   "address": "0x34a45c6b61876d739400bd71228cbcbd4f53e8cc",
+   "launchpad": "clanker",
+   "contract": "v4.0 ClankerHookDynamicFee",
+   "source": "https://clanker.gitbook.io/clanker-documentation/references/deployed-contracts"
+  },
+  {
+   "address": "0xb429d62f8f3bffb98cdb9569533ea23bf0ba28cc",
+   "launchpad": "clanker",
+   "contract": "v4.1 ClankerHookStaticFeeV2",
+   "source": "https://clanker.gitbook.io/clanker-documentation/references/deployed-contracts"
+  },
+  {
+   "address": "0xd60d6b218116cfd801e28f78d011a203d2b068cc",
+   "launchpad": "clanker",
+   "contract": "v4.1 ClankerHookDynamicFeeV2",
+   "source": "https://clanker.gitbook.io/clanker-documentation/references/deployed-contracts"
+  },
+  {
+   "address": "0x0469a4bd3724dc86c9542f4694c976da13c450c0",
+   "launchpad": "zora",
+   "contract": "CoinHook 2.6.0",
+   "source": "https://github.com/ourzora/zora-protocol/blob/main/packages/coins-deployments/addresses/8453.json"
+  },
+  {
+   "address": "0xc8d077444625eb300a427a6dfb2b1dbf9b159040",
+   "launchpad": "zora",
+   "contract": "ContentCoinHook 2.3.0",
+   "source": "https://github.com/ourzora/zora-protocol/blob/main/packages/coins-deployments/addresses/8453.json"
+  },
+  {
+   "address": "0x2b15a16b3ef024005ba899bb51764fcd58cf9040",
+   "launchpad": "zora",
+   "contract": "ContentCoinHook 2.2.1",
+   "source": "https://github.com/ourzora/zora-protocol/blob/main/packages/coins-deployments/addresses/8453.json"
+  },
+  {
+   "address": "0x1258e5f3c71ca9dce95ce734ba5759532e46d040",
+   "launchpad": "zora",
+   "contract": "CreatorCoinHook 2.2.1",
+   "source": "https://github.com/ourzora/zora-protocol/blob/main/packages/coins-deployments/addresses/8453.json"
+  },
+  {
+   "address": "0xff74be9d3596ea7a33bb4983dd7906fb34135040",
+   "launchpad": "zora",
+   "contract": "ContentCoinHook 2.2.0",
+   "source": "https://github.com/ourzora/zora-protocol/blob/main/packages/coins-deployments/addresses/8453.json"
+  },
+  {
+   "address": "0x8218fa8d7922e22aed3556a09d5a715f16ad5040",
+   "launchpad": "zora",
+   "contract": "CreatorCoinHook 2.2.0",
+   "source": "https://github.com/ourzora/zora-protocol/blob/main/packages/coins-deployments/addresses/8453.json"
+  },
+  {
+   "address": "0x51bba15255406cfe7099a42183302640ba7dafdc",
+   "launchpad": "flaunch",
+   "contract": "PositionManager v1",
+   "source": "https://github.com/flayerlabs/flaunchgg-contracts (README) and @flaunch/sdk src/addresses.ts"
+  },
+  {
+   "address": "0xf785bb58059fab6fb19bdda2cb9078d9e546efdc",
+   "launchpad": "flaunch",
+   "contract": "PositionManager v1.1",
+   "source": "https://github.com/flayerlabs/flaunchgg-contracts (README) and @flaunch/sdk src/addresses.ts"
+  },
+  {
+   "address": "0x23321f11a6d44fd1ab790044fdfde5758c902fdc",
+   "launchpad": "flaunch",
+   "contract": "PositionManager v1.2",
+   "source": "https://github.com/flayerlabs/flaunchgg-contracts (README) and @flaunch/sdk src/addresses.ts"
+  },
+  {
+   "address": "0x588c683ecc450f8b2aadb13d7f63792b840425dc",
+   "launchpad": "flaunch",
+   "contract": "PositionManager v1.3",
+   "source": "https://github.com/flayerlabs/flaunchgg-contracts (README) and @flaunch/sdk src/addresses.ts"
+  },
+  {
+   "address": "0x8dc3b85e1dc1c846ebf3971179a751896842e5dc",
+   "launchpad": "flaunch",
+   "contract": "AnyPositionManager",
+   "source": "https://github.com/flayerlabs/flaunchgg-contracts (README) and @flaunch/sdk src/addresses.ts"
+  },
+  {
+   "address": "0x6ea0edee449a287504990df8d87951b9436825dc",
+   "launchpad": "flaunch",
+   "contract": "AnyPositionManager v1.3",
+   "source": "https://github.com/flayerlabs/flaunchgg-contracts (README) and @flaunch/sdk src/addresses.ts"
+  },
+  {
+   "address": "0xe753a351fb498051a09dc130fcc29aebc76525dc",
+   "launchpad": "flaunch",
+   "contract": "AnyPositionManager vested v1.5",
+   "source": "https://github.com/flayerlabs/flaunchgg-contracts (README) and @flaunch/sdk src/addresses.ts"
+  },
+  {
+   "address": "0x9e433f32bb5481a9ca7dff5b3af74a7ed041a888",
+   "launchpad": "flaunch",
+   "contract": "flETHHooks",
+   "source": "https://github.com/flayerlabs/flaunchgg-contracts (README) and @flaunch/sdk src/addresses.ts"
+  },
+  {
+   "address": "0xbdf938149ac6a781f94faa0ed45e6a0e984c6544",
+   "launchpad": "doppler",
+   "contract": "DopplerHookInitializer (Mar 11 2026)",
+   "source": "https://github.com/whetstoneresearch/doppler/blob/main/deployments/8453.md (and legacy/deployments/8453.md)"
+  },
+  {
+   "address": "0xaa096f558f3d4c9226de77e7cc05f18e180b2544",
+   "launchpad": "doppler",
+   "contract": "DopplerHookInitializer (Jan 29 2026)",
+   "source": "https://github.com/whetstoneresearch/doppler/blob/main/deployments/8453.md (and legacy/deployments/8453.md)"
+  },
+  {
+   "address": "0xbb7784a4d481184283ed89619a3e3ed143e1adc0",
+   "launchpad": "doppler",
+   "contract": "DecayMulticurveInitializerHook",
+   "source": "https://github.com/whetstoneresearch/doppler/blob/main/deployments/8453.md (and legacy/deployments/8453.md)"
+  },
+  {
+   "address": "0x3e342a06f9592459d75721d6956b570f02ef2dc0",
+   "launchpad": "doppler",
+   "contract": "UniswapV4ScheduledMulticurveInitializerHook",
+   "source": "https://github.com/whetstoneresearch/doppler/blob/main/deployments/8453.md (and legacy/deployments/8453.md)"
+  },
+  {
+   "address": "0x892d3c2b4abeaaf67d52a7b29783e2161b7cad40",
+   "launchpad": "doppler",
+   "contract": "UniswapV4MulticurveInitializerHook a289a75",
+   "source": "https://github.com/whetstoneresearch/doppler/blob/main/deployments/8453.md (and legacy/deployments/8453.md)"
+  },
+  {
+   "address": "0x372bca585a2223a2e91a316cc32e81a05f006d40",
+   "launchpad": "doppler",
+   "contract": "UniswapV4MulticurveInitializerHook cf5af24",
+   "source": "https://github.com/whetstoneresearch/doppler/blob/main/deployments/8453.md (and legacy/deployments/8453.md)"
+  },
+  {
+   "address": "0x0b295972a3febd121a0efebbe26c7fa8a6526d40",
+   "launchpad": "doppler",
+   "contract": "UniswapV4MulticurveInitializerHook 1a3aa00",
+   "source": "https://github.com/whetstoneresearch/doppler/blob/main/deployments/8453.md (and legacy/deployments/8453.md)"
+  },
+  {
+   "address": "0x9811f10cd549c754fa9e5785989c422a762c28cc",
+   "launchpad": "liquid-protocol",
+   "contract": "HookStaticFeeV2",
+   "source": "https://github.com/Liquid-Protocol-Ops/SDK/blob/main/DEPLOYMENT-ADDRESSES.md"
+  },
+  {
+   "address": "0x80e2f7dc8c2c880bbc4bdf80a5fb0eb8b1db68cc",
+   "launchpad": "liquid-protocol",
+   "contract": "HookDynamicFeeV2",
+   "source": "https://github.com/Liquid-Protocol-Ops/SDK/blob/main/DEPLOYMENT-ADDRESSES.md"
+  }
+ ],
+ "tx_to": [
+  {
+   "address": "0xe85a59c628f7d27878aceb4bf3b35733630083a9",
+   "launchpad": "clanker",
+   "contract": "Clanker factory",
+   "source": "https://clanker.gitbook.io/clanker-documentation/references/deployed-contracts"
+  },
+  {
+   "address": "0x777777751622c0d3258f214f9df38e35bf45baf3",
+   "launchpad": "zora",
+   "contract": "ZoraFactory",
+   "source": "https://github.com/ourzora/zora-protocol/blob/main/packages/coins-deployments/addresses/8453.json"
+  },
+  {
+   "address": "0x660eaaedebc968f8f3694354fa8ec0b4c5ba8d12",
+   "launchpad": "doppler",
+   "contract": "Doppler Airlock",
+   "source": "https://github.com/whetstoneresearch/doppler/blob/main/deployments/8453.md (and legacy/deployments/8453.md)"
+  },
+  {
+   "address": "0x04f1a284168743759be6554f607a10cebdb77760",
+   "launchpad": "liquid-protocol",
+   "contract": "Liquid factory",
+   "source": "https://github.com/Liquid-Protocol-Ops/SDK/blob/main/DEPLOYMENT-ADDRESSES.md"
+  }
+ ],
+ "shadow": {
+  "note": "Bot-made pools that pair a just-launched token with a fake mmETH token at fee 0 through single-use beacon-proxy hooks, created by transactions to the proxy below; not launches, left out of the list. Found on-chain 2026-10-12 (47 of 47 matched a real pool initialised at most one block earlier).",
+  "tokens": [
+   "0x4fc59c42653e052c7ab5c8381f839e2d70504131"
+  ],
+  "tx_to": [
+   "0xbe183de7bb93346a41769c44f47cb588d164df2d"
+  ]
+ }
+}

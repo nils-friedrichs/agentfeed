@@ -91,3 +91,9 @@ well-known/
 # tools/solana2.js: mints Helius refused as too large, learned at runtime
 large-mints.json
 large-mints.json.tmp
+
+# ---- 2026-10-12: Base launches (R3) ----
+# Written by bin/base-launches-collect.js every minute; baselaunches.db is covered
+# by *.db and its log by *.log, the snapshot and its atomic-rename temp are not.
+base-launches.json
+base-launches.json.tmp

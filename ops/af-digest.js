@@ -77,7 +77,7 @@ function shapeOf(msg) {
   }
   const m = full;
   if (/^x402 payment sent in /.test(m)) return `x402 in MPP header: ${shapeOf(m.replace(/^x402 payment sent in [^:]+: /, ''))}`;
-  if (/^MPP credential on an x402-only route/.test(m)) return 'MPP on an x402-only route';
+  if (/^MPP (solana )?credential on (an x402-only route|a route without solana)/.test(m)) return 'MPP solana on a non-solana route';
   const h = m.match(/header (PAYMENT-SIGNATURE|X-PAYMENT) len=\d+ prefix=\S+ base64json=(yes|no)(?: x402Version=(\d+))?/);
   if (h) return `${h[1]} ${h[2] === 'no' ? 'undecodable' : `v${h[3] || '?'}`}`;
   // Since the shape logging (S3) an x402 header always gets '; header <shape>', so a plain

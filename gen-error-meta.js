@@ -42,6 +42,9 @@ const m400 = must('lib/tool.js', /res\.status\(400\)\.json\(\{\s*tool:\s*name,\s
 const m429 = must('server.js', /res\.status\(429\)\.json\(\{\s*error:\s*`rate limit: \$\{limit\} req\/min`,\s*retry_after:\s*retryAfter\s*\}\)/, '429 emitter');
 const m405 = must('server.js', /res\.set\('Allow',\s*'GET'\);\s*\n\s*res\.status\(405\)\.end\(\)/, '405 emitter');
 const m402v1 = must('lib/x402v1.js', /x402Version: 1,\s*error: pr\.error \|\| 'Payment required',\s*accepts:/, 'x402 v1 402 body');
+const m405json = must('lib/compat.js', /res\.set\('Allow', 'GET'\)\.status\(405\)\.json\(\{ error: `\$\{req\.method\} is not supported on \$\{req\.path\}: paid routes are GET/, '405 JSON emitter (non-GET on a paid route)');
+const m410 = must('lib/compat.js', /res\.status\(410\)\.json\(\{\s*error: 'gone',/, '410 emitter');
+const m422 = must('lib/tool.js', /res\.status\(422\)\.json\(\{\s*tool:\s*name,\s*error:\s*e\.message,\s*code:\s*e\.code \|\| 'unprocessable'\s*\}\)/, '422 emitter');
 const m503 = must('lib/tool.js', /res\.status\(503\)\.json\(\{\s*tool:\s*name,\s*error:\s*e\.message,\s*retry_after:\s*60\s*\}\)/, '503 emitter');
 const mLimit = must('server.js', /const LIMIT = (\d+);/, 'GET rate limit');
 const mOther = must('server.js', /const OTHER_LIMIT = (\d+);/, 'other-method rate limit');
@@ -77,6 +80,13 @@ const SHARED = [
     note: 'Retry-After is also set as a response header.',
   },
   {
+    status: 422,
+    name: 'Unprocessable Content',
+    when: 'The input is well formed but names something we hold no data for, such as a mint our launch ledger never saw (/api/launch-odds). Never charged.',
+    appliesTo: ['GET /api/launch-odds'],
+    body: { tool: '<tool name>', error: 'not_tracked: <reason>', code: 'not_tracked' },
+  },
+  {
     status: 503,
     name: 'Service Unavailable',
     when: 'The route answers from a precomputed snapshot and that snapshot is past its staleness limit, or no source has data to answer with. Never charged: a status of 400 or more cancels the x402 settlement.',
@@ -86,8 +96,14 @@ const SHARED = [
   {
     status: 405,
     name: 'Method Not Allowed',
-    when: 'HEAD on a free /api route. The response has an Allow: GET header and an empty body. HEAD on a paid route answers 402 with the challenge in PAYMENT-REQUIRED and no body.',
-    body: null,
+    when: 'A method other than GET on a paid route (JSON body below), or HEAD on a free /api route (empty body). Both carry Allow: GET. HEAD on a paid route answers 402 with the challenge in PAYMENT-REQUIRED and no body.',
+    body: { error: 'POST is not supported on /api/<route>: paid routes are GET. GET it unpaid for the 402 challenge.', allow: 'GET' },
+  },
+  {
+    status: 410,
+    name: 'Gone',
+    when: 'The route was retired. The body names when, what it was and the closest live routes with their prices. Never charged.',
+    body: { error: 'gone', route: '/api/<retired route>', removed: '<date>', was: '<what it did>', closest_live: [{ route: '<url>', tool: '<tool>', price_usd: 0.02, what: '<one line>' }] },
   },
 ];
 
@@ -100,13 +116,16 @@ const BAD_PATH_VALUE = 'not-a-valid-address';
 // route really answers is recorded; only a 400 with an error body becomes the
 // documented caller error.
 const BAD_OPTIONAL_VALUE = { symbol: 'not-a-symbol' };
+// Per tool, for routes whose only inputs are optional and validated (R3): probed with
+// that one input malformed, so the documented 400 is the caller error it really is.
+const BAD_OPTIONAL_BY_TOOL = { get_launch_odds: { launchpad: 'not-a-launchpad' }, get_base_launches: { limit: '0' } };
 
 function requiredOf(pattern) {
   const m = META[pattern] || {};
   const q = (m.inputSchema && Array.isArray(m.inputSchema.required)) ? m.inputSchema.required : [];
   const p = (m.pathParamsSchema && m.pathParamsSchema.properties) ? Object.keys(m.pathParamsSchema.properties) : [];
   const props = (m.inputSchema && m.inputSchema.properties) ? Object.keys(m.inputSchema.properties) : [];
-  return { query: q, pathParams: p, optional: props.filter((k) => !q.includes(k)), input: m.input || {}, pathValues: m.pathParams || {} };
+  return { tool: m.tool, query: q, pathParams: p, optional: props.filter((k) => !q.includes(k)), input: m.input || {}, pathValues: m.pathParams || {} };
 }
 
 // Build a URL that violates exactly one required input, so the handler's own
@@ -125,10 +144,11 @@ function probeUrl(pattern, req) {
     const qs = keep.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('&');
     return { url: route + (qs ? `?${qs}` : ''), violated: `required query param ${req.query[0]} omitted` };
   }
-  const opt = req.optional.find((k) => k in BAD_OPTIONAL_VALUE);
+  const bad = { ...BAD_OPTIONAL_VALUE, ...(BAD_OPTIONAL_BY_TOOL[req.tool] || {}) };
+  const opt = (BAD_OPTIONAL_BY_TOOL[req.tool] ? Object.keys(BAD_OPTIONAL_BY_TOOL[req.tool]) : []).find((k) => req.optional.includes(k)) || req.optional.find((k) => k in BAD_OPTIONAL_VALUE);
   if (opt) {
     // Sent alone and malformed, so the handler's own validation meets it first.
-    return { url: `${route}?${opt}=${encodeURIComponent(BAD_OPTIONAL_VALUE[opt])}`, violated: `optional query param ${opt} = ${BAD_OPTIONAL_VALUE[opt]}` };
+    return { url: `${route}?${opt}=${encodeURIComponent(bad[opt])}`, violated: `optional query param ${opt} = ${bad[opt]}` };
   }
   return null;
 }

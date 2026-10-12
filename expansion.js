@@ -23,6 +23,10 @@ const OPT = require('./tools/options');
 const MS = require('./tools/marketstate');
 const MAC = require('./tools/macro');
 const TF = require('./tools/tradfi');
+const HP = require('./tools/honeypot');
+const BL = require('./tools/baselaunches');
+const LO = require('./tools/launchodds');
+const RW = require('./tools/rwayields');
 
 const sym = (d) => z.string().optional().describe(`USDT perp symbol e.g. SOLUSDT, BTCUSDT (default ${d})`);
 // Twelve routes -- liq-heatmap, squeeze-score, six derivatives and four
@@ -265,6 +269,36 @@ const EXP = [
               token: z.string().optional().describe('ERC20 contract address, or a known ticker: USDC, WETH, DAI, CBBTC, USDBC, CBETH, AERO, EURC. Omit for the native ETH balance'),
               chain: z.string().optional().describe('base (default) or ethereum') },
     run: (a) => B.getBaseBalance({ query: a }) },
+
+  // ---- R3 (2026-10-12): Base token safety and launches, Solana launch outcomes, RWA yields ----
+  // honeypot-check runs our own buy-then-sell simulation on Base (tools/honeypot.js);
+  // base-launches serves the snapshot bin/base-launches-collect.js writes every minute;
+  // launch-odds reads LaunchLedger read-only; rwa-yields reads the RWAYield index read-only.
+  { name: 'get_honeypot_check', route: 'GET /api/honeypot-check', usd: 0.01,
+    tags: ['base', 'honeypot', 'rug-check', 'token-security', 'simulation', 'evm'],
+    desc: 'Use when an agent needs to know whether a Base token can be sold before it buys. Returns a verdict from our own buy-then-sell simulation on the token\'s deepest Base pool, with the buy and sell tax measured. Also: whether a wallet transfer works, bytecode flags (mintable, blacklist, proxy, pausable, owner), where simulation and bytecode disagree, and the block. No pool found is a finding; RPC failure answers 503.',
+    schema: { token: z.string().describe('token contract address on Base, 0x followed by 40 hex characters'),
+              chain: z.string().optional().describe('base (default); other chains are refused for now') },
+    run: (a) => HP.getHoneypotCheck(a) },
+  { name: 'get_base_launches', route: 'GET /api/base-launches', usd: 0.02,
+    tags: ['base', 'new-tokens', 'launches', 'uniswap-v4', 'memecoins', 'dex'],
+    desc: 'Use when an agent needs the newest token launches on Base. Returns pools created on Base in the last 24 hours on Uniswap V4, V3, V2 and Aerodrome, newest first, with launchpad, liquidity and volume. Each carries its pair, creation time, launchpad named from the V4 hook (Zora, Clanker, Doppler, Flaunch), quote-side liquidity, 24h volume and swaps, and our honeypot simulation for the busiest. Read from Base logs every minute; a snapshot older than 5 minutes answers 503.',
+    schema: { min_liq_usd: z.number().optional().describe('minimum quote-side liquidity (ETH, WETH or USDC held) in USD, default 1000; 0 lists every launch'),
+              limit: z.number().optional().describe('launches returned, newest first, 1-100, default 20') },
+    run: (a) => BL.getBaseLaunches(a) },
+  { name: 'get_launch_odds', route: 'GET /api/launch-odds', usd: 0.01,
+    tags: ['solana', 'launches', 'rug-rate', 'survival', 'memecoins', 'exclusive'],
+    desc: 'Use when an agent needs the odds that a Solana launch survives. Returns the share of a launchpad\'s followed pools whose liquidity was removed, collapsed, went inactive or stayed active at 1, 7 and 30 days, with n. Narrow it to a t0 liquidity band, or pass a mint for its pools, t0 snapshot, authorities and outcome labels. Only pools past our ledger\'s traction threshold are followed; an untracked mint answers 422.',
+    schema: { launchpad: z.string().optional().describe('launchpad or DEX as the ledger names it, e.g. pump-fun, pumpswap, meteora-dbc, raydium-launchlab, bags-fm; an unknown name lists them'),
+              t0_liq_usd: z.number().optional().describe('liquidity at discovery in USD: narrows the launchpad odds to that band (0-5k, 5-10k, 10-25k, 25-50k, 50-100k, 100-250k, 250k+)'),
+              mint: z.string().optional().describe('a Solana mint instead of a launchpad: that mint\'s pools, t0 snapshot and outcome labels') },
+    run: (a) => LO.getLaunchOdds(a) },
+  { name: 'get_rwa_yields', route: 'GET /api/rwa-yields', usd: 0.01,
+    tags: ['rwa', 'treasuries', 'yield', 'tokenized-funds', 'money-market', 'defi'],
+    desc: 'Use when an agent needs current yields on tokenized treasuries and money-market funds. Returns the APY, TVL and 7-day TVL change of BUIDL, USDY, OUSG, USYC, TBILL, Invesco USTB and more. Also chains, issuer and as_of per product; NAV, price, premium and pool depth where a source exists, null with the reason where not. From DefiLlama via our RWAYield index, refreshed every 6 hours; stale data answers 503.',
+    schema: { symbol: z.string().optional().describe('one product, e.g. BUIDL, USDY, OUSG; unknown symbols list the covered ones'),
+              category: z.string().optional().describe('treasury, mmf, credit, commodity or equity') },
+    run: (a) => RW.getRwaYields(a) },
 
   // ---- ENTRY TIER: four routes, composed from functions above ----
   // $0.001 until 2026-10-08, now $0.005: the CDP facilitator charges $0.001 per

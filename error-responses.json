@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-08T20:53:45.687Z",
+  "generatedAt": "2026-10-12T05:29:04.808Z",
   "limits": {
     "get": 240,
     "other": 2400,
@@ -39,6 +39,19 @@
       "note": "Retry-After is also set as a response header."
     },
     {
+      "status": 422,
+      "name": "Unprocessable Content",
+      "when": "The input is well formed but names something we hold no data for, such as a mint our launch ledger never saw (/api/launch-odds). Never charged.",
+      "appliesTo": [
+        "GET /api/launch-odds"
+      ],
+      "body": {
+        "tool": "<tool name>",
+        "error": "not_tracked: <reason>",
+        "code": "not_tracked"
+      }
+    },
+    {
       "status": 503,
       "name": "Service Unavailable",
       "when": "The route answers from a precomputed snapshot and that snapshot is past its staleness limit, or no source has data to answer with. Never charged: a status of 400 or more cancels the x402 settlement.",
@@ -52,8 +65,30 @@
     {
       "status": 405,
       "name": "Method Not Allowed",
-      "when": "HEAD on a free /api route. The response has an Allow: GET header and an empty body. HEAD on a paid route answers 402 with the challenge in PAYMENT-REQUIRED and no body.",
-      "body": null
+      "when": "A method other than GET on a paid route (JSON body below), or HEAD on a free /api route (empty body). Both carry Allow: GET. HEAD on a paid route answers 402 with the challenge in PAYMENT-REQUIRED and no body.",
+      "body": {
+        "error": "POST is not supported on /api/<route>: paid routes are GET. GET it unpaid for the 402 challenge.",
+        "allow": "GET"
+      }
+    },
+    {
+      "status": 410,
+      "name": "Gone",
+      "when": "The route was retired. The body names when, what it was and the closest live routes with their prices. Never charged.",
+      "body": {
+        "error": "gone",
+        "route": "/api/<retired route>",
+        "removed": "<date>",
+        "was": "<what it did>",
+        "closest_live": [
+          {
+            "route": "<url>",
+            "tool": "<tool>",
+            "price_usd": 0.02,
+            "what": "<one line>"
+          }
+        ]
+      }
     }
   ],
   "routes": {
@@ -505,6 +540,52 @@
         "body": {
           "tool": "get_base_balance",
           "error": "missing required parameter: address (a 0x… Base address)"
+        }
+      }
+    },
+    "GET /api/honeypot-check": {
+      "requiredInputs": [
+        "token"
+      ],
+      "callerError": {
+        "status": 400,
+        "violated": "required query param token omitted",
+        "body": {
+          "tool": "get_honeypot_check",
+          "error": "missing required parameter: token, a 0x token contract address on Base, e.g. token=0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed"
+        }
+      }
+    },
+    "GET /api/base-launches": {
+      "requiredInputs": [],
+      "callerError": {
+        "status": 400,
+        "violated": "optional query param limit = 0",
+        "body": {
+          "tool": "get_base_launches",
+          "error": "limit must be a number from 1 to 100"
+        }
+      }
+    },
+    "GET /api/launch-odds": {
+      "requiredInputs": [],
+      "callerError": {
+        "status": 400,
+        "violated": "optional query param launchpad = not-a-launchpad",
+        "body": {
+          "tool": "get_launch_odds",
+          "error": "unknown launchpad not-a-launchpad. Followed launchpads (pools): pump-fun (134708), pumpswap (34101), meteora-damm-v2 (16277), meteora-dbc (14603), orca (2893), raydium-launchlab (2834), fluxbeam (1502), bags-fm (1259), stonkfun (776), meteora (753), raydium (664), raydium-clmm (565), moonshot (422), manifest (44), letsbonk-fun (22), pancakeswap-v3-solana (19), hadron (5), memefun (5), printr-v2 (4), defituna (1), humidifi (1)"
+        }
+      }
+    },
+    "GET /api/rwa-yields": {
+      "requiredInputs": [],
+      "callerError": {
+        "status": 400,
+        "violated": "optional query param symbol = not-a-symbol",
+        "body": {
+          "tool": "get_rwa_yields",
+          "error": "unknown symbol not-a-symbol: the index covers BENJI, BUIDL, OUSG, TBILL, USDL, USDM.mountain, USDY, USDY.sol, USTB, USTB.superstate, USYC, bIB01, syrupUSDC"
         }
       }
     },

@@ -33,7 +33,7 @@ const PRICES = {
   'GET /api/liquidation-stats':        { usd: 0.01,  tool: 'get_liquidation_stats',   desc: 'Liquidation stats, 1h and 24h totals for SOL, BTC, ETH, XRP and DOGE: long vs short USD split, biggest single print, and a per-exchange breakdown across Bybit, OKX and Binance.' },
   'GET /api/positioning':              { usd: 0.005, tool: 'get_positioning',        desc: 'Open interest and long/short ratio for SOL and BTC perps: the retail long/short account ratio plus Bybit open interest with 1h and 24h change. For any other USDT perp use /api/open-interest and /api/long-short.' },
   'GET /api/trade-context':            { usd: 0.01,  tool: 'get_trade_context',      desc: 'Crypto trading context in one call: SOL and BTC prices, perp funding rates, Fear & Greed, long/short positioning, open interest and 1h/24h liquidation stats. The whole pre-trade picture, one payment.' },
-  'GET /api/token-risk/:mint':         { usd: 0.01,  tool: 'get_token_risk',         desc: 'Solana token rug check / risk signals for any SPL mint: mint and freeze authority status (revoked is safer), top-1 and top-10 holder concentration, supply, price, and a list of risk flags. Not a honeypot or LP-lock checker.' },
+  'GET /api/token-risk/:mint':         { usd: 0.01,  tool: 'get_token_risk',         desc: 'Solana token rug check / risk signals for any SPL mint: mint and freeze authority status (revoked is safer), top-1 and top-10 holder concentration, supply, price, risk flags and, for mints in our launch ledger, the launchpad, t0 snapshot and 1, 7 and 30-day outcome labels. Not a honeypot or LP-lock checker.' },
 };
 
 Object.assign(PRICES, require('./expansion').PRICES_ADD);
@@ -244,6 +244,12 @@ function buildPaymentLayer() {
           price: `$${p.usd}`,      // SDK converts to USDC units for the network
           network,
           payTo,
+          // The token's name, as every EVM accept already carries ("USD Coin"). Directories
+          // that price a listing from its first accept read extra.name: on agent-tools.cloud
+          // all 9 Solana-first listings with extra {feePayer} only showed no price, the ones
+          // with extra.name "USDC" were priced (measured 2026-10-12). The facilitator adds
+          // feePayer beside it; CDP verify of v2 and v1 still reaches simulation with it.
+          extra: { name: 'USDC' },
         },
         ...EVM.map((r) => ({
           scheme: 'exact',

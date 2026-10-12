@@ -57,7 +57,7 @@ test('mpp shape: classes, both decodings, version, dots, params; never the value
   const sh = (h) => _mppShape({ headers: h });
   const s1 = sh({ authorization: `Payment ${b64(V2)}` });
   assert.match(s1, /^Authorization scheme=Payment len=\d+ prefix=\S{8} base64urljson=(yes|no) base64json=yes x402Version=2 dots=0 params=no$/);
-  assert.match(sh({ 'payment-authorization': `Payment ${MPP_CRED}` }), /^Payment-Authorization scheme=Payment .* base64urljson=yes .* dots=0 params=no$/);
+  assert.match(sh({ 'payment-authorization': `Payment ${MPP_CRED}` }), /^Payment-Authorization scheme=Payment .* base64urljson=yes .* dots=0 params=no method=solana\/charge payload=transaction$/);
   assert.match(sh({ authorization: 'Payment aaa.bbb.ccc' }), /dots=2 params=no/);
   assert.match(sh({ authorization: 'Payment id="x", realm="y"' }), /base64urljson=no base64json=no dots=0 params=yes/);
   assert.match(sh({ authorization: 'Payment !!!%%' }), /prefix=\?\?\?\?\? base64urljson=no base64json=no/);

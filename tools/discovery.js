@@ -54,18 +54,26 @@ const LIMIT_WINDOW_S = ERROR_META.limits.windowSeconds || 60;
  * validation is given no invented example. The MPP note is preserved for the two
  * routes that carry a second payment protocol.
  */
-function openApiErrors(pattern, mpp) {
+function openApiErrors(pattern, mpp, tempo) {
   const out = {};
   const route = ERROR_META.routes[pattern] || {};
   for (const e of ERROR_META.shared || []) {
+    // a shared status that only some routes can answer (422) is documented on those only
+    if (Array.isArray(e.appliesTo) && !e.appliesTo.includes(pattern)) continue;
     const r = { description: e.when + (e.note ? ` ${e.note}` : '') };
-    if (e.status === 402 && mpp && mpp.active && mpp.routes.includes(pattern)) {
+    const solana = mpp && mpp.active && mpp.routes.includes(pattern);
+    const tempoOn = tempo && tempo.active;
+    if (e.status === 402 && (solana || tempoOn)) {
+      const methods = [tempoOn ? 'tempo/charge' : null, solana ? 'solana/charge' : null].filter(Boolean).join(' and ');
       r.description = r.description.replace(
         'PAYMENT-REQUIRED response header',
-        'PAYMENT-REQUIRED response header, and in WWW-Authenticate (MPP solana/charge)',
+        `PAYMENT-REQUIRED response header, and MPP (${methods}) in WWW-Authenticate`,
       );
     }
-    if (e.status === 402) r.headers = { 'PAYMENT-REQUIRED': { description: 'Base64 x402 v2 challenge. The body is the same challenge as x402 v1 (Base and Solana).', schema: { type: 'string' } } };
+    if (e.status === 402) {
+      r.headers = { 'PAYMENT-REQUIRED': { description: 'Base64 x402 v2 challenge. The body is the same challenge as x402 v1 (Base and Solana).', schema: { type: 'string' } } };
+      if (solana || tempoOn) r.headers['WWW-Authenticate'] = { description: 'MPP Payment challenges, one per method and token: tempo/charge (chain 4217, OUSD then USDC.e, pull mode)' + (solana ? ', and solana/charge' : '') + '. PAYMENT-REQUIRED is unchanged by them.', schema: { type: 'string' } };
+    }
     if (e.status === 429 || e.status === 503) r.headers = { 'Retry-After': { description: 'Seconds to wait.', schema: { type: 'integer' } } };
     if (e.status === 405) r.headers = { Allow: { description: 'Always GET.', schema: { type: 'string' } } };
     if (e.status === 400 && route.callerError) {
@@ -193,10 +201,32 @@ function grouped({ PRICES, TAGS }) {
  * USDC mint carried in that challenge -- read off the wire, not assumed.
  */
 const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
-function protocolsFor(pattern, mpp) {
+// MPP tempo/charge on every paid route (mpp/tempo.js): chain 4217, OUSD then USDC.e.
+const TEMPO_TOKENS = [
+  { symbol: 'OUSD', address: '0x20c0000000000000000000006a37da5c996874be' },
+  { symbol: 'USDC.e', address: '0x20c000000000000000000000b9537d11c60e8b50' },
+];
+const baseUnits = (usd) => String(Math.round(Number(usd) * 1e6));
+
+function protocolsFor(pattern, mpp, tempo) {
   const out = [{ x402: {} }];
+  if (tempo && tempo.active) out.push({ mpp: { method: 'tempo', intent: 'charge', currency: TEMPO_TOKENS[0].address } });
   if (mpp && mpp.active && (mpp.routes || []).includes(pattern)) {
     out.push({ mpp: { method: 'solana', intent: 'charge', currency: USDC_MINT } });
+  }
+  return out;
+}
+
+// mpp.dev discovery (mppx discover validate): x-payment-info.offers[], one per MPP method and
+// token, amount in base units. Beside the agentcash/x402scan `protocols` + `price` keys, which
+// mppx's schema ignores; agentcash's ignores `offers`. The 402 challenge stays authoritative.
+function offersFor(pattern, p, mpp, tempo) {
+  const out = [];
+  if (tempo && tempo.active) {
+    for (const t of TEMPO_TOKENS) out.push({ method: 'tempo', intent: 'charge', amount: baseUnits(p.usd), currency: t.address, description: `Tempo mainnet (chain 4217) ${t.symbol}, pull mode` });
+  }
+  if (mpp && mpp.active && (mpp.routes || []).includes(pattern)) {
+    out.push({ method: 'solana', intent: 'charge', amount: baseUnits(p.usd), currency: USDC_MINT, description: 'Solana mainnet USDC' });
   }
   return out;
 }
@@ -207,7 +237,7 @@ const FREE_DESC = {
   get_last_liquidation: 'Free. Last liquidation for SOL, BTC, ETH, XRP and DOGE, delayed by 15 minutes. For real-time data, use /api/liquidations.',
 };
 
-function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp }) {
+function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp, tempo }) {
   const paths = {};
 
   for (const [pattern, p] of Object.entries(PRICES)) {
@@ -243,7 +273,7 @@ function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp }) {
         ...(Object.keys(m.pathParams || {}).length ? { 'x-example-path': m.pathParams } : {}),
         responses: {
           200: { content: { 'application/json': okContent }, description: 'Paid response.' },
-          ...openApiErrors(pattern, mpp),
+          ...openApiErrors(pattern, mpp, tempo),
         },
         summary: summaryFor(p.tool, p.desc),
         tags: ['agentfeed'],
@@ -261,8 +291,9 @@ function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp }) {
         // all 48 routes while the price sat right there in the document.
         // The object form satisfies both: the key is present and names x402.
         'x-payment-info': {
-          protocols: protocolsFor(pattern, mpp),
+          protocols: protocolsFor(pattern, mpp, tempo),
           price: { mode: 'fixed', currency: 'USD', amount: String(p.usd) },
+          ...(offersFor(pattern, p, mpp, tempo).length ? { offers: offersFor(pattern, p, mpp, tempo) } : {}),
         },
       },
     };
@@ -326,6 +357,11 @@ function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp }) {
 
   return {
     openapi: '3.1.0',
+    // mpp.dev discovery: service categories and docs at the document root.
+    'x-service-info': {
+      categories: ['data', 'blockchain'],
+      docs: { apiReference: `${ORIGIN}/openapi.json`, homepage: ORIGIN, llms: `${ORIGIN}/llms.txt` },
+    },
     info: {
       title: 'AgentFeed',
       version: '1.0.0',
@@ -356,8 +392,18 @@ function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp }) {
 // x402scan's spec lists resources as CONCRETE URLs, not templates, so a
 // path-parameter route is published with the same fixture value its Bazaar
 // input example advertises -- one real, invocable URL per route.
+// Whole sentences up to max characters (one sentence cut at a word if it alone is longer).
+function firstSentences(text, max) {
+  const t = String(text || '').trim();
+  if (t.length <= max) return t;
+  let out = '';
+  for (const s of t.split(/(?<=\.)\s+/)) { if ((out ? out.length + 1 : 0) + s.length > max) break; out = out ? `${out} ${s}` : s; }
+  return out || t.slice(0, max).replace(/\s+\S*$/, '');
+}
+
 function buildWellKnown({ PRICES, META }) {
   const resources = [];
+  const catalog = [];
   const skipped = [];
   for (const pattern of Object.keys(PRICES)) {
     let p = pattern.replace('GET ', '');
@@ -373,6 +419,11 @@ function buildWellKnown({ PRICES, META }) {
     // metadata is missing, in which case the boot log has already said so.
     if (/\/:[A-Za-z0-9_]+/.test(p)) { skipped.push(p); continue; }
     resources.push(ORIGIN + p);
+    const pr = PRICES[pattern];
+    // the catalogue URL carries the route's published example query too, so a router
+    // that buys it gets an answer rather than a 400 for a missing required input
+    const qs = new URLSearchParams(Object.entries((m && m.input) || {}).map(([k, v]) => [k, String(v)])).toString();
+    catalog.push({ url: ORIGIN + p + (qs ? `?${qs}` : ''), method: 'GET', name: pr.tool, description: firstSentences(pr.desc, 400), price_usd: pr.usd });
   }
   if (skipped.length) {
     console.warn(`[discovery] ${skipped.length} route(s) left out of /.well-known/x402, no path-parameter example: ${skipped.join(', ')}`);
@@ -382,9 +433,15 @@ function buildWellKnown({ PRICES, META }) {
   // paywall, one rate limiter -- so it is published once here rather than
   // repeated per resource. Per-route caller-error examples live in openapi.json,
   // which has the per-operation granularity for them.
+  // `resourceCatalog` repeats the same concrete URLs with their price, name and
+  // description. Indexers that read only the flat list learn the price from each
+  // 402; Agent402 reads this catalogue and otherwise listed the path-parameter
+  // examples (/api/token-risk/DezX...) as price_unknown, which its router never
+  // buys (R3, 2026-10-11). Same paths, plus each route's example query.
   return {
     version: 1,
     resources,
+    resourceCatalog: catalog,
     instructions: `${ORIGIN}/llms.txt`,
     errors: ERROR_META.shared || [],
     limits: ERROR_META.limits || {},
