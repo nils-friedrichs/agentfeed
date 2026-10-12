@@ -324,7 +324,7 @@ if (mppOn) {
   mppReady = mpp.init({ db, prices: PRICES, routes: MPP_ROUTES });
   try {
     tempo = require('./mpp/tempo');
-    tempoReady = tempo.init({ prices: PRICES, recipient: process.env.PAY_TO_EVM, secretKey: process.env.MPP_SECRET_KEY, realm: process.env.MPP_REALM || 'x402.ochinimus.app' })
+    tempoReady = tempo.init({ prices: PRICES, recipient: process.env.PAY_TO_EVM, secretKey: process.env.MPP_SECRET_KEY, realm: process.env.MPP_REALM || 'x402.ochinimus.app', db })
       .then(() => { _docs = null; }) // the catalog documents tempo once it is up
       .catch((e) => { console.error('[mpp] tempo DISABLED:', e.message); tempo = null; _docs = null; });
   } catch (e) { console.error('[mpp] tempo DISABLED (load):', e.message); tempo = null; }

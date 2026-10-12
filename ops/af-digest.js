@@ -7,7 +7,9 @@
 //                                           09:00 hour Europe/Chisinau (DST-proof: the box is UTC)
 //   node ops/af-digest.js --digest --force  send it now (add --test to mark it as a test)
 //   node ops/af-digest.js --alert           every 5 min: one IP or payer refused >= 5 times in
-//                                           the last hour -> one alert, then quiet for that key 1 h
+//                                           the last hour -> one alert, then quiet for that key 1 h;
+//                                           and a refused tempo payment (row with a tx hash, last
+//                                           24 h) whose transaction landed anyway -> one alert per row
 //   --dry                                   print what would be sent; send nothing, write no state
 //
 // crons (root), under flock, no PM2 process:
@@ -192,6 +194,53 @@ async function digest(db) {
   }
 }
 
+// ---- late tempo landings. mpp/tempo.js refuses a tempo payment whose transaction it cannot
+// prove landed within 15 s and logs the hash in tx_sig. mppx signs with validBefore = now + 25 s,
+// so the transaction's fate is final a minute later: landed (buyer paid, got no data: alert once,
+// Sergiu refunds by hand from the treasury, whose key is never on the box) or never.
+const TEMPO_RPCS = ['https://rpc.tempo.xyz', 'https://rpc.mainnet.tempo.xyz'];
+const TEMPO_FINAL_AFTER = 120e3;
+const TEMPO_TOKENS = { '0x20c0000000000000000000006a37da5c996874be': 'OUSD', '0x20c000000000000000000000b9537d11c60e8b50': 'USDC.e' };
+const TOPIC_TRANSFER = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+const FEE_MANAGER = '0xfeec000000000000000000000000000000000000';
+async function tempoReceipt(hash) {
+  for (const url of TEMPO_RPCS) {
+    try {
+      const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getTransactionReceipt', params: [hash] }), signal: AbortSignal.timeout(8000) });
+      if (!r.ok) continue;
+      const j = await r.json();
+      if (j.error) continue;
+      return j.result || null; // null: not mined
+    } catch { /* next RPC */ }
+  }
+  return undefined; // nobody answered: look again next run
+}
+async function lateTempo(db, state, now) {
+  state.lateTempo = state.lateTempo || {};
+  const rows = db.prepare("SELECT id, ts, tool, payer_wallet, ip, tx_sig FROM calls WHERE status='payment_refused' AND tx_sig LIKE '0x%' AND error_msg LIKE '%tempo%' AND ts >= ?").all(now - 86400e3);
+  for (const r of rows) {
+    const key = String(r.tx_sig).toLowerCase();
+    if (state.lateTempo[key]) continue;
+    const rc = await tempoReceipt(key);
+    if (rc === undefined) continue;
+    if (rc === null) { if (now - r.ts > TEMPO_FINAL_AFTER) state.lateTempo[key] = { at: now, landed: false }; continue; }
+    if (rc.status !== '0x1') { state.lateTempo[key] = { at: now, landed: 'reverted' }; continue; }
+    const moved = (rc.logs || []).filter((l) => l.topics && l.topics[0] === TOPIC_TRANSFER && `0x${l.topics[2].slice(26)}`.toLowerCase() !== FEE_MANAGER)
+      .map((l) => `${Number(BigInt(l.data)) / 1e6} ${TEMPO_TOKENS[String(l.address).toLowerCase()] || l.address} to 0x${l.topics[2].slice(26)}`);
+    const text = [
+      'AgentFeed: a REFUSED tempo payment landed on-chain (the buyer paid, got no data)',
+      `route: ${r.tool} (calls row ${r.id}, ${new Date(r.ts).toISOString()})`,
+      `payer: ${r.payer_wallet || '?'}${isOwn(r) ? ' (own)' : ''}`,
+      `moved: ${moved.join('; ') || 'no transfer found'}`,
+      `tx: ${key}`,
+      'refund by hand from the treasury',
+    ].join('\n');
+    if (await send(text)) { state.lateTempo[key] = { at: now, landed: true }; console.log(`${new Date().toISOString()} late tempo landing alert sent for ${key.slice(0, 12)}`); }
+  }
+  for (const k of Object.keys(state.lateTempo)) if (now - state.lateTempo[k].at > 7 * 86400e3) delete state.lateTempo[k];
+}
+
 async function alert(db) {
   const now = Date.now();
   const rows = db.prepare("SELECT ts, tool, payer_wallet, ip, user_agent, error_msg FROM calls WHERE status='payment_refused' AND ts >= ?").all(now - BURST_WINDOW);
@@ -212,6 +261,7 @@ async function alert(db) {
     if (await send(text)) { state.alerted[k] = now; console.log(`${new Date().toISOString()} alert sent for ${k.slice(0, 12)} (${rs.length})`); }
   }
   for (const k of Object.keys(state.alerted)) if (now - state.alerted[k] > 7 * 86400e3) delete state.alerted[k];
+  await lateTempo(db, state, now);
   saveState(state);
 }
 

@@ -55,13 +55,17 @@ if funded "$OUSD_BAL"; then CUR=$OUSD; elif funded "$USDCE_BAL"; then CUR=$USDCE
 if [ "${ONLY:-tempo}" != "tempo" ]; then :
 elif [ "$TEMPO_GUARD" != "1" ]; then TODO+=("tempo: 402 guard failed, not paid")
 elif [ -n "$CUR" ] || [ "${FORCE_TRY:-0}" = "1" ]; then
+  # the block before the call: a transfer is only ever looked for from here on
+  FROM_BLOCK=$(curl -s -m 15 -X POST -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' https://rpc.tempo.xyz | sed -n 's/.*"result":"\(0x[0-9a-fA-F]*\)".*/\1/p')
   OUT=$(MPPX_PRIVATE_KEY=$(cat "$KEY") timeout 120 ./mpp/node_modules/.bin/mppx --protocol mpp -i ${CUR:+--currency $CUR} "$URL" 2>&1)
-  if echo "$OUT" | command grep -qi '^payment-receipt:'; then DID+=("tempo: paid \$0.001 on $URL ($(echo "$OUT" | command grep -i '^HTTP/' | head -1 | tr -d '\r'))")
+  # mppx -i prints the 402 challenge's status line first and the paid response's last
+  if echo "$OUT" | command grep -qi '^payment-receipt:'; then DID+=("tempo: paid \$0.001 on $URL ($(echo "$OUT" | command grep -i '^HTTP/' | tail -1 | tr -d '\r'))")
     echo "$OUT" | command grep -i '^payment-receipt:' | cut -c1-200
   else TODO+=("tempo: call failed: $(echo "$OUT" | command grep -m1 -i 'message\|error' | cut -c1-200)")
     # A refused call can still have moved funds (12 Oct: rpc.tempo.xyz answered 502 to the server's
-    # broadcast after the transfer had landed). Look for this payer's transfer to the treasury.
-    LANDED=$(ADDR="$ADDR" node --input-type=module -e "const R='https://rpc.tempo.xyz';const c=(m,p)=>fetch(R,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:m,params:p})}).then(r=>r.json());const h=parseInt((await c('eth_blockNumber',[])).result,16);const pad=(a)=>'0x'+a.slice(2).toLowerCase().padStart(64,'0');const r=await c('eth_getLogs',[{fromBlock:'0x'+(h-600).toString(16),toBlock:'0x'+h.toString(16),topics:['0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',pad(process.env.ADDR),pad('0x22DB3A9686EE5261e7Bf3ed4f91277232E8076e6')]}]);console.log((r.result||[]).map((l)=>l.transactionHash).join(' '))" 2>/dev/null)
+    # broadcast after the transfer had landed). Look for this payer's transfer to the treasury,
+    # only in blocks from just before this call, so an older payment is never reported.
+    LANDED=$([ -n "$FROM_BLOCK" ] && ADDR="$ADDR" FROM="$FROM_BLOCK" node --input-type=module -e "const R='https://rpc.tempo.xyz';const c=(m,p)=>fetch(R,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:m,params:p})}).then(r=>r.json());const pad=(a)=>'0x'+a.slice(2).toLowerCase().padStart(64,'0');const r=await c('eth_getLogs',[{fromBlock:process.env.FROM,toBlock:'latest',topics:['0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',pad(process.env.ADDR),pad('0x22DB3A9686EE5261e7Bf3ed4f91277232E8076e6')]}]);console.log((r.result||[]).map((l)=>l.transactionHash).join(' '))" 2>/dev/null)
     [ -n "$LANDED" ] && TODO+=("tempo: BUT the transfer to the treasury landed on-chain (paid, data withheld): $LANDED")
   fi
 else TODO+=("tempo: unfunded (needs >= 0.003 OUSD or USDC.e at $ADDR)"); fi
