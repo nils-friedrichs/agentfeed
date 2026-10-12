@@ -18,7 +18,7 @@
 const Database = require('better-sqlite3');
 const { cached } = require('../lib/cache');
 const { _normSym: normSym, getFundingCross, getOpenInterest, getLongShort, getFundingExtremes } = require('./derivs');
-const { getPrice, KRAKEN_PAIR } = require('./prices');
+const { getPrice, SYMBOLS } = require('./prices');
 
 const DB_PATH = process.env.LIQ_DB || '/opt/agentfeed/liquidations.db';
 let db = null;
@@ -149,12 +149,16 @@ async function getFundingPulse() {
       .sort((a, b) => Math.abs(b.annualized_pct) - Math.abs(a.annualized_pct))
       .slice(0, 5);
     if (!rows.length) return { decline: 'the funding screener returned no rows for the Bybit USDT perp universe', universe_size: x.universe_size ?? null };
+    const h = x.hyperliquid && x.hyperliquid.most_positive ? [...x.hyperliquid.most_positive, ...x.hyperliquid.most_negative]
+      .map((r) => ({ coin: r.coin, venue: 'hyperliquid', funding_rate_8h: r.funding_rate_8h, funding_rate_raw: r.funding_rate_raw, funding_interval_hours: 1, annualized_pct: r.annualized_pct, oi_usd: r.oi_usd, price_24h_pct: r.change_24h_pct }))
+      .sort((a, b) => Math.abs(b.annualized_pct) - Math.abs(a.annualized_pct)).slice(0, 5) : null;
     return {
       extremes: rows,
+      hyperliquid_extremes: h || { available: false, reason: 'Hyperliquid read failed' },
       universe_size: x.universe_size,
       min_turnover_usd: x.min_turnover_usd,
-      venue_scope: ['bybit'],
-      note: 'Ranked by absolute annualised funding across every Bybit USDT perp above the liquidity floor. For one symbol across Bybit, OKX and Hyperliquid use /api/funding-cross.',
+      venue_scope: ['bybit', 'hyperliquid'],
+      note: 'Ranked by absolute annualised funding across every Bybit USDT perp above the liquidity floor, and separately across every Hyperliquid perp with that much 24h volume. For one symbol across Bybit, OKX and Hyperliquid use /api/funding-cross.',
       ...(x.unranked_interval_unknown ? { unranked_interval_unknown: x.unranked_interval_unknown } : {}),
       source: x.source,
     };
@@ -162,11 +166,10 @@ async function getFundingPulse() {
 }
 
 // ---- d. GET /api/price?symbol= ------------------------------------------
-// The multi-source price module carries one Coinbase product and one
-// Kraken pair per symbol, so its real coverage is exactly those keys. Measured,
-// not assumed: SUPPORTED is read from the module's own table at require time,
-// so adding a feed there extends this route with no edit here.
-const SUPPORTED = Object.keys(KRAKEN_PAIR);
+// The price module reads on-chain pools per symbol (tools/dexspot.js), so its
+// coverage is exactly the symbols it has pools for. SUPPORTED is read from the
+// module's own table at require time, so adding pools there extends this route.
+const SUPPORTED = SYMBOLS;
 async function getSpot(p = {}) {
   const raw = String(p.symbol || 'SOL').trim().toUpperCase();
   const sym = raw.replace(/USDT?$/, '') || raw;

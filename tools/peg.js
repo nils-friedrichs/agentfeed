@@ -1,9 +1,12 @@
 // tools/peg.js — tokenized-equity peg intelligence from our own collector.
 //
-// Source: the pegwatch collector DB (read-only, WAL-safe across processes).
-// Every 5 minutes it samples the on-chain DEX price of tokenized US equities
-// on Solana and compares it to the underlying's last real trade from a US
-// market-data feed.
+// Sources. Every 5 minutes the on-chain DEX price of tokenized US equities on
+// Solana is compared with the underlying's last real trade from a US
+// market-data feed. Since R5 (12 Oct 2026) the token side is read from chain
+// state by our own cron collector (tools/pegonchain.js, peg-onchain.db); before
+// its first row the tape is the pegwatch collector's (read-only), whose token
+// side came from DexScreener. Window statistics join the two at that cutover;
+// the latest token price and liquidity are only ever ours.
 //
 // HONEST SCOPE — read this before wording anything customer-facing:
 //   * Outside US market hours there is no live underlying quote. The reference
@@ -20,6 +23,7 @@ const fs = require('node:fs');
 const Database = require('better-sqlite3');
 
 const DB_PATH = process.env.PEGWATCH_DB || '/opt/pegwatch/pegwatch.db';
+const OC = require('./pegonchain');
 
 // A symbol needs >2% distinct on-chain prices over the window to count as
 // live. Real but illiquid names sit around 11-15%; a dead pool sits at 0.1%.
@@ -49,11 +53,19 @@ function pctl(sorted, p) {
   return sorted[i];
 }
 
-function freshness(symbol, since) {
-  return db().prepare(
-    `SELECT COUNT(*) n, COUNT(DISTINCT onchain) uniq FROM ticks WHERE symbol = ? AND ts >= ?`
-  ).get(symbol, since);
+// the tape for one symbol since `since`: pegwatch rows before our cutover, ours from it
+function tape(symbol, since, cols) {
+  const cut = OC.cutover();
+  const old = db().prepare(`SELECT ${cols} FROM ticks WHERE symbol = ? AND ts >= ? AND ts < ? ORDER BY ts ASC`).all(symbol, since, cut == null ? Number.MAX_SAFE_INTEGER : cut);
+  return cut == null ? old : old.concat(OC.rows(symbol, Math.max(since, cut), cols));
 }
+
+function freshness(symbol, since) {
+  const rows = tape(symbol, since, 'onchain');
+  return { n: rows.length, uniq: new Set(rows.map((r) => r.onchain)).size };
+}
+
+const unavailable = (msg) => Object.assign(new Error(msg), { status: 503 });
 
 function isDead(f) {
   return !!(f && f.n >= FRESH_MIN_TICKS && (100 * f.uniq / f.n) < FRESH_MIN_PCT);
@@ -93,7 +105,8 @@ function statsOf(devs) {
 
 const REFERENCE_NOTE =
   'Deviation is measured against the underlying\'s last real trade. Outside US market ' +
-  'hours that is the last print before the close, not a live quote.';
+  'hours that is the last print before the close, not a live quote. Token prices are read ' +
+  'on-chain by our collector since 2026-10-12; earlier samples come from the pegwatch collector.';
 
 // ---- get_peg_deviation -----------------------------------------------------
 function getPegDeviation(args = {}) {
@@ -108,15 +121,12 @@ function getPegDeviation(args = {}) {
       window_hours: hours };
   }
 
-  const rows = db().prepare(
-    `SELECT dev_bps, session, ts FROM ticks WHERE symbol = ? AND ts >= ? ORDER BY ts ASC`
-  ).all(symbol, since);
+  const rows = tape(symbol, since, 'dev_bps, session, ts');
   if (!rows.length) return { symbol, status: 'no_data', window_hours: hours };
 
-  const latest = db().prepare(
-    `SELECT onchain, ref, dev_bps, liq_usd, ts, session, dex FROM ticks
-     WHERE symbol = ? ORDER BY ts DESC LIMIT 1`
-  ).get(symbol);
+  // the latest token price is only ever our own chain read; none fresh is an outage, not billed
+  const latest = OC.latest(symbol);
+  if (!latest || latest.dev_bps == null) throw unavailable(`no fresh on-chain peg sample for ${symbol} (our collector writes every 5 minutes). Not charged.`);
 
   const offhours = rows.filter((r) => r.session !== 'open').map((r) => r.dev_bps);
   const open = rows.filter((r) => r.session === 'open').map((r) => r.dev_bps);
@@ -135,6 +145,8 @@ function getPegDeviation(args = {}) {
       direction: latest.dev_bps > 0 ? 'premium' : 'discount',
       liquidity_usd: Math.round(latest.liq_usd),
       dex: latest.dex,
+      pool: latest.pool,
+      onchain_source: 'pool price and both vaults read from Solana chain state by our collector',
     },
     window: statsOf(rows.map((r) => r.dev_bps)),
     offhours: statsOf(offhours),
@@ -156,9 +168,7 @@ function getPegSessions(args = {}) {
       window_days: days };
   }
 
-  const rows = db().prepare(
-    `SELECT session, dev_bps, liq_usd FROM ticks WHERE symbol = ? AND ts >= ?`
-  ).all(symbol, since);
+  const rows = tape(symbol, since, 'session, dev_bps, liq_usd');
   if (!rows.length) return { symbol, status: 'no_data', window_days: days };
 
   const order = ['open', 'premarket', 'afterhours', 'overnight', 'weekend'];
@@ -201,9 +211,7 @@ function getPegUniverse(args = {}) {
     const f = freshness(symbol, since);
     if (isDead(f)) { excluded.push({ symbol, reason: 'stale_pool' }); continue; }
 
-    const rows = db().prepare(
-      `SELECT dev_bps, session, liq_usd FROM ticks WHERE symbol = ? AND ts >= ?`
-    ).all(symbol, since);
+    const rows = tape(symbol, since, 'dev_bps, session, liq_usd');
     if (!rows.length) continue;
 
     const liq = rows.map((r) => r.liq_usd).sort((a, b) => a - b);

@@ -16,10 +16,10 @@
      "tool": "get_sol_price",
      "data": {
       "symbol": "SOL",
-      "price": 112.395,
+      "price": 108.5576,
       "confidence": null,
-      "publish_time": null,
-      "source": "coinbase"
+      "publish_time": 1791835893,
+      "source": "on-chain DEX mid, median of orca-whirlpool SOL/USDC on solana; raydium-clmm SOL/USDC on solana"
      },
      "paid": true
     },
@@ -39,7 +39,9 @@
          "type": "number"
         },
         "confidence": {},
-        "publish_time": {},
+        "publish_time": {
+         "type": "number"
+        },
         "source": {
          "type": "string"
         }
@@ -65,10 +67,10 @@
      "tool": "get_btc_price",
      "data": {
       "symbol": "BTC",
-      "price": 83917.88,
+      "price": 82941.39,
       "confidence": null,
-      "publish_time": null,
-      "source": "coinbase"
+      "publish_time": 1791835893,
+      "source": "on-chain DEX mid, median of uniswap-v3 cbBTC/USDC 0.05% on base; uniswap-v3 WBTC/WETH 0.05% x WETH/USDC 0.05% on ethereum; uniswap-v3 cbBTC/WETH 0.05% x WETH/USDC 0.05% on base"
      },
      "paid": true
     },
@@ -88,7 +90,9 @@
          "type": "number"
         },
         "confidence": {},
-        "publish_time": {},
+        "publish_time": {
+         "type": "number"
+        },
         "source": {
          "type": "string"
         }
@@ -131,12 +135,12 @@
         "mark_price": 2649.08
        },
        "okx": {
-        "funding_rate_raw": -0.0000219362088511,
-        "funding_interval_hours": 8,
-        "funding_rate_8h": -0.0000219362088511,
-        "annualized_pct": -2.4,
-        "next_funding_time": 1790611200000,
-        "mark_price": 2648.8
+        "funding_rate_raw": null,
+        "funding_interval_hours": null,
+        "funding_rate_8h": null,
+        "annualized_pct": null,
+        "next_funding_time": null,
+        "mark_price": null
        },
        "hyperliquid": {
         "funding_rate_raw": 0.0000125,
@@ -196,17 +200,17 @@
      "data": {
       "sol": {
        "symbol": "SOL",
-       "price": 121.35,
+       "price": 108.5576,
        "confidence": null,
-       "publish_time": null,
-       "source": "coinbase"
+       "publish_time": 1791835893,
+       "source": "on-chain DEX mid, median of orca-whirlpool SOL/USDC on solana; raydium-clmm SOL/USDC on solana"
       },
       "btc": {
        "symbol": "BTC",
-       "price": 83868.13,
+       "price": 82941.39,
        "confidence": null,
-       "publish_time": null,
-       "source": "coinbase"
+       "publish_time": 1791835893,
+       "source": "on-chain DEX mid, median of uniswap-v3 cbBTC/USDC 0.05% on base; uniswap-v3 WBTC/WETH 0.05% x WETH/USDC 0.05% on ethereum; uniswap-v3 cbBTC/WETH 0.05% x WETH/USDC 0.05% on base"
       },
       "funding": {
        "sol": {
@@ -214,8 +218,8 @@
         "funding_rate_hourly": 0.0000125,
         "funding_rate_8h_equiv": 0.0001,
         "funding_rate_pct_hourly": 0.00125,
-        "mark_price": 121.42,
-        "open_interest": 6103405.560000007,
+        "mark_price": 108.64,
+        "open_interest": 6099535.419999999,
         "source": "hyperliquid"
        },
        "btc": {
@@ -223,16 +227,17 @@
         "funding_rate_hourly": 0.0000125,
         "funding_rate_8h_equiv": 0.0001,
         "funding_rate_pct_hourly": 0.00125,
-        "mark_price": 83875,
-        "open_interest": 39511.1646,
+        "mark_price": 83010,
+        "open_interest": 38501.25576,
         "source": "hyperliquid"
        }
       },
       "fear_greed": {
-       "value": 71,
+       "value": 69,
        "classification": "Greed",
-       "timestamp": 1790294400,
-       "source": "alternative.me"
+       "timestamp": 1791763200,
+       "source": "alternative.me",
+       "attribution": "Fear & Greed Index by alternative.me, https://alternative.me/crypto/fear-and-greed-index/"
       }
      },
      "paid": true
@@ -379,12 +384,17 @@
       "mint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
       "name": "Bonk",
       "symbol": "Bonk",
-      "interface": "FungibleToken",
+      "uri": "https://arweave.net/QPC6FYdUn-3V8ytFNuoCS85S2tHAuiDblh6u3CIZLsw",
+      "program": "spl-token",
       "decimals": 5,
-      "supply": 8799438384760911000,
-      "price_usd": 0.0000036881577,
+      "supply": 87994359450649.22,
+      "supply_raw": "8799435945064921657",
+      "mint_authority": null,
+      "freeze_authority": null,
       "mutable": true,
-      "source": "helius-das"
+      "extensions": [],
+      "metadata_source": "metaplex token metadata account",
+      "source": "Solana RPC: the mint account and its metadata account"
      },
      "paid": true
     },
@@ -406,7 +416,10 @@
         "symbol": {
          "type": "string"
         },
-        "interface": {
+        "uri": {
+         "type": "string"
+        },
+        "program": {
          "type": "string"
         },
         "decimals": {
@@ -415,11 +428,19 @@
         "supply": {
          "type": "number"
         },
-        "price_usd": {
-         "type": "number"
+        "supply_raw": {
+         "type": "string"
         },
+        "mint_authority": {},
+        "freeze_authority": {},
         "mutable": {
          "type": "boolean"
+        },
+        "extensions": {
+         "type": "array"
+        },
+        "metadata_source": {
+         "type": "string"
         },
         "source": {
          "type": "string"
@@ -477,31 +498,31 @@
       "count": 25,
       "liquidations": [
        {
-        "ts": 1790355163131,
+        "ts": null,
         "symbol": "SOLUSDT",
         "exchange": "binance",
         "event": "short_liquidated",
-        "size": 4.44,
-        "price": 121.37,
-        "usd": 538.88
+        "size": null,
+        "price": null,
+        "usd": null
        },
        {
-        "ts": 1790354963088,
+        "ts": null,
         "symbol": "SOLUSDT",
         "exchange": "okx",
         "event": "long_liquidated",
-        "size": 23.46,
-        "price": 120.62,
-        "usd": 2829.75
+        "size": null,
+        "price": null,
+        "usd": null
        },
        {
-        "ts": 1790354961156,
+        "ts": null,
         "symbol": "SOLUSDT",
         "exchange": "binance",
         "event": "long_liquidated",
-        "size": 2.6,
-        "price": 120.65,
-        "usd": 313.69
+        "size": null,
+        "price": null,
+        "usd": null
        }
       ]
      },
@@ -879,18 +900,18 @@
           "biggest_print_usd": 67330.17
          },
          "okx": {
-          "events": 85,
-          "total_usd": 611411.23,
-          "longs_liquidated_usd": 583604.52,
-          "shorts_liquidated_usd": 27806.71,
-          "biggest_print_usd": 132626.52
+          "events": null,
+          "total_usd": null,
+          "longs_liquidated_usd": null,
+          "shorts_liquidated_usd": null,
+          "biggest_print_usd": null
          },
          "binance": {
-          "events": 143,
-          "total_usd": 5139288.24,
-          "longs_liquidated_usd": 5002462.6,
-          "shorts_liquidated_usd": 136825.64,
-          "biggest_print_usd": 565140.68
+          "events": null,
+          "total_usd": null,
+          "longs_liquidated_usd": null,
+          "shorts_liquidated_usd": null,
+          "biggest_print_usd": null
          }
         }
        },
@@ -902,18 +923,18 @@
         "biggest_print_usd": 1858611.82,
         "by_exchange": {
          "okx": {
-          "events": 566,
-          "total_usd": 3740852.51,
-          "longs_liquidated_usd": 3458924.73,
-          "shorts_liquidated_usd": 281927.78,
-          "biggest_print_usd": 382358.02
+          "events": null,
+          "total_usd": null,
+          "longs_liquidated_usd": null,
+          "shorts_liquidated_usd": null,
+          "biggest_print_usd": null
          },
          "binance": {
-          "events": 911,
-          "total_usd": 24296622.41,
-          "longs_liquidated_usd": 23797984.96,
-          "shorts_liquidated_usd": 498637.46,
-          "biggest_print_usd": 1858611.82
+          "events": null,
+          "total_usd": null,
+          "longs_liquidated_usd": null,
+          "shorts_liquidated_usd": null,
+          "biggest_print_usd": null
          },
          "bybit": {
           "events": 1683,
@@ -974,30 +995,42 @@
       "period": "1h",
       "sol": {
        "long_short_ratio": {
-        "long_pct": 68.86,
-        "short_pct": 31.14,
-        "long_pct_prev_hour": 68.74,
-        "ts": 1790352000000
+        "long_pct": 74.53,
+        "short_pct": 25.47,
+        "long_pct_prev_hour": 74.21,
+        "ts": 1791835200000
        },
        "open_interest": {
-        "base": 6478924.1,
-        "usd": 809589831,
-        "change_1h_pct": -1.3,
-        "change_24h_pct": 9.93
+        "base": 6224538.8,
+        "usd": 676111281,
+        "change_1h_pct": -1.4,
+        "change_24h_pct": -2.62
+       },
+       "hyperliquid_open_interest": {
+        "coin": "SOL",
+        "oi_base": 6099536.119999999,
+        "oi_usd": 662653604,
+        "source": "Hyperliquid info API (public chain state)"
        }
       },
       "btc": {
        "long_short_ratio": {
-        "long_pct": 57.02,
-        "short_pct": 42.98,
-        "long_pct_prev_hour": 57,
-        "ts": 1790352000000
+        "long_pct": 61.06,
+        "short_pct": 38.94,
+        "long_pct_prev_hour": 60.75,
+        "ts": 1791835200000
        },
        "open_interest": {
-        "base": 58663.035,
-        "usd": 4907625052,
-        "change_1h_pct": 0.19,
-        "change_24h_pct": -1.31
+        "base": 57499.472,
+        "usd": 4761894854,
+        "change_1h_pct": -0.98,
+        "change_24h_pct": 4.18
+       },
+       "hyperliquid_open_interest": {
+        "coin": "BTC",
+        "oi_base": 38501.21236,
+        "oi_usd": 3195985638,
+        "source": "Hyperliquid info API (public chain state)"
        }
       }
      },
@@ -1045,21 +1078,21 @@
     "example": {
      "tool": "get_trade_context",
      "data": {
-      "ts": 1791787381828,
+      "ts": 1791835895174,
       "prices": {
        "sol": {
         "symbol": "SOL",
-        "price": 112.395,
+        "price": 108.5576,
         "confidence": null,
-        "publish_time": null,
-        "source": "coinbase"
+        "publish_time": 1791835893,
+        "source": "on-chain DEX mid, me…"
        },
        "btc": {
         "symbol": "BTC",
-        "price": 83917.88,
+        "price": 82941.39,
         "confidence": null,
-        "publish_time": null,
-        "source": "coinbase"
+        "publish_time": 1791835893,
+        "source": "on-chain DEX mid, me…"
        }
       },
       "funding": {
@@ -1068,8 +1101,8 @@
         "funding_rate_hourly": 0.0000125,
         "funding_rate_8h_equiv": 0.0001,
         "funding_rate_pct_hourly": 0.00125,
-        "mark_price": 112.52,
-        "open_interest": 5888328.98,
+        "mark_price": 108.64,
+        "open_interest": 6099535.419999999,
         "source": "hyperliquid"
        },
        "btc": {
@@ -1077,8 +1110,8 @@
         "funding_rate_hourly": 0.0000125,
         "funding_rate_8h_equiv": 0.0001,
         "funding_rate_pct_hourly": 0.00125,
-        "mark_price": 83974,
-        "open_interest": 38213.21416,
+        "mark_price": 83010,
+        "open_interest": 38501.25576,
         "source": "hyperliquid"
        }
       },
@@ -1094,30 +1127,42 @@
        "period": "1h",
        "sol": {
         "long_short_ratio": {
-         "long_pct": 74.48,
-         "short_pct": 25.52,
-         "long_pct_prev_hour": 74.61,
-         "ts": 1791784800000
+         "long_pct": 74.53,
+         "short_pct": 25.47,
+         "long_pct_prev_hour": 74.21,
+         "ts": 1791835200000
         },
         "open_interest": {
-         "base": 6195716.7,
-         "usd": 692170554,
-         "change_1h_pct": -0.48,
-         "change_24h_pct": -1.95
+         "base": 6224538.8,
+         "usd": 676111281,
+         "change_1h_pct": -1.4,
+         "change_24h_pct": -2.62
+        },
+        "hyperliquid_open_interest": {
+         "coin": "SOL",
+         "oi_base": 6099536.119999999,
+         "oi_usd": 662653604,
+         "source": "Hyperliquid info API…"
         }
        },
        "btc": {
         "long_short_ratio": {
-         "long_pct": 61.75,
-         "short_pct": 38.25,
-         "long_pct_prev_hour": 61.77,
-         "ts": 1791784800000
+         "long_pct": 61.06,
+         "short_pct": 38.94,
+         "long_pct_prev_hour": 60.75,
+         "ts": 1791835200000
         },
         "open_interest": {
-         "base": 55292.67,
-         "usd": 4652213744,
-         "change_1h_pct": -0.12,
-         "change_24h_pct": -1.3
+         "base": 57499.472,
+         "usd": 4761894854,
+         "change_1h_pct": -0.98,
+         "change_24h_pct": 4.18
+        },
+        "hyperliquid_open_interest": {
+         "coin": "BTC",
+         "oi_base": 38501.21236,
+         "oi_usd": 3195985638,
+         "source": "Hyperliquid info API…"
         }
        }
       },
@@ -1131,62 +1176,62 @@
        "collecting_since": 1783528952067,
        "sol": {
         "1h": {
-         "events": 19,
-         "total_usd": 130297.99,
-         "longs_liquidated_usd": 129465.78,
-         "shorts_liquidated_usd": 832.21,
-         "biggest_print_usd": 83839.6,
+         "events": 43,
+         "total_usd": 233312.07,
+         "longs_liquidated_usd": 6717.74,
+         "shorts_liquidated_usd": 226594.34,
+         "biggest_print_usd": 109013.03,
          "by_exchange": {
           "binance": {
-           "events": 13,
-           "total_usd": 105878.9,
-           "longs_liquidated_usd": 105046.69,
-           "shorts_liquidated_usd": 832.21,
-           "biggest_print_usd": 83839.6
+           "events": null,
+           "total_usd": null,
+           "longs_liquidated_usd": null,
+           "shorts_liquidated_usd": null,
+           "biggest_print_usd": null
           },
           "bybit": {
-           "events": 3,
-           "total_usd": 20818.01,
-           "longs_liquidated_usd": 20818.01,
-           "shorts_liquidated_usd": 0,
-           "biggest_print_usd": 18785.76
+           "events": 10,
+           "total_usd": 9473.2,
+           "longs_liquidated_usd": 1859.71,
+           "shorts_liquidated_usd": 7613.49,
+           "biggest_print_usd": 4242.43
           },
           "okx": {
-           "events": 3,
-           "total_usd": 3601.08,
-           "longs_liquidated_usd": 3601.08,
-           "shorts_liquidated_usd": 0,
-           "biggest_print_usd": 2268.5
+           "events": null,
+           "total_usd": null,
+           "longs_liquidated_usd": null,
+           "shorts_liquidated_usd": null,
+           "biggest_print_usd": null
           }
          }
         },
         "24h": {
-         "events": 758,
-         "total_usd": 9237290.02,
-         "longs_liquidated_usd": 3548123.63,
-         "shorts_liquidated_usd": 5689166.39,
-         "biggest_print_usd": 599749.35,
+         "events": 1430,
+         "total_usd": 16768451.86,
+         "longs_liquidated_usd": 13825671.34,
+         "shorts_liquidated_usd": 2942780.52,
+         "biggest_print_usd": 881208,
          "by_exchange": {
           "binance": {
-           "events": 335,
-           "total_usd": 5180175.53,
-           "longs_liquidated_usd": 1683631.36,
-           "shorts_liquidated_usd": 3496544.17,
-           "biggest_print_usd": 599749.35
-          },
-          "okx": {
-           "events": 209,
-           "total_usd": 3226577.31,
-           "longs_liquidated_usd": 1494724.23,
-           "shorts_liquidated_usd": 1731853.08,
-           "biggest_print_usd": 555700
+           "events": null,
+           "total_usd": null,
+           "longs_liquidated_usd": null,
+           "shorts_liquidated_usd": null,
+           "biggest_print_usd": null
           },
           "bybit": {
-           "events": 214,
-           "total_usd": 830537.18,
-           "longs_liquidated_usd": 369768.03,
-           "shorts_liquidated_usd": 460769.14,
-           "biggest_print_usd": 49719.86
+           "events": 478,
+           "total_usd": 1725171.98,
+           "longs_liquidated_usd": 1576019.64,
+           "shorts_liquidated_usd": 149152.35,
+           "biggest_print_usd": 99403.49
+          },
+          "okx": {
+           "events": null,
+           "total_usd": null,
+           "longs_liquidated_usd": null,
+           "shorts_liquidated_usd": null,
+           "biggest_print_usd": null
           }
          }
         }
@@ -1260,20 +1305,34 @@
       "mint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
       "name": "Bonk",
       "symbol": "Bonk",
-      "supply": 87994360323158.61,
-      "price_usd": 0.0000034508882,
+      "supply": 87994359450649.22,
+      "program": "spl-token",
       "authorities": {
        "mint_authority": null,
        "freeze_authority": null
       },
       "concentration": {
-       "top1_pct": null,
-       "top10_pct": null,
-       "note": "unavailable for this mint (too many holders for RPC scan — typical for major tokens)",
-       "top_accounts": []
+       "top1_pct": 8.83,
+       "top10_pct": 38.41,
+       "note": "token accounts, not unique owners — pools/exchanges may be included",
+       "top_accounts": [
+        {
+         "address": "5hpfC9VBxVcoW9opCnM2PqR6YWRLBzrBpabJTZnwwNiw",
+         "amount": 7770515063166.431
+        },
+        {
+         "address": "2vPvEovB1gw8bAUqasThEv6YMAdJ77AU3RxiUNqknEiw",
+         "amount": 5972593511837.953
+        },
+        {
+         "address": "6LozHQrLbEPeJGWKpN6wnnk76GhD4bGAVSoTBE5xXpsf",
+         "amount": 3190931235000.8315
+        }
+       ]
       },
       "risk_flags": [],
-      "risk_flag_count": 0
+      "risk_flag_count": 0,
+      "source": "Solana RPC: the mint account, its metadata account and getTokenLargestAccounts"
      },
      "paid": true
     },
@@ -1298,8 +1357,8 @@
         "supply": {
          "type": "number"
         },
-        "price_usd": {
-         "type": "number"
+        "program": {
+         "type": "string"
         },
         "authorities": {
          "type": "object"
@@ -1312,6 +1371,9 @@
         },
         "risk_flag_count": {
          "type": "number"
+        },
+        "source": {
+         "type": "string"
         }
        }
       },
@@ -1853,21 +1915,21 @@
       "venues": [
        {
         "exchange": "binance",
-        "prints": 705,
-        "usd_total": 9445112,
-        "longs_usd": 2343783,
-        "shorts_usd": 7101329,
-        "biggest_print": 915882,
-        "share_pct": 58.6
+        "prints": null,
+        "usd_total": null,
+        "longs_usd": null,
+        "shorts_usd": null,
+        "biggest_print": null,
+        "share_pct": null
        },
        {
         "exchange": "okx",
-        "prints": 466,
-        "usd_total": 3731301,
-        "longs_usd": 940987,
-        "shorts_usd": 2790314,
-        "biggest_print": 585023,
-        "share_pct": 23.1
+        "prints": null,
+        "usd_total": null,
+        "longs_usd": null,
+        "shorts_usd": null,
+        "biggest_print": null,
+        "share_pct": null
        },
        {
         "exchange": "bybit",
@@ -1945,11 +2007,11 @@
         "mark_price": 118.209
        },
        "okx": {
-        "funding_rate_8h": 0.0000384889726373,
-        "funding_rate_raw": 0.0000384889726373,
-        "funding_interval_hours": 8,
-        "next_funding_time": 1790611200000,
-        "mark_price": 118.19
+        "funding_rate_8h": null,
+        "funding_rate_raw": null,
+        "funding_interval_hours": null,
+        "next_funding_time": null,
+        "mark_price": null
        },
        "hyperliquid": {
         "funding_rate_1h": 0.0000125,
@@ -2016,48 +2078,61 @@
      "tool": "get_funding_extremes",
      "data": {
       "source": "bybit_linear_universe",
-      "universe_size": 299,
+      "universe_size": 281,
       "min_turnover_usd": 1000000,
       "most_positive": [
        {
-        "symbol": "ARKUSDT",
-        "funding_rate_8h": 0.00158998,
-        "funding_rate_raw": 0.00079499,
-        "funding_interval_hours": 4,
-        "annualized_pct": 174.1,
-        "price_24h_pct": -10.18,
-        "oi_usd": 2773871
-       },
-       {
         "symbol": "LONGXIAUSDT",
-        "funding_rate_8h": 0.00149958,
-        "funding_rate_raw": 0.00074979,
+        "funding_rate_8h": 0.0025379,
+        "funding_rate_raw": 0.00126895,
         "funding_interval_hours": 4,
-        "annualized_pct": 164.2,
-        "price_24h_pct": -32.3,
-        "oi_usd": 1449504
+        "annualized_pct": 277.9,
+        "price_24h_pct": -10.61,
+        "oi_usd": 1852153
        }
       ],
       "most_negative": [
        {
-        "symbol": "SAGAUSDT",
-        "funding_rate_8h": -0.0053745,
-        "funding_rate_raw": -0.00268725,
-        "funding_interval_hours": 4,
-        "annualized_pct": -588.51,
-        "price_24h_pct": -4.43,
-        "oi_usd": 3283608
-       },
-       {
-        "symbol": "BLASTUSDT",
-        "funding_rate_8h": -0.00224282,
-        "funding_rate_raw": -0.00224282,
-        "funding_interval_hours": 8,
-        "annualized_pct": -245.59,
-        "price_24h_pct": -12.27,
-        "oi_usd": 1149802
+        "symbol": "RSRUSDT",
+        "funding_rate_8h": -0.0264,
+        "funding_rate_raw": -0.0033,
+        "funding_interval_hours": 1,
+        "annualized_pct": -2890.8,
+        "price_24h_pct": 43.42,
+        "oi_usd": 7147723
        }
-      ]
+      ],
+      "hyperliquid": {
+       "universe_size": 86,
+       "min_volume_24h_usd": 1000000,
+       "most_positive": [
+        {
+         "coin": "XMR",
+         "price": 537.04,
+         "funding_rate_raw": 0.0000404183,
+         "funding_interval_hours": 1,
+         "funding_rate_8h": 0.0003233464,
+         "annualized_pct": 35.41,
+         "change_24h_pct": -0.96,
+         "oi_usd": 66448805,
+         "volume_24h_usd": 13053808
+        }
+       ],
+       "most_negative": [
+        {
+         "coin": "RSR",
+         "price": 0.00232,
+         "funding_rate_raw": -0.0018963919,
+         "funding_interval_hours": 1,
+         "funding_rate_8h": -0.0151711352,
+         "annualized_pct": -1661.24,
+         "change_24h_pct": 41.72,
+         "oi_usd": 1409379,
+         "volume_24h_usd": 6697100
+        }
+       ],
+       "source": "Hyperliquid info API (public chain state)"
+      }
      },
      "paid": true
     },
@@ -2084,6 +2159,9 @@
         },
         "most_negative": {
          "type": "array"
+        },
+        "hyperliquid": {
+         "type": "object"
         }
        }
       },
@@ -2115,16 +2193,23 @@
      "data": {
       "symbol": "SOLUSDT",
       "bybit": {
-       "oi_base": 6478924.1,
-       "oi_usd": 809609835,
-       "change_1h_pct": -1.3,
-       "change_24h_pct": 9.93
+       "oi_base": 6224538.8,
+       "oi_usd": 676025952,
+       "change_1h_pct": -1.4,
+       "change_24h_pct": -2.62
       },
       "okx": {
-       "oi_base": 3054425.3599999994,
-       "oi_usd": 370837783
+       "oi_base": null,
+       "oi_usd": null
       },
-      "mark_price": 121.419
+      "mark_price": 108.585,
+      "hyperliquid": {
+       "coin": "SOL",
+       "oi_base": 6099536.119999999,
+       "oi_usd": 662653604,
+       "mark_price": 108.64,
+       "source": "Hyperliquid info API (public chain state)"
+      }
      },
      "paid": true
     },
@@ -2148,6 +2233,9 @@
         },
         "mark_price": {
          "type": "number"
+        },
+        "hyperliquid": {
+         "type": "object"
         }
        }
       },
@@ -2328,13 +2416,24 @@
      "tool": "get_basis",
      "data": {
       "symbol": "SOLUSDT",
-      "mark_price": 118.201,
-      "spot_price": 118.26,
-      "basis_pct": -0.0499,
-      "state": "flat",
-      "funding_rate_8h": 0.00008784,
-      "funding_rate_raw": 0.00008784,
-      "funding_interval_hours": 8
+      "mark_price": 108.585,
+      "spot_price": 108.65,
+      "basis_pct": -0.0598,
+      "state": "backwardation (perp discount — shorts aggressive)",
+      "funding_rate_8h": -0.00000819,
+      "funding_rate_raw": -0.00000819,
+      "funding_interval_hours": 8,
+      "hyperliquid": {
+       "coin": "SOL",
+       "mark_price": 108.64,
+       "oracle_price": 108.66,
+       "basis_pct": -0.0184,
+       "basis_against": "Hyperliquid oracle price (validators' weighted median of spot venues)",
+       "funding_rate_8h": 0.0001,
+       "funding_rate_raw": 0.0000125,
+       "funding_interval_hours": 1,
+       "source": "Hyperliquid info API (public chain state)"
+      }
      },
      "paid": true
     },
@@ -2370,6 +2469,9 @@
         },
         "funding_interval_hours": {
          "type": "number"
+        },
+        "hyperliquid": {
+         "type": "object"
         }
        }
       },
@@ -2401,9 +2503,17 @@
      "data": {
       "symbol": "SOLUSDT",
       "source": "bybit_daily_klines",
-      "realized_vol_7d_ann_pct": 58.77,
-      "realized_vol_30d_ann_pct": 68.65,
-      "today_range_pct": 5.33
+      "realized_vol_7d_ann_pct": 46.32,
+      "realized_vol_30d_ann_pct": 62,
+      "today_range_pct": 5.8,
+      "hyperliquid": {
+       "coin": "SOL",
+       "realized_vol_7d_ann_pct": 46.37,
+       "realized_vol_30d_ann_pct": 61.4,
+       "today_range_pct": 5.79,
+       "basis": "daily perp candles",
+       "source": "Hyperliquid info API (public chain state)"
+      }
      },
      "paid": true
     },
@@ -2430,6 +2540,9 @@
         },
         "today_range_pct": {
          "type": "number"
+        },
+        "hyperliquid": {
+         "type": "object"
         }
        }
       },
@@ -2465,29 +2578,58 @@
      "data": {
       "symbol": "SOLUSDT",
       "intervals": 30,
-      "avg_rate_8h": 0.00005327,
-      "avg_annualized_pct": 5.83,
-      "positive_share_pct": 77,
+      "avg_rate_8h": 0.0000114,
+      "avg_annualized_pct": 1.25,
+      "positive_share_pct": 57,
       "history": [
        {
-        "ts": 1790582400000,
-        "rate_8h": 0.00008247,
-        "funding_rate_raw": 0.00008247,
+        "ts": 1791820800000,
+        "rate_8h": -0.00002467,
+        "funding_rate_raw": -0.00002467,
         "funding_interval_hours": 8
        },
        {
-        "ts": 1790553600000,
-        "rate_8h": 0.00006338,
-        "funding_rate_raw": 0.00006338,
+        "ts": 1791792000000,
+        "rate_8h": 0.0001,
+        "funding_rate_raw": 0.0001,
         "funding_interval_hours": 8
        },
        {
-        "ts": 1790524800000,
+        "ts": 1791763200000,
         "rate_8h": 0.0001,
         "funding_rate_raw": 0.0001,
         "funding_interval_hours": 8
        }
-      ]
+      ],
+      "hyperliquid": {
+       "coin": "SOL",
+       "intervals": 30,
+       "funding_interval_hours": 1,
+       "avg_rate_8h": 0.00009689,
+       "avg_annualized_pct": 10.61,
+       "positive_share_pct": 100,
+       "history": [
+        {
+         "ts": 1791835200018,
+         "rate_8h": 0.0001,
+         "funding_rate_raw": 0.0000125,
+         "funding_interval_hours": 1
+        },
+        {
+         "ts": 1791831600005,
+         "rate_8h": 0.0001,
+         "funding_rate_raw": 0.0000125,
+         "funding_interval_hours": 1
+        },
+        {
+         "ts": 1791828000073,
+         "rate_8h": 0.0000812152,
+         "funding_rate_raw": 0.0000101519,
+         "funding_interval_hours": 1
+        }
+       ],
+       "source": "Hyperliquid info API (public chain state)"
+      }
      },
      "paid": true
     },
@@ -2517,6 +2659,9 @@
         },
         "history": {
          "type": "array"
+        },
+        "hyperliquid": {
+         "type": "object"
         }
        }
       },
@@ -2549,66 +2694,60 @@
      "tool": "get_top_movers",
      "data": {
       "source": "bybit_linear_universe",
-      "universe_size": 299,
+      "universe_size": 281,
       "min_turnover_usd": 1000000,
       "gainers": [
        {
-        "symbol": "QNTUSDT",
-        "price": 226.72,
-        "change_24h_pct": 31.05,
-        "turnover_24h_usd": 522856332,
-        "funding_rate_8h": 0.0001,
-        "funding_rate_raw": 0.0001,
-        "funding_interval_hours": 8
-       },
-       {
-        "symbol": "BTWUSDT",
-        "price": 1.39689,
-        "change_24h_pct": 26.07,
-        "turnover_24h_usd": 45725371,
-        "funding_rate_8h": 0.00056134,
-        "funding_rate_raw": 0.00028067,
-        "funding_interval_hours": 4
-       },
-       {
-        "symbol": "HBARUSDT",
-        "price": 0.11291,
-        "change_24h_pct": 19.17,
-        "turnover_24h_usd": 89605037,
-        "funding_rate_8h": -0.00000436,
-        "funding_rate_raw": -0.00000436,
-        "funding_interval_hours": 8
+        "symbol": "RSRUSDT",
+        "price": 0.0023449,
+        "change_24h_pct": 43.42,
+        "turnover_24h_usd": 104474541,
+        "funding_rate_8h": -0.0264,
+        "funding_rate_raw": -0.0033,
+        "funding_interval_hours": 1
        }
       ],
       "losers": [
        {
-        "symbol": "QUSDT",
-        "price": 0.02544,
-        "change_24h_pct": -45.87,
-        "turnover_24h_usd": 55364194,
-        "funding_rate_8h": 0.0001,
-        "funding_rate_raw": 0.00005,
-        "funding_interval_hours": 4
-       },
-       {
-        "symbol": "LONGXIAUSDT",
-        "price": 0.07,
-        "change_24h_pct": -32.3,
-        "turnover_24h_usd": 5859730,
-        "funding_rate_8h": 0.00149958,
-        "funding_rate_raw": 0.00074979,
-        "funding_interval_hours": 4
-       },
-       {
-        "symbol": "STONKUSDT",
-        "price": 0.2396,
-        "change_24h_pct": -24.44,
-        "turnover_24h_usd": 4663895,
-        "funding_rate_8h": 0.0007196,
-        "funding_rate_raw": 0.0003598,
+        "symbol": "BOMEUSDT",
+        "price": 0.0008284,
+        "change_24h_pct": -25.71,
+        "turnover_24h_usd": 7612074,
+        "funding_rate_8h": -0.00042282,
+        "funding_rate_raw": -0.00021141,
         "funding_interval_hours": 4
        }
-      ]
+      ],
+      "hyperliquid": {
+       "universe_size": 86,
+       "gainers": [
+        {
+         "coin": "RSR",
+         "price": 0.00232,
+         "funding_rate_raw": -0.0018963919,
+         "funding_interval_hours": 1,
+         "funding_rate_8h": -0.0151711352,
+         "annualized_pct": -1661.24,
+         "change_24h_pct": 41.72,
+         "oi_usd": 1409379,
+         "volume_24h_usd": 6697100
+        }
+       ],
+       "losers": [
+        {
+         "coin": "BOME",
+         "price": 0.000828,
+         "funding_rate_raw": -0.0000059304,
+         "funding_interval_hours": 1,
+         "funding_rate_8h": -0.0000474432,
+         "annualized_pct": -5.2,
+         "change_24h_pct": -25.94,
+         "oi_usd": 2089623,
+         "volume_24h_usd": 2950374
+        }
+       ],
+       "source": "Hyperliquid info API (public chain state)"
+      }
      },
      "paid": true
     },
@@ -2635,6 +2774,9 @@
         },
         "losers": {
          "type": "array"
+        },
+        "hyperliquid": {
+         "type": "object"
         }
        }
       },
@@ -2669,13 +2811,23 @@
      "tool": "get_orderbook_imbalance",
      "data": {
       "symbol": "SOLUSDT",
-      "mid_price": 121.455,
+      "mid_price": 108.565,
       "window_bps": 50,
-      "bid_usd": 12875007,
-      "ask_usd": 8430080,
-      "imbalance_ratio": 1.527,
-      "skew": "bid_heavy (support below)",
-      "note": "visible resting liquidity only — spoofable, read as context not signal"
+      "bid_usd": 13045826,
+      "ask_usd": 12817834,
+      "imbalance_ratio": 1.018,
+      "skew": "balanced",
+      "note": "visible resting liquidity only — spoofable, read as context not signal",
+      "hyperliquid": {
+       "coin": "SOL",
+       "mid_price": 108.615,
+       "bid_usd": 5172798,
+       "ask_usd": 4633593,
+       "imbalance_ratio": 1.116,
+       "skew": "balanced",
+       "depth_note": "Hyperliquid serves 20 aggregated levels a side, so a wide window may reach past its visible book",
+       "source": "Hyperliquid info API (public chain state)"
+      }
      },
      "paid": true
     },
@@ -2711,6 +2863,9 @@
         },
         "note": {
          "type": "string"
+        },
+        "hyperliquid": {
+         "type": "object"
         }
        }
       },
@@ -2745,42 +2900,82 @@
      "tool": "get_orderbook_walls",
      "data": {
       "symbol": "SOLUSDT",
-      "mid_price": 121.455,
+      "mid_price": 108.565,
       "depth_levels": 400,
       "bid_walls": [
        {
-        "price": 120.03,
-        "usd": 2753572,
-        "distance_pct": -1.173
+        "price": 106.8,
+        "usd": 2416649,
+        "distance_pct": -1.626
        },
        {
-        "price": 120.92,
-        "usd": 2368581,
-        "distance_pct": -0.44
+        "price": 108.13,
+        "usd": 2259549,
+        "distance_pct": -0.401
        },
        {
-        "price": 119.6,
-        "usd": 2343299,
-        "distance_pct": -1.527
+        "price": 107.56,
+        "usd": 2226643,
+        "distance_pct": -0.926
        }
       ],
       "ask_walls": [
        {
-        "price": 122.66,
-        "usd": 2403192,
-        "distance_pct": 0.992
+        "price": 109.03,
+        "usd": 3648253,
+        "distance_pct": 0.428
        },
        {
-        "price": 121.94,
-        "usd": 2271120,
-        "distance_pct": 0.399
+        "price": 110.32,
+        "usd": 2356810,
+        "distance_pct": 1.617
        },
        {
-        "price": 123.09,
-        "usd": 2166175,
-        "distance_pct": 1.346
+        "price": 109.54,
+        "usd": 2256842,
+        "distance_pct": 0.898
        }
-      ]
+      ],
+      "hyperliquid": {
+       "coin": "SOL",
+       "mid_price": 108.615,
+       "depth_levels": 40,
+       "bid_walls": [
+        {
+         "price": 108.51,
+         "usd": 483471,
+         "distance_pct": -0.097
+        },
+        {
+         "price": 108.54,
+         "usd": 456058,
+         "distance_pct": -0.069
+        },
+        {
+         "price": 108.42,
+         "usd": 421772,
+         "distance_pct": -0.18
+        }
+       ],
+       "ask_walls": [
+        {
+         "price": 108.69,
+         "usd": 504412,
+         "distance_pct": 0.069
+        },
+        {
+         "price": 108.77,
+         "usd": 451733,
+         "distance_pct": 0.143
+        },
+        {
+         "price": 108.71,
+         "usd": 406348,
+         "distance_pct": 0.087
+        }
+       ],
+       "source": "Hyperliquid info API (public chain state)"
+      }
      },
      "paid": true
     },
@@ -2807,6 +3002,9 @@
         },
         "ask_walls": {
          "type": "array"
+        },
+        "hyperliquid": {
+         "type": "object"
         }
        }
       },
@@ -2947,8 +3145,8 @@
         "ask": 121.46
        },
        "okx": {
-        "bid": 121.39,
-        "ask": 121.4
+        "bid": null,
+        "ask": null
        },
        "hyperliquid": {
         "bid": 121.44,
@@ -3024,7 +3222,7 @@
      "data": {
       "mint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
       "symbol": "Bonk",
-      "supply": 87994383847609.11,
+      "supply": 87994359450649.22,
       "top_accounts": [
        {
         "address": "5hpfC9VBxVcoW9opCnM2PqR6YWRLBzrBpabJTZnwwNiw",
@@ -3033,21 +3231,22 @@
        },
        {
         "address": "2vPvEovB1gw8bAUqasThEv6YMAdJ77AU3RxiUNqknEiw",
-        "amount": 5772593511837.953,
-        "pct": 6.56
+        "amount": 5972593511837.953,
+        "pct": 6.79
        },
        {
         "address": "6LozHQrLbEPeJGWKpN6wnnk76GhD4bGAVSoTBE5xXpsf",
-        "amount": 3111312968005.8394,
-        "pct": 3.54
+        "amount": 3190931235000.8315,
+        "pct": 3.63
        }
       ],
       "concentration": {
        "top1_pct": 8.83,
-       "top5_pct": 25.02,
-       "top10_pct": 38.33
+       "top5_pct": 25.34,
+       "top10_pct": 38.41
       },
-      "note": "token accounts, not unique owners — pools and exchanges included. Fails for mega-holder tokens (USDC-scale)."
+      "note": "token accounts, not unique owners — pools and exchanges included. Fails for mega-holder tokens (USDC-scale).",
+      "source": "Solana RPC: getTokenLargestAccounts and the mint account"
      },
      "paid": true
     },
@@ -3076,6 +3275,9 @@
          "type": "object"
         },
         "note": {
+         "type": "string"
+        },
+        "source": {
          "type": "string"
         }
        }
@@ -3122,34 +3324,47 @@
       "tx_count": 10,
       "transactions": [
        {
-        "signature": "4dSnZpJDH2c7hn6dwFWkQiZyasMxZGtNJt9fvBGEYtF9tVzw9R7yEto9J6KX679waGTPbSbEUtfGMt8ksWTvrYQ3",
-        "ts": 1790353880,
-        "type": "TRANSFER",
-        "source": "SOLANA_PROGRAM_LIBRARY",
-        "description": "Gack9UtqfeZxFA1LqeqjLgC3JGuD7rS6CsSHKoXsD4Tu transferred 0.002 USDC to 4a8o45skRPcyjAdyR8yES215Swvh8uTpZD6KLarhxCJ7.",
+        "signature": "9wk9rEjW82yF86evYwWDeUGUQf5CyPNuRyprJpCuXNCETk3oGeWZCcmro88q8YBPm9VxTDBHZRGMzyWCdkcrj9W",
+        "ts": 1791823539,
+        "slot": 456117164,
         "fee_sol": 0.000010001,
-        "failed": false
+        "failed": false,
+        "fee_payer": false,
+        "sol_change": 0,
+        "token_changes": [
+         {
+          "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "change": -0.02
+         }
+        ],
+        "programs": [
+         "compute-budget",
+         "spl-token",
+         "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
+        ]
        },
        {
-        "signature": "36r2wk3TgQyWJH7d2NHPsGYkee82WwEfcHXonDwhFz1BVJofrNZwkHYn7Ncd4uSqYL3imojJzJioMeJTXzeKpAku",
-        "ts": 1790353876,
-        "type": "TRANSFER",
-        "source": "SOLANA_PROGRAM_LIBRARY",
-        "description": "Gack9UtqfeZxFA1LqeqjLgC3JGuD7rS6CsSHKoXsD4Tu transferred 0.001 USDC to 4a8o45skRPcyjAdyR8yES215Swvh8uTpZD6KLarhxCJ7.",
+        "signature": "CQgjqJexU2ookeJRHyBzoVTC2JgFJsbryhbhaQqgTQjLLnKq43VpfaevuSUMyV4WoJZuvD2dmuifQZ4Q1SiPey2",
+        "ts": 1791823528,
+        "slot": 456117117,
         "fee_sol": 0.000010001,
-        "failed": false
-       },
-       {
-        "signature": "2kQeB8GJBbftzb73FNoJw2HncN1Yh1Lt3sHPTBU3TY6AevVoGTBfQkoYKAT5d2Uzr7KnYT8F8Rphb1GWBgguLFfQ",
-        "ts": 1790353870,
-        "type": "TRANSFER",
-        "source": "SOLANA_PROGRAM_LIBRARY",
-        "description": "Gack9UtqfeZxFA1LqeqjLgC3JGuD7rS6CsSHKoXsD4Tu transferred 0.001 USDC to 4a8o45skRPcyjAdyR8yES215Swvh8uTpZD6KLarhxCJ7.",
-        "fee_sol": 0.000010001,
-        "failed": false
+        "failed": false,
+        "fee_payer": false,
+        "sol_change": 0,
+        "token_changes": [
+         {
+          "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "change": -0.008
+         }
+        ],
+        "programs": [
+         "compute-budget",
+         "spl-token",
+         "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
+        ]
        }
       ],
-      "source": "helius-enhanced"
+      "source": "Solana RPC: getSignaturesForAddress and getTransaction, summarised by AgentFeed"
      },
      "paid": true
     },
@@ -3198,14 +3413,16 @@
       "unit": "micro-lamports per compute unit",
       "levels": {
        "min": 0,
-       "low": 0,
-       "medium": 1408,
-       "high": 50000,
-       "very_high": 1000000,
-       "unsafe_max": 285196203000000
+       "low": 1005,
+       "medium": 15001,
+       "high": 100161,
+       "very_high": 126264,
+       "unsafe_max": 1413830
       },
-      "recommended": 50000,
-      "source": "helius getPriorityFeeEstimate"
+      "recommended": 100161,
+      "slots": 150,
+      "method": "percentiles of the per-slot minimum priority fee paid by transactions that wrote to the two busiest SOL/USDC pools, over the last ~150 slots",
+      "source": "Solana RPC getRecentPrioritizationFees, percentiles computed by AgentFeed"
      },
      "paid": true
     },
@@ -3226,6 +3443,12 @@
         },
         "recommended": {
          "type": "number"
+        },
+        "slots": {
+         "type": "number"
+        },
+        "method": {
+         "type": "string"
         },
         "source": {
          "type": "string"
@@ -3253,15 +3476,26 @@
      "data": {
       "unit": "SOL",
       "percentiles": {
-       "p25": 0.000001864,
-       "p50": 0.00000456,
-       "p75": 0.000013719,
-       "p95": 0.0001098144,
-       "p99": 0.00016805936000000005
+       "p25": 0.000002012,
+       "p50": 0.000003926,
+       "p75": 0.00001891,
+       "p95": 0.0002,
+       "p99": 0.001
       },
-      "ema_p50": 0.000004113848068456372,
+      "sample": {
+       "tips": 67,
+       "failed_reads": 0,
+       "slots": [
+        456173197,
+        456173212
+       ],
+       "accounts": 8
+      },
       "read": "tip >= p75 to land bundles reliably in contested blocks",
-      "source": "jito tip_floor"
+      "method": "the newest 10 transfers into each of Jito's 8 tip accounts, read from chain state; a tip is the lamports the tip account gained in that transaction",
+      "source": "Solana RPC: getSignaturesForAddress and getTransaction on the Jito tip accounts, percentiles computed by AgentFeed",
+      "as_of": "2026-10-12T20:10:55.154Z",
+      "age_s": 48
      },
      "paid": true
     },
@@ -3280,14 +3514,23 @@
         "percentiles": {
          "type": "object"
         },
-        "ema_p50": {
-         "type": "number"
+        "sample": {
+         "type": "object"
         },
         "read": {
          "type": "string"
         },
+        "method": {
+         "type": "string"
+        },
         "source": {
          "type": "string"
+        },
+        "as_of": {
+         "type": "string"
+        },
+        "age_s": {
+         "type": "number"
         }
        }
       },
@@ -3310,11 +3553,11 @@
     "example": {
      "tool": "get_sol_network",
      "data": {
-      "tps_avg_recent": 4990,
-      "slot": 450411920,
-      "epoch": 1042,
-      "epoch_progress_pct": 62,
-      "source": "helius rpc"
+      "tps_avg_recent": 5738,
+      "slot": 456173588,
+      "epoch": 1055,
+      "epoch_progress_pct": 95.7,
+      "source": "Solana RPC: getRecentPerformanceSamples and getEpochInfo"
      },
      "paid": true
     },
@@ -3380,44 +3623,46 @@
       "status": "ok",
       "window_hours": 24,
       "latest": {
-       "ts": 1790355082,
-       "iso": "2026-09-25T16:51:22.000Z",
-       "session": "open",
-       "onchain": 88.71,
-       "reference": 88.62,
-       "deviation_bps": 10.2,
+       "ts": 1791835892,
+       "iso": "2026-10-12T20:11:32.000Z",
+       "session": "afterhours",
+       "onchain": 84.1,
+       "reference": null,
+       "deviation_bps": 29.2,
        "direction": "premium",
-       "liquidity_usd": 2553105,
-       "dex": "raydium"
+       "liquidity_usd": 2384337,
+       "dex": "raydium-clmm",
+       "pool": "GYqHjuDzTiw7i52Xv1qohDE6eJr6eSZpsrBVikGZyaFV",
+       "onchain_source": "pool price and both vaults read from Solana chain state by our collector"
       },
       "window": {
-       "n": 288,
-       "mean_abs_bps": 32.7,
-       "p50_abs_bps": 29,
-       "p95_abs_bps": 76.4,
-       "max_abs_bps": 125.8,
-       "pct_over_100bps": 1.4,
-       "pct_over_200bps": 0
+       "n": 290,
+       "mean_abs_bps": 150.2,
+       "p50_abs_bps": 188.7,
+       "p95_abs_bps": 275.1,
+       "max_abs_bps": 286.9,
+       "pct_over_100bps": 66.9,
+       "pct_over_200bps": 46.2
       },
       "offhours": {
-       "n": 210,
-       "mean_abs_bps": 40,
-       "p50_abs_bps": 38.7,
-       "p95_abs_bps": 86,
-       "max_abs_bps": 125.8,
-       "pct_over_100bps": 1.9,
-       "pct_over_200bps": 0
+       "n": 212,
+       "mean_abs_bps": 201.3,
+       "p50_abs_bps": 219.5,
+       "p95_abs_bps": 282.2,
+       "max_abs_bps": 286.9,
+       "pct_over_100bps": 91.5,
+       "pct_over_200bps": 63.2
       },
       "market_open": {
        "n": 78,
-       "mean_abs_bps": 12.9,
-       "p50_abs_bps": 11,
-       "p95_abs_bps": 30.2,
-       "max_abs_bps": 52.7,
+       "mean_abs_bps": 11.1,
+       "p50_abs_bps": 10.6,
+       "p95_abs_bps": 22.9,
+       "max_abs_bps": 49.3,
        "pct_over_100bps": 0,
        "pct_over_200bps": 0
       },
-      "note": "Deviation is measured against the underlying's last real trade. Outside US market hours that is the last print before the close, not a live quote."
+      "note": "Deviation is measured against the underlying's last real trade. Outside US market hours that is the last print before the close, not a live quote. Token prices are read on-chain by our collector since 2026-10-12; earlier samples come from the pegwatch collecto…"
      },
      "paid": true
     },
@@ -3823,24 +4068,25 @@
      "tool": "get_eth_price",
      "data": {
       "symbol": "ETH",
-      "price": 2562.115,
+      "price": 2523.42,
       "quotes": [
        {
-        "source": "coinbase",
-        "price": 2562.115
+        "source": "uniswap-v3:ethereum",
+        "pair": "WETH/USDC 0.05%",
+        "pool": "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
+        "price": 2523.2323
        },
        {
-        "source": "kraken",
-        "price": 2562.33
-       },
-       {
-        "source": "binance",
-        "price": 2565.17
+        "source": "uniswap-v3:base",
+        "pair": "WETH/USDC 0.05%",
+        "pool": "0xd0b53D9277642d899DF5C87A3966A349A798F224",
+        "price": 2523.5986
        }
       ],
       "confidence": null,
-      "publish_time": null,
-      "source": "multi:coinbase+kraken+binance+okx+gemini"
+      "publish_time": 1791835902,
+      "source": "on-chain DEX mid, median of 2 pools",
+      "method": "each pool's current price (concentrated-liquidity sqrt price, fee excluded) read from chain state; price is their median"
      },
      "paid": true
     },
@@ -3863,8 +4109,13 @@
          "type": "array"
         },
         "confidence": {},
-        "publish_time": {},
+        "publish_time": {
+         "type": "number"
+        },
         "source": {
+         "type": "string"
+        },
+        "method": {
          "type": "string"
         }
        }
@@ -4057,11 +4308,11 @@
          "mark_price": 118.209
         },
         "okx": {
-         "funding_rate_8h": 0.0000384889726373,
-         "funding_rate_raw": 0.0000384889726373,
-         "funding_interval_hours": 8,
-         "next_funding_time": 1790611200000,
-         "mark_price": 118.19
+         "funding_rate_8h": null,
+         "funding_rate_raw": null,
+         "funding_interval_hours": null,
+         "next_funding_time": null,
+         "mark_price": null
         },
         "hyperliquid": {
          "funding_rate_1h": 0.0000125,
@@ -4082,8 +4333,8 @@
         "change_24h_pct": -4.74
        },
        "okx": {
-        "oi_base": 3046096.9400000013,
-        "oi_usd": 360200963
+        "oi_base": null,
+        "oi_usd": null
        },
        "mark_price": 118.209
       },
@@ -4269,42 +4520,55 @@
      "data": {
       "extremes": [
        {
-        "symbol": "ORCAUSDT",
+        "symbol": "RSRUSDT",
         "venue": "bybit",
-        "funding_rate_8h": -0.00963784,
-        "funding_rate_raw": -0.00481892,
-        "funding_interval_hours": 4,
-        "annualized_pct": -1055.34,
-        "oi_usd": 7303411,
-        "price_24h_pct": -10.83
+        "funding_rate_8h": -0.0264,
+        "funding_rate_raw": -0.0033,
+        "funding_interval_hours": 1,
+        "annualized_pct": -2890.8,
+        "oi_usd": 7147723,
+        "price_24h_pct": 43.42
        },
        {
-        "symbol": "SKLUSDT",
+        "symbol": "OGNUSDT",
         "venue": "bybit",
-        "funding_rate_8h": -0.00745625,
-        "funding_rate_raw": -0.00745625,
+        "funding_rate_8h": -0.00533186,
+        "funding_rate_raw": -0.00533186,
         "funding_interval_hours": 8,
-        "annualized_pct": -816.46,
-        "oi_usd": 807732,
-        "price_24h_pct": 6.94
-       },
-       {
-        "symbol": "ZKCUSDT",
-        "venue": "bybit",
-        "funding_rate_8h": -0.00744792,
-        "funding_rate_raw": -0.00372396,
-        "funding_interval_hours": 4,
-        "annualized_pct": -815.55,
-        "oi_usd": 1195906,
-        "price_24h_pct": -4.57
+        "annualized_pct": -583.84,
+        "oi_usd": 5756130,
+        "price_24h_pct": 18.59
        }
       ],
-      "universe_size": 304,
+      "hyperliquid_extremes": [
+       {
+        "coin": "RSR",
+        "venue": "hyperliquid",
+        "funding_rate_8h": -0.0151711352,
+        "funding_rate_raw": -0.0018963919,
+        "funding_interval_hours": 1,
+        "annualized_pct": -1661.24,
+        "oi_usd": 1409379,
+        "price_24h_pct": 41.72
+       },
+       {
+        "coin": "BLUR",
+        "venue": "hyperliquid",
+        "funding_rate_8h": -0.0021422952,
+        "funding_rate_raw": -0.0002677869,
+        "funding_interval_hours": 1,
+        "annualized_pct": -234.58,
+        "oi_usd": 1252152,
+        "price_24h_pct": -22.79
+       }
+      ],
+      "universe_size": 281,
       "min_turnover_usd": 1000000,
       "venue_scope": [
-       "bybit"
+       "bybit",
+       "hyperliquid"
       ],
-      "note": "Ranked by absolute annualised funding across every Bybit USDT perp above the liquidity floor. For one symbol across Bybit, OKX and Hyperliquid use /api/funding-cross.",
+      "note": "Ranked by absolute annualised funding across every Bybit USDT perp above the liquidity floor, and separately across every Hyperliquid perp w…",
       "source": "bybit_linear_universe"
      },
      "paid": true
@@ -4319,6 +4583,9 @@
        "type": "object",
        "properties": {
         "extremes": {
+         "type": "array"
+        },
+        "hyperliquid_extremes": {
          "type": "array"
         },
         "universe_size": {
@@ -4365,10 +4632,10 @@
      "tool": "get_spot",
      "data": {
       "symbol": "SOL",
-      "price": 112.395,
+      "price": 108.5424,
       "confidence": null,
-      "publish_time": null,
-      "source": "coinbase",
+      "publish_time": 1791835902,
+      "source": "on-chain DEX mid, median of orca-whirlpool SOL/USDC on solana; raydium-clmm SOL/USDC on solana",
       "supported": [
        "SOL",
        "BTC",
@@ -4393,7 +4660,9 @@
          "type": "number"
         },
         "confidence": {},
-        "publish_time": {},
+        "publish_time": {
+         "type": "number"
+        },
         "source": {
          "type": "string"
         },
@@ -4454,7 +4723,7 @@
         "symbol": "VVVUSDT",
         "oi_usd": {
          "bybit": 29725355,
-         "okx": 3966527,
+         "okx": null,
          "hyperliquid": 72525719,
          "total": 106217601
         },
@@ -4471,15 +4740,15 @@
           "window_days": 29.8
          },
          "okx": {
-          "funding_rate_8h": 0.00156427,
-          "funding_rate_raw": 0.0007821356052997,
-          "funding_interval_hours": 4,
-          "next_funding_time": 1791489600000,
-          "z_30d": 12.15,
-          "mean_8h_30d": 0.00011762,
-          "std_8h_30d": 0.00011909,
-          "samples": 180,
-          "window_days": 29.8
+          "funding_rate_8h": null,
+          "funding_rate_raw": null,
+          "funding_interval_hours": null,
+          "next_funding_time": null,
+          "z_30d": null,
+          "mean_8h_30d": null,
+          "std_8h_30d": null,
+          "samples": null,
+          "window_days": null
          },
          "hyperliquid": {
           "funding_rate_8h": 0.00049902,
@@ -4861,68 +5130,94 @@
      "tool": "get_market_state",
      "data": {
       "symbol": "SOL",
-      "as_of": "2026-10-12T06:43:01.…",
+      "as_of": "2026-10-12T20:11:37.…",
       "spot": {
-       "value": 112.395,
-       "source": "coinbase",
-       "as_of": "2026-10-12T06:43:01.…"
+       "value": 108.5576,
+       "source": "on-chain DEX mid, me…",
+       "as_of": "2026-10-12T20:11:33.…"
       },
       "perp": {
-       "mark_price": 112.453,
-       "basis_pct": -0.0507,
+       "mark_price": 108.585,
+       "basis_pct": -0.0598,
        "basis_state": "backwardation (perp…",
        "source": "Bybit perp mark vs s…",
-       "as_of": "2026-10-12T06:43:01.…"
+       "as_of": "2026-10-12T20:11:37.…"
       },
       "realized_vol": {
-       "rv_7d_ann_pct": 48.39,
-       "rv_30d_ann_pct": 61.3,
-       "today_range_pct": 2.28,
+       "rv_7d_ann_pct": 46.32,
+       "rv_30d_ann_pct": 62,
+       "today_range_pct": 5.8,
        "source": "bybit_daily_klines",
-       "as_of": "2026-10-12T06:43:01.…"
+       "as_of": "2026-10-12T20:11:37.…"
       },
       "implied_vol": {
-       "value": null,
-       "reason": "options snapshot not…"
+       "iv_30d": 50.6,
+       "kind": "agentfeed_iv30",
+       "iv_source": "computed by AgentFee…",
+       "put_call_ratio_oi": 0.757,
+       "rr25_nearest_30d": 1.71,
+       "net_gex_usd_per_1pct": -70801,
+       "source": "AgentFeed options sn…",
+       "as_of": "2026-10-12T20:10:01.…"
       },
-      "iv_minus_rv_30d_vol_pts": null,
+      "iv_minus_rv_30d_vol_pts": -11.4,
       "funding": {
-       "value": null,
-       "reason": "funding radar snapsh…"
+       "venues": {
+        "bybit": {
+         "funding_rate_8h": -0.00000928,
+         "z_30d": -0.51,
+         "samples": 90
+        },
+        "okx": {
+         "funding_rate_8h": null,
+         "z_30d": null,
+         "samples": null
+        },
+        "hyperliquid": {
+         "funding_rate_8h": 0.0001,
+         "z_30d": 0.46,
+         "samples": 720
+        }
+       },
+       "spread_8h": 0.00010928,
+       "max_abs_z": 0.51,
+       "source": "AgentFeed funding ra…",
+       "as_of": "2026-10-12T20:05:01.…",
+       "stale": false
       },
       "open_interest": {
-       "bybit_usd": 692121316,
-       "bybit_change_24h_pct": -1.95,
-       "okx_usd": 339257495,
-       "mark_price": 112.453,
+       "bybit_usd": 676025952,
+       "bybit_change_24h_pct": -2.62,
+       "okx_usd": null,
+       "mark_price": 108.585,
        "source": "Bybit + OKX open int…",
-       "as_of": "2026-10-12T06:43:01.…"
+       "as_of": "2026-10-12T20:11:37.…"
       },
       "long_short": {
-       "long_pct": 74.48,
-       "short_pct": 25.52,
-       "long_pct_24h_ago": 74.37,
+       "long_pct": 74.53,
+       "short_pct": 25.47,
+       "long_pct_24h_ago": 74.4,
        "period": "1h",
        "source": "bybit_v5_public",
-       "as_of": "2026-10-12T06:00:00.…"
+       "as_of": "2026-10-12T20:00:00.…"
       },
       "liquidations": {
        "last_1h": {
-        "longs_usd": 129465,
-        "shorts_usd": 832,
-        "total_usd": 130298
+        "longs_usd": 6718,
+        "shorts_usd": 226594,
+        "total_usd": 233312
        },
        "last_24h": {
-        "longs_usd": 3547936,
-        "shorts_usd": 5682414,
-        "total_usd": 9230352,
+        "longs_usd": 13825217,
+        "shorts_usd": 2942546,
+        "total_usd": 16767764,
         "window_note": "clock-hour buckets t…"
        },
-       "hourly_median_usd": 46612,
+       "hourly_median_usd": 52793,
        "median_window_h": 167,
        "side_note": "longs_usd = longs li…",
        "source": "agentfeed_liq_tape (…",
-       "as_of": "2026-10-12T06:30:00.…"
+       "as_of": "2026-10-12T20:10:00.…"
       },
       "fear_greed": {
        "value": 69,
@@ -4931,10 +5226,21 @@
        "as_of": "2026-10-12T00:00:00.…"
       },
       "next_macro_event": {
-       "value": null,
-       "reason": "macro calendar unava…"
+       "type": "FOMC",
+       "title": "FOMC rate decision (…",
+       "reference_period": null,
+       "date_new_york": "2026-10-28",
+       "time_new_york": "14:00",
+       "utc": "2026-10-28T18:00:00.…",
+       "source_url": "https://www.federalr…",
+       "verified_at": "2026-10-12T05:23:01.…",
+       "press_conference": true,
+       "hours_to_go": 381.8
       },
-      "flags": [],
+      "flags": [
+       "liq_spike_1h",
+       "iv_cheap"
+      ],
       "flag_rules": {
        "funding_extreme": "|z_30d| >= 2 on any…",
        "liq_spike_1h": "last 60 minutes of l…",
@@ -4972,7 +5278,9 @@
         "implied_vol": {
          "type": "object"
         },
-        "iv_minus_rv_30d_vol_pts": {},
+        "iv_minus_rv_30d_vol_pts": {
+         "type": "number"
+        },
         "funding": {
          "type": "object"
         },
@@ -5285,40 +5593,40 @@
       "symbol": "TSLA",
       "indicative": true,
       "notice": "INDICATIVE price from 24/7 venues, not an exchange quote. US exchange holidays are not detected in the session label.",
-      "session": "open",
-      "indicative_price": 371.74,
+      "session": "after",
+      "indicative_price": 377.96,
       "indicative_source": "Hyperliquid HIP-3 xyz:TSLA perp mark",
       "last_regular_session": {
-       "price": 372,
-       "as_of": "2026-10-08T18:33:49.000Z",
-       "source": "alpaca latest trade at our last regular-session sample (5-minute sampling; not the official closing auction print)"
+       "price": 378.2,
+       "as_of": "2026-10-12T20:00:00.000Z",
+       "source": "Hyperliquid HIP-3 xyz:TSLA perp: close of the hourly candle ending at this time, the last full hour of a New York regular session (a perp tr…"
       },
-      "implied_gap_pct": -0.07,
+      "implied_gap_pct": -0.063,
       "sources": [
        {
         "source": "Hyperliquid HIP-3 xyz:TSLA perp mark",
-        "price": 371.74,
-        "oracle": 371.68,
+        "price": 377.96,
+        "oracle": 377.92,
         "funding_rate_8h": 0.00005,
         "liquidity": {
-         "open_interest_usd": 44835967,
-         "volume_24h_usd": 16182573
+         "open_interest_usd": 40872304,
+         "volume_24h_usd": 13893137
         },
-        "as_of": "2026-10-08T18:29:49.327Z"
+        "as_of": "2026-10-12T20:05:01.669Z"
        },
        {
         "source": "bybit TSLAUSDT perp mark",
-        "price": 372.17,
-        "funding_rate_8h": 0,
+        "price": 378.49,
+        "funding_rate_8h": 0.00005442,
         "liquidity": {
-         "open_interest_usd": 9790475,
-         "volume_24h_usd": 5377971
+         "open_interest_usd": 10747208,
+         "volume_24h_usd": 4616123
         },
-        "as_of": "2026-10-08T18:29:49.327Z"
+        "as_of": "2026-10-12T20:05:01.669Z"
        }
       ],
-      "as_of": "2026-10-08T18:29:49.327Z",
-      "age_s": 293
+      "as_of": "2026-10-12T20:05:01.669Z",
+      "age_s": 397
      },
      "paid": true
     },
@@ -6541,5 +6849,6 @@
   }
  },
  "_schemas_regenerated_at": "2026-10-12T06:42:41.458Z",
- "_outputs_recaptured_at": "2026-10-12T19:27:28.176Z"
+ "_outputs_recaptured_at": "2026-10-12T20:11:42.964Z",
+ "_redacted_at": "2026-10-12T20:11:51.183Z"
 }

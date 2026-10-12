@@ -1,0 +1,4 @@
+{
+ "_note": "Jito's eight tip accounts, as listed by Jito's own getTipAccounts (mainnet.block-engine.jito.wtf, read once on 2026-10-12). Checked on-chain the same day: every one is owned by the tip payment program T1pyyaTN... and had received transfers within the last 10 seconds. bin/jito-tips-collect.js samples transfers into them; no Jito API is called at runtime.",
+ "accounts": ["96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5", "ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt", "DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL", "HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe", "DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh", "Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY", "ADaUMid9yfUytqMBgopwjb2DTLSokTSzL1zt6iGPaS49", "3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT"]
+}

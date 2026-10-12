@@ -24,6 +24,9 @@ async function bybit(path) {
   return j.result;
 }
 
+const HLP = require('./hlperp');
+// Hyperliquid's l2Book: 20 aggregated levels a side, as [{ px, sz, n }]; same shape as Bybit's [px, sz] here
+const hlBook = async (coin) => { const b = await HLP.l2Book(coin); return { b: b.levels[0].map((l) => [l.px, l.sz]), a: b.levels[1].map((l) => [l.px, l.sz]) }; };
 const book = (sym, depth = 200) =>
   cached(`ob:${sym}`, 5_000, () => bybit(`/v5/market/orderbook?category=linear&symbol=${sym}&limit=${depth}`));
 
@@ -45,6 +48,15 @@ async function getOrderbookImbalance(p = {}) {
     imbalance_ratio: ratio != null ? Number(ratio.toFixed(3)) : null,
     skew: ratio == null ? null : ratio > 1.5 ? 'bid_heavy (support below)' : ratio < 0.67 ? 'ask_heavy (resistance above)' : 'balanced',
     note: 'visible resting liquidity only — spoofable, read as context not signal',
+    hyperliquid: await HLP.block(sym, async (c) => {
+      const h = await hlBook(c);
+      const m = (parseFloat(h.b[0][0]) + parseFloat(h.a[0][0])) / 2;
+      const l2 = m * (1 - bps / 10000), h2 = m * (1 + bps / 10000);
+      const bu = sum(h.b, (px) => px >= l2), au = sum(h.a, (px) => px <= h2);
+      const r = au > 0 ? bu / au : null;
+      return { mid_price: Number(m.toFixed(6)), bid_usd: Math.round(bu), ask_usd: Math.round(au), imbalance_ratio: r != null ? Number(r.toFixed(3)) : null,
+        skew: r == null ? null : r > 1.5 ? 'bid_heavy (support below)' : r < 0.67 ? 'ask_heavy (resistance above)' : 'balanced', depth_note: 'Hyperliquid serves 20 aggregated levels a side, so a wide window may reach past its visible book' };
+    }),
   };
 }
 
@@ -60,7 +72,13 @@ async function getOrderbookWalls(p = {}) {
       .sort((a, b) => b.usd - a.usd)
       .slice(0, top)
       .map((w) => ({ ...w, distance_pct: Number((((w.price - mid) / mid) * 100).toFixed(3)) }));
-  return { symbol: sym, mid_price: Number(mid.toFixed(6)), depth_levels: ob.b.length + ob.a.length, bid_walls: walls(ob.b), ask_walls: walls(ob.a) };
+  const hl = await HLP.block(sym, async (c) => {
+    const h = await hlBook(c);
+    const m = (parseFloat(h.b[0][0]) + parseFloat(h.a[0][0])) / 2;
+    const w = (side) => side.map(([px, sz]) => ({ price: parseFloat(px), usd: Math.round(parseFloat(px) * parseFloat(sz)) })).sort((a, b) => b.usd - a.usd).slice(0, top).map((x) => ({ ...x, distance_pct: Number((((x.price - m) / m) * 100).toFixed(3)) }));
+    return { mid_price: Number(m.toFixed(6)), depth_levels: h.b.length + h.a.length, bid_walls: w(h.b), ask_walls: w(h.a) };
+  });
+  return { symbol: sym, mid_price: Number(mid.toFixed(6)), depth_levels: ob.b.length + ob.a.length, bid_walls: walls(ob.b), ask_walls: walls(ob.a), hyperliquid: hl };
 }
 
 // ---- get_whale_trades ($0.02) — large prints from recent trade tape

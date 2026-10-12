@@ -8,6 +8,7 @@ const path = require('path');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tradfi-'));
 process.env.FUNDING_RADAR_SNAPSHOT = path.join(dir, 'fr.json');
 process.env.PEGWATCH_DB = path.join(dir, 'none.db');
+process.env.PEG_ONCHAIN_DB = path.join(dir, 'none-onchain.db');
 const T = require('../tools/tradfi');
 const at = (s) => Date.parse(s);
 
@@ -38,15 +39,34 @@ test('radar ranks by |funding 8h|, filters by class and venue; Binance (no OI) s
   assert.throws(() => T.getTradfiRadar({ class: 'crypto' }, { now }), (e) => e.kind === 'bad_request');
 });
 
-test('stale snapshot -> 503; unknown ticker -> 503; missing symbol -> 400', () => {
+test('stale snapshot -> 503; unknown ticker -> 503; missing symbol -> 400', async () => {
   const now = Date.now();
   snap(now - 3600e3, [M('hyperliquid', 'TSLA', 'stock', 0, 5e6)]);
   assert.throws(() => T.getTradfiRadar({}, { now }), (e) => e.status === 503);
   snap(now, [M('hyperliquid', 'TSLA', 'stock', 0, 5e6)]);
-  assert.throws(() => T.getEquity24h({ symbol: 'ZZZZQ' }, { now }), (e) => e.status === 503);
-  assert.throws(() => T.getEquity24h({}, { now }), (e) => e.kind === 'bad_request');
-  const e = T.getEquity24h({ symbol: 'tsla' }, { now });
+  const down = async () => new Response('down', { status: 502 });
+  await assert.rejects(T.getEquity24h({ symbol: 'ZZZZQ' }, { now, fetchImpl: down }), (e) => e.status === 503);
+  await assert.rejects(T.getEquity24h({}, { now, fetchImpl: down }), (e) => e.kind === 'bad_request');
+  const e = await T.getEquity24h({ symbol: 'tsla' }, { now, fetchImpl: down });
   assert.equal(e.indicative, true);
   assert.equal(e.indicative_price, 100);
-  assert.equal(e.last_regular_session.price, null);
+  assert.equal(e.last_regular_session.price, null, 'candles down: no reference, never a guess');
+});
+
+test('last regular-session close: the last hourly HIP-3 candle ending 10:00-16:00 New York on a weekday', async () => {
+  // Mon 12 Oct 2026; candles ending 19:00Z (15:00 EDT), 20:00Z (16:00 EDT) and 21:00Z (17:00 EDT)
+  const end = (iso) => Date.parse(iso) - 1;
+  const candles = [{ T: end('2026-10-12T19:00:00Z'), c: '370' }, { T: end('2026-10-12T20:00:00Z'), c: '378.47' }, { T: end('2026-10-12T21:00:00Z'), c: '380' }];
+  const seen = [];
+  const f = async (url, init) => { seen.push(JSON.parse(init.body)); return new Response(JSON.stringify(candles)); };
+  const sat = Date.parse('2026-10-17T15:00:00Z'); // Saturday: the Monday 16:00 close is still the last
+  const r = await T._lastRegularClose('xyz:TSLA', sat, f);
+  assert.equal(r.price, 378.47);
+  assert.equal(r.as_of, '2026-10-12T20:00:00.000Z');
+  assert.match(r.source, /Hyperliquid HIP-3 xyz:TSLA perp/);
+  assert.equal(seen[0].type, 'candleSnapshot');
+  assert.equal(seen[0].req.coin, 'xyz:TSLA');
+  // during the session the newest finished in-session candle is the answer
+  const r2 = await T._lastRegularClose('xyz:TEST2', Date.parse('2026-10-12T19:30:00Z'), f);
+  assert.equal(r2.price, 370);
 });

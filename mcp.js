@@ -29,9 +29,9 @@ const { challengeDesc, ICON_URL } = require('./payments');
 const SERVER_VERSION = (() => { try { return require('./server.json').version; } catch { return '1.0.0'; } })();
 
 const TOOL_DEFS = [
-  { name: 'get_sol_price', usd: 0.001, desc: 'Live SOL/USD spot price (multi-source: Coinbase, then Kraken). The confidence and publish_time fields are null: neither venue publishes them.',
+  { name: 'get_sol_price', usd: 0.001, desc: 'Live SOL/USD spot price read on-chain: the median of the two deepest SOL/USDC pools on Solana (Orca Whirlpool, Raydium CLMM). confidence is null: a pool publishes none.',
     schema: {}, run: () => getPrice('SOL') },
-  { name: 'get_btc_price', usd: 0.001, desc: 'Live BTC/USD spot price (multi-source: Coinbase, then Kraken). The confidence and publish_time fields are null: neither venue publishes them.',
+  { name: 'get_btc_price', usd: 0.001, desc: 'Live BTC/USD spot price read on-chain: the median of three Uniswap V3 reads on Base and Ethereum (cbBTC/USDC, cbBTC and WBTC through WETH/USDC). confidence is null: a pool publishes none.',
     schema: {}, run: () => getPrice('BTC') },
   { name: 'get_funding_rate', usd: 0.005, desc: 'Funding rate for any USDT perp on Bybit, OKX and Hyperliquid, each at its own interval: raw rate, interval hours, 8h equivalent, annualised rate, next funding time and mark price per venue. Without a symbol, SOL and BTC from Hyperliquid with open interest.',
     schema: { symbol: z.string().optional().describe('USDT perp symbol e.g. ETHUSDT, ONDOUSDT (omit for SOL and BTC from Hyperliquid)') },
@@ -47,7 +47,7 @@ const TOOL_DEFS = [
   { name: 'get_wallet_holdings', usd: 0.008, desc: 'Solana wallet holdings: native SOL, SPL tokens with USD values, NFT count (Helius DAS).',
     schema: { wallet: z.string().describe('Solana wallet address (base58)') },
     run: (a) => getWalletHoldings(a.wallet) },
-  { name: 'get_token_metadata', usd: 0.005, desc: 'SPL token metadata: name, symbol, decimals, supply, price (Helius DAS).',
+  { name: 'get_token_metadata', usd: 0.005, desc: 'SPL token metadata: name, symbol, URI, decimals, supply, mint and freeze authority, mutability. Read from the mint account and its metadata account.',
     schema: { mint: z.string().describe('SPL token mint address (base58)') },
     run: (a) => getTokenMetadata(a.mint) },
   { name: 'get_recent_liquidations', usd: 0.005, desc: 'Recent perp liquidations across Bybit (complete unthrottled tape), OKX and Binance: timestamp, long/short, size, price, USD value. Any USDT perp we record, not just majors.',

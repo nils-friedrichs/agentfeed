@@ -1,0 +1,126 @@
+{
+ "_note": "Solana xStock pools for the on-chain peg tape (tools/pegonchain.js). Chosen on-chain on 2026-10-12: getProgramAccounts on each mint over Raydium CLMM and Orca Whirlpool, kept the pool with the most value in both vaults; token decimals read from the mint account. At that read each matched the pool the pegwatch collector reported, price within $0.25 and liquidity within $1.5k.",
+ "chosen_at": "2026-10-12",
+ "pools": [
+  {
+   "symbol": "TSLAx",
+   "mint": "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB",
+   "decimals": 8,
+   "kind": "raydium-clmm",
+   "pool": "8aDaBQkTrS6HVMjyc6EZebgdiaXhLYGriDWKWWp1NpFF",
+   "quote": "USDC",
+   "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "token_is_0": true
+  },
+  {
+   "symbol": "NVDAx",
+   "mint": "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh",
+   "decimals": 8,
+   "kind": "raydium-clmm",
+   "pool": "49iMatQtoyabsYAQc8GafVq6aeBFVDxSRH44oiatyyw6",
+   "quote": "USDC",
+   "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "token_is_0": true
+  },
+  {
+   "symbol": "AAPLx",
+   "mint": "XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp",
+   "decimals": 8,
+   "kind": "raydium-clmm",
+   "pool": "CKwJZwm7oj3nu4653N1EpDrqXbXAYXoPFiPeEnLouF8y",
+   "quote": "USDC",
+   "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "token_is_0": true
+  },
+  {
+   "symbol": "METAx",
+   "mint": "Xsa62P5mvPszXL1krVUnU5ar38bBSVcWAB6fmPCo5Zu",
+   "decimals": 8,
+   "kind": "raydium-clmm",
+   "pool": "3L7KbPVaAQA4UTecaGQYsm6UCq5F3sZM9zAYkxqYt63j",
+   "quote": "USDC",
+   "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "token_is_0": true
+  },
+  {
+   "symbol": "GOOGLx",
+   "mint": "XsCPL9dNWBMvFtTmwcCA5v3xWPSMEBCszbQdiLLq6aN",
+   "decimals": 8,
+   "kind": "raydium-clmm",
+   "pool": "B8YAwjGYk6qidWzGBXMAxP7nYfG8g74EZ3Y4gFSsobRw",
+   "quote": "USDC",
+   "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "token_is_0": true
+  },
+  {
+   "symbol": "AMZNx",
+   "mint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+   "decimals": 8,
+   "kind": "raydium-clmm",
+   "pool": "6m5aXAve4uh6Kt4ytKyCLWNMjd8PYP5vujwNCtycrUiD",
+   "quote": "USDC",
+   "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "token_is_0": true
+  },
+  {
+   "symbol": "MSFTx",
+   "mint": "XspzcW1PRtgf6Wj92HCiZdjzKCyFekVD8P5Ueh3dRMX",
+   "decimals": 8,
+   "kind": "raydium-clmm",
+   "pool": "CLu4kFM4nb67xrdN7vJnMxXXir8Z5hA4HJUzPFccXjsL",
+   "quote": "USDC",
+   "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "token_is_0": true
+  },
+  {
+   "symbol": "COINx",
+   "mint": "Xs7ZdzSHLU9ftNJsii5fCeJhoRWSC32SQGzGQtePxNu",
+   "decimals": 8,
+   "kind": "raydium-clmm",
+   "pool": "w7SGmPeXoMCsjvXqgsAmUn56uypyDsjAtsxeVkaiqxa",
+   "quote": "USDC",
+   "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "token_is_0": true
+  },
+  {
+   "symbol": "MSTRx",
+   "mint": "XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ",
+   "decimals": 8,
+   "kind": "raydium-clmm",
+   "pool": "2ngTuP7xA581dqX9uJkGRqxmKuehY3k4SDfPebeoRG2J",
+   "quote": "SOL",
+   "quote_mint": "So11111111111111111111111111111111111111112",
+   "token_is_0": false
+  },
+  {
+   "symbol": "CRCLx",
+   "mint": "XsueG8BtpquVJX9LVLLEGuViXUungE6WmK5YZ3p3bd1",
+   "decimals": 8,
+   "kind": "raydium-clmm",
+   "pool": "GYqHjuDzTiw7i52Xv1qohDE6eJr6eSZpsrBVikGZyaFV",
+   "quote": "USDC",
+   "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "token_is_0": true
+  },
+  {
+   "symbol": "SPYx",
+   "mint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+   "decimals": 8,
+   "kind": "raydium-clmm",
+   "pool": "6truu3rZuiB9rKQg4VYC3Dt3QwV7DgwGqXrYUcrvnDDE",
+   "quote": "USDC",
+   "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "token_is_0": true
+  },
+  {
+   "symbol": "QQQx",
+   "mint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+   "decimals": 8,
+   "kind": "raydium-clmm",
+   "pool": "GMjGLWzvK75LPetrgAmdeXnvxc4fUuQPwJxeQqTDU1aG",
+   "quote": "USDC",
+   "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "token_is_0": true
+  }
+ ]
+}

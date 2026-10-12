@@ -1,12 +1,12 @@
 // tools/solana2.js — expansion: Solana suite (5 tools).
-// Helius RPC + enhanced API (key already in .env) + Jito public tip API.
-// Everything cached — Helius credits are metered.
+// Standard Solana JSON-RPC only since R5 C4 (lib/solrpc.js): no DAS, no enhanced transactions
+// API, no getPriorityFeeEstimate, no Jito tip_floor. Jito tips are sampled on-chain by root cron
+// (bin/jito-tips-collect.js) into jito-tips.json. Everything cached; RPC credits are metered.
 'use strict';
 const { cached, fetchJson } = require('../lib/cache');
+const SR = require('../lib/solrpc');
 
 const HELIUS_RPC = () => process.env.HELIUS_RPC || `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`;
-const HELIUS_ENH = () => process.env.HELIUS_ENH || 'https://api.helius.xyz';
-const JITO = () => process.env.JITO_API || 'https://bundles.jito.wtf';
 const BASE58_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 // Mints whose holder set Helius will not rank: getTokenLargestAccounts answers "Too many
@@ -23,7 +23,7 @@ const LARGE_MINTS = new Set([
 ]);
 try { for (const m of JSON.parse(fs.readFileSync(LARGE_MINTS_FILE, 'utf8'))) if (BASE58_RE.test(m)) LARGE_MINTS.add(m); } catch { /* no file yet */ }
 function tooLarge(mint) {
-  const e = new Error(`token-holders: ${mint} has too many token accounts to rank. Helius getTokenLargestAccounts refuses mints above its 10,000,000-account limit (wSOL, USDC and USDT among them), so no holder concentration is available for this mint. Not charged.`);
+  const e = new Error(`token-holders: ${mint} has too many token accounts to rank. The RPC node's getTokenLargestAccounts refuses mints above its 10,000,000-account limit (wSOL, USDC and USDT among them), so no holder concentration is available for this mint. Not charged.`);
   e.kind = 'bad_request'; e.badRequest = true;
   return e;
 }
@@ -72,97 +72,88 @@ async function getTokenHolders(p = {}) {
   if (!BASE58_RE.test(mint || '')) { const e = new Error('invalid mint address'); e.badRequest = true; throw e; }
   if (LARGE_MINTS.has(mint)) throw tooLarge(mint);
   return cached(`holders:${mint}`, 60_000, async () => {
-    const [asset, largest] = await Promise.all([
-      rpc('getAsset', { id: mint }),
+    const [mi, largest] = await Promise.all([
+      SR.mintInfo(mint),
       rpc('getTokenLargestAccounts', [mint]).catch((e) => {
         if (e.badRequest && /too many accounts/i.test(e.message)) { rememberLarge(mint); throw tooLarge(mint); }
         throw e;
       }),
     ]);
-    const ti = asset?.token_info || {};
-    const decimals = ti.decimals ?? 0;
-    const supply = ti.supply != null ? ti.supply / Math.pow(10, decimals) : null;
+    const supply = mi.supply;
     const accounts = (largest?.value || []).map((a) => ({
       address: a.address,
       amount: parseFloat(a.uiAmountString ?? a.uiAmount ?? 0),
     }));
     const pctOf = (k) => (supply ? Number(((accounts.slice(0, k).reduce((s, a) => s + a.amount, 0) / supply) * 100).toFixed(2)) : null);
     return {
-      mint, symbol: asset?.content?.metadata?.symbol || null, supply,
+      mint, symbol: (mi.metadata && mi.metadata.symbol) || null, supply,
       top_accounts: accounts.map((a) => ({ ...a, pct: supply ? Number(((a.amount / supply) * 100).toFixed(2)) : null })),
       concentration: { top1_pct: pctOf(1), top5_pct: pctOf(5), top10_pct: pctOf(10) },
       note: 'token accounts, not unique owners — pools and exchanges included. Fails for mega-holder tokens (USDC-scale).',
+      source: 'Solana RPC: getTokenLargestAccounts and the mint account',
     };
   });
 }
 
-// ---- get_wallet_activity ($0.02) — parsed recent transactions, human-readable
+// ---- get_wallet_activity ($0.02) — recent transactions, read and summarised by us
+// getSignaturesForAddress then getTransaction per signature (jsonParsed). Each row: what the
+// wallet's SOL and token balances did, the fee, success, and the programs invoked (named where
+// the id is one we verified). No third-party parsing.
 async function getWalletActivity(p = {}) {
   const wallet = p.wallet;
-  if (!BASE58_RE.test(wallet || '')) { const e = new Error('invalid wallet address'); e.badRequest = true; throw e; }
+  if (!BASE58_RE.test(wallet || '')) { const e = new Error('invalid wallet address'); e.badRequest = true; e.kind = 'bad_request'; throw e; }
   const limit = Math.min(Math.max(parseInt(p.limit) || 10, 1), 25);
   return cached(`activity:${wallet}:${limit}`, 30_000, async () => {
-    const txs = await fetchJson(
-      `${HELIUS_ENH()}/v0/addresses/${wallet}/transactions?api-key=${process.env.HELIUS_API_KEY}&limit=${limit}`,
-      { timeoutMs: 12_000 });
+    const sigs = await SR.rpc('getSignaturesForAddress', [wallet, { limit }]);
+    const txs = await Promise.all((sigs || []).map((s) => SR.rpc('getTransaction', [s.signature, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 1, commitment: 'confirmed' }]).catch(() => null)));
+    const rows = txs.filter(Boolean).map((t) => SR.summarizeTx(t, wallet));
     return {
-      wallet, tx_count: txs.length,
-      transactions: txs.map((t) => ({
-        signature: t.signature,
-        ts: t.timestamp,
-        type: t.type || null,
-        source: t.source || null,
-        description: t.description || null,
-        fee_sol: t.fee != null ? t.fee / 1e9 : null,
-        failed: !!t.transactionError,
-      })),
-      source: 'helius-enhanced',
+      wallet, tx_count: rows.length, transactions: rows,
+      source: 'Solana RPC: getSignaturesForAddress and getTransaction, summarised by AgentFeed',
     };
   });
 }
 
 // ---- get_priority_fees ($0.005) — what to tip the network right now
+// getRecentPrioritizationFees over the two busiest SOL/USDC pools (tools/dexspot.js): for each of
+// the last ~150 slots, the lowest priority fee among the transactions that wrote to them. The
+// levels are percentiles of those per-slot minimums, computed here.
+const FEE_ACCOUNTS = ['Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE', '3ucNos4NbumPLZNWztqGHNFFgkHeRMBQAVemeeomsUxv'];
+const pctl = (a, q) => a[Math.min(a.length - 1, Math.max(0, Math.ceil(q * a.length) - 1))];
 async function getPriorityFees() {
   return cached('priofees', 10_000, async () => {
-    const r = await rpc('getPriorityFeeEstimate', [{ options: { includeAllPriorityFeeLevels: true } }]);
-    const l = r?.priorityFeeLevels || {};
+    const r = await SR.rpc('getRecentPrioritizationFees', [FEE_ACCOUNTS]);
+    const v = (r || []).map((x) => x.prioritizationFee).filter(Number.isFinite).sort((a, b) => a - b);
+    if (!v.length) throw SR.unavailable('no recent prioritization fees returned');
     return {
       unit: 'micro-lamports per compute unit',
-      levels: { min: l.min, low: l.low, medium: l.medium, high: l.high, very_high: l.veryHigh, unsafe_max: l.unsafeMax },
-      recommended: l.high ?? null,
-      source: 'helius getPriorityFeeEstimate',
+      levels: { min: v[0], low: pctl(v, 0.25), medium: pctl(v, 0.5), high: pctl(v, 0.75), very_high: pctl(v, 0.95), unsafe_max: v[v.length - 1] },
+      recommended: pctl(v, 0.75),
+      slots: v.length,
+      method: 'percentiles of the per-slot minimum priority fee paid by transactions that wrote to the two busiest SOL/USDC pools, over the last ~150 slots',
+      source: 'Solana RPC getRecentPrioritizationFees, percentiles computed by AgentFeed',
     };
   });
 }
 
-// ---- get_jito_tips ($0.005) — Jito bundle tip floor percentiles
+// ---- get_jito_tips ($0.005) — Jito bundle tips, sampled on-chain
+// bin/jito-tips-collect.js (root cron, every 5 minutes) reads the newest transfers into Jito's
+// eight tip accounts and writes their percentiles; a snapshot over 12 minutes old is a 503.
+const JITO_SNAPSHOT = () => process.env.JITO_TIPS_FILE || path.join(__dirname, '..', 'jito-tips.json');
 async function getJitoTips() {
-  return cached('jitotips', 15_000, async () => {
-    const arr = await fetchJson(`${JITO()}/api/v1/bundles/tip_floor`);
-    const t = Array.isArray(arr) ? arr[0] : arr;
-    if (!t) throw new Error('jito: empty tip_floor response');
-    return {
-      unit: 'SOL',
-      percentiles: {
-        p25: t.landed_tips_25th_percentile,
-        p50: t.landed_tips_50th_percentile,
-        p75: t.landed_tips_75th_percentile,
-        p95: t.landed_tips_95th_percentile,
-        p99: t.landed_tips_99th_percentile,
-      },
-      ema_p50: t.ema_landed_tips_50th_percentile ?? null,
-      read: 'tip >= p75 to land bundles reliably in contested blocks',
-      source: 'jito tip_floor',
-    };
-  });
+  let s;
+  try { s = JSON.parse(fs.readFileSync(JITO_SNAPSHOT(), 'utf8')); } catch { throw SR.unavailable('Jito tip sample not built yet. Not charged.'); }
+  const age = Math.round((Date.now() - Date.parse(s.as_of)) / 1000);
+  if (!(age <= 12 * 60)) throw SR.unavailable(`Jito tip sample is ${age}s old (limit 720s). Not charged.`);
+  return { ...s, age_s: age };
 }
 
 // ---- get_sol_network ($0.005) — chain health: TPS + slot + epoch progress
 async function getSolNetwork() {
   return cached('solnet', 15_000, async () => {
     const [perf, epoch] = await Promise.all([
-      rpc('getRecentPerformanceSamples', [4]),
-      rpc('getEpochInfo', []),
+      SR.rpc('getRecentPerformanceSamples', [4]),
+      SR.rpc('getEpochInfo', []),
     ]);
     const tps = perf?.length
       ? perf.map((s) => s.numTransactions / s.samplePeriodSecs)
@@ -173,7 +164,7 @@ async function getSolNetwork() {
       slot: epoch?.absoluteSlot ?? null,
       epoch: epoch?.epoch ?? null,
       epoch_progress_pct: epoch?.slotsInEpoch ? Number(((epoch.slotIndex / epoch.slotsInEpoch) * 100).toFixed(1)) : null,
-      source: 'helius rpc',
+      source: 'Solana RPC: getRecentPerformanceSamples and getEpochInfo',
     };
   });
 }

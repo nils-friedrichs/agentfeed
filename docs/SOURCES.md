@@ -54,6 +54,107 @@ decides the computed products from the table below.
 | Pegwatch upstreams: DexScreener, Alpaca, Yahoo Finance, Stooq | peg-deviation, peg-sessions, peg-universe, equity-24h (the peg tape) | DexScreener API terms (18 Aug 2023) cl. 2; Alpaca Terms "Disclaimer" and support note (Nov 2022) "you cannot redistribute Alpaca API data"; Yahoo terms (4 Aug 2026) §2 no commercial use or redistribution; Stooq: no terms reachable (bot wall) and the keyless CSV now answers "page does not exist" | computed peg metrics; equity-24h also returns the last regular-session price | banned (DexScreener, Alpaca, Yahoo), unclear (Stooq) | unchanged in R4: computed product, decision for the planning chat |
 | Overhang upstreams: Jupiter quotes, Kamino API | exit-quote, exit-method (free) | Jupiter §3.2(d) (above); kamino.com/terms (7 Aug 2026) §3.1 informational use, §6.1 personal licence | computed exit-liquidity measurements | banned (Jupiter), unclear (Kamino) | unchanged in R4: computed product, decision for the planning chat |
 
+## R5 Phase C: every route and its venues (12 Oct 2026)
+
+This table supersedes the R4 inventory further down, which is kept as the record of 12 Oct before
+R5. It is based on the deployed code.
+
+**Verdicts:**
+- **clean:** every upstream is clean, or the route reads chain state.
+- **computed:** a banned or unclear upstream feeds the route, but only values we derive are returned.
+- **raw-unclear:** the route passes a raw value from an unclear venue.
+- **raw-banned:** the route passes a raw value from a banned venue.
+
+"Chain state" means values read from a public chain with standard RPC methods; the RPC provider is only the transport.
+
+### Sources added or changed in Phase C
+
+| Source | Used by | Terms | Verdict |
+|---|---|---|---|
+| Uniswap V3 pools on Ethereum and Base, read with eth_call slot0 through eth.drpc.org and mainnet.base.org (base.drpc.org fallback) | sol/btc/eth-price, price, market-snapshot, trade-context, market-state (BTC, ETH) | Chain state. The RPC terms are already in the table above (Base clean; dRPC clean). | clean |
+| Orca Whirlpool and Raydium CLMM pools on Solana, read with getMultipleAccounts | sol-price, price, market-snapshot, trade-context, market-state (SOL); the peg tape's token side | Chain state. The RPC is Helius, used as transport only (Cloud Services Agreement §3.1 allows integration). | clean |
+| Solana standard RPC: getAccountInfo, getTokenLargestAccounts, getSignaturesForAddress, getTransaction, getRecentPrioritizationFees, getRecentPerformanceSamples, getEpochInfo | token-metadata, token-risk, token-holders, wallet-activity, priority-fees, jito-tips (via cron), sol-network | Chain state. Replaces DAS getAsset, the enhanced transactions API, getPriorityFeeEstimate and Jito's tip_floor. | clean |
+| Hyperliquid info API: metaAndAssetCtxs, l2Book, candleSnapshot, fundingHistory | the second venue on open-interest, basis, volatility, funding-history, top-movers, funding-extremes, orderbook-imbalance, orderbook-walls, positioning, funding-pulse, oi-spike-scan; HYPE spot in market-state (oracle); equity-24h's last regular-session price (HIP-3 hourly candle) | app.hyperliquid.xyz/terms (15 Jun 2026): no data or redistribution restriction | clean |
+
+**Dropped in Phase C:**
+- Coinbase, Kraken, Binance spot, OKX spot and Gemini, from every price route.
+- Bybit spot, from market-state HYPE.
+- The pegwatch Alpaca reference, from equity-24h.
+- DexScreener, from every peg route's latest price and liquidity, and from equity-24h. pegwatch still records the token side from DexScreener; we read it only for window statistics before our cutover.
+- Helius DAS (getAsset), the Helius enhanced transactions API, Helius getPriorityFeeEstimate and Jito tip_floor.
+
+### Every route
+
+| route | price | venues | verdict | raw value still passed (venue) |
+|---|---|---|---|---|
+| /api/sol-price | $0.001 | Orca and Raydium SOL/USDC pools (chain) | clean | — |
+| /api/btc-price | $0.001 | Uniswap V3 cbBTC/USDC (Base), WBTC/WETH and cbBTC/WETH × WETH/USDC (Ethereum, Base) | clean | — |
+| /api/eth-price | $0.001 | Uniswap V3 WETH/USDC on Ethereum and Base | clean | — |
+| /api/price | $0.001 | as the three above | clean | — |
+| /api/market-snapshot | $0.005 | DEX pools; Hyperliquid funding; alternative.me (attributed) | clean | — |
+| /api/funding-rate | $0.005 | Hyperliquid; with `symbol`, also Bybit and OKX | raw-banned | `venues.okx.*` (OKX), `venues.bybit.*` (Bybit) |
+| /api/funding-cross | $0.01 | Bybit, OKX, Hyperliquid | raw-banned | `venues.okx.*`, `venues.bybit.*` |
+| /api/funding-radar | $0.02 | Bybit, OKX, Hyperliquid (collector) | raw-banned | `venues.okx.*` rates, `oi_usd.okx`; Bybit likewise |
+| /api/funding-extremes | $0.02 | Bybit; Hyperliquid (second venue) | raw-unclear | Bybit ticker rates |
+| /api/funding-pulse | $0.005 | Bybit; Hyperliquid (second venue) | raw-unclear | Bybit rates |
+| /api/funding-history | $0.005 | Bybit; Hyperliquid (second venue) | raw-unclear | Bybit settlements |
+| /api/open-interest | $0.01 | Bybit, OKX, Hyperliquid | raw-banned | `okx.oi_base/oi_usd`, `bybit.*` |
+| /api/oi-spike-scan | $0.02 | Bybit; Hyperliquid (second venue) | raw-unclear | Bybit `oi_usd`, funding |
+| /api/long-short | $0.01 | Bybit only (Hyperliquid publishes no long/short ratio) | raw-unclear | Bybit ratios |
+| /api/positioning | $0.005 | Bybit; Hyperliquid OI | raw-unclear | Bybit ratios and OI |
+| /api/basis | $0.01 | Bybit perp and spot; Hyperliquid mark vs oracle | raw-unclear | Bybit mark and spot |
+| /api/volatility | $0.01 | Bybit and Hyperliquid daily candles | computed | — |
+| /api/top-movers | $0.01 | Bybit; Hyperliquid (second venue) | raw-unclear | Bybit last price, turnover, funding |
+| /api/orderbook-imbalance | $0.01 | Bybit and Hyperliquid books | computed | — |
+| /api/orderbook-walls | $0.01 | Bybit and Hyperliquid books | raw-unclear | Bybit wall prices and sizes |
+| /api/whale-trades | $0.02 | Bybit only (Hyperliquid's public API serves its last 10 trades, about 10 s) | raw-unclear | Bybit prints |
+| /api/spread-arb | $0.02 | Bybit, OKX, Hyperliquid | raw-banned | `venues.okx.bid/ask`, Bybit bid/ask |
+| /api/perp | $0.005 | Bybit, OKX, Hyperliquid, our tape | raw-banned | OKX funding and OI, Bybit, the tape's biggest print |
+| /api/squeeze-score | $0.10 | Bybit, our tape | raw-unclear | `inputs.funding_rate_raw`, `long_account_pct` (Bybit) |
+| /api/market-state | $0.02 | DEX pools (spot), Hyperliquid (HYPE oracle), Bybit, OKX, Deribit, our tape, snapshots | raw-banned | `open_interest.okx_usd`, `funding.venues.okx` (OKX); Bybit OI, long/short and basis; DVOL (Deribit) |
+| /api/trade-context | $0.01 | DEX pools; Hyperliquid funding; Bybit positioning; our tape | raw-unclear | Bybit positioning; the tape's biggest prints |
+| /api/liquidations | $0.005 | our CEX tape (Bybit, OKX, Binance) | raw-banned | individual prints (C7: kept, see below) |
+| /api/cascade, /api/cascade-scan, /api/liquidation-leaders, /api/liquidation-stats, /api/liq-history, /api/liq-heatmap, /api/cascade-history, /api/venue-liq-share | $0.01 to $0.05 | our CEX tape | raw-banned (raw?) | single MAX/MIN prints (C7) |
+| /api/liq-pulse | $0.005 | our CEX tape | computed | — |
+| /api/cascade-forecast | $0.02 | our CEX tape via caliper | computed | — |
+| /api/options-summary | $0.02 | Deribit (collector) | raw-unclear | `spot` (index price), DVOL |
+| /api/options-gex | $0.03 | Deribit (collector) | raw-unclear | `spot` |
+| /api/tradfi-radar | $0.02 | Hyperliquid HIP-3, Bybit, Binance, OKX (collector) | raw-banned | rows with venue okx or binance; Bybit rows |
+| /api/equity-24h | $0.01 | Hyperliquid HIP-3 (and its candles for the regular-session close), our on-chain xStock tape, Bybit, Binance, OKX | raw-banned | `sources[]` entries from OKX and Binance (and Bybit) |
+| /api/tradfi-perps | $0.005 | Hyperliquid HIP-3 | clean | — |
+| /api/fx-rates | $0.002 | ECB (notice), Hyperliquid HIP-3 | clean | — |
+| /api/peg-deviation | $0.02 | our on-chain xStock tape; reference from pegwatch (Alpaca) | raw-banned | `latest.reference` (Alpaca) |
+| /api/peg-sessions, /api/peg-universe | $0.03, $0.05 | pegwatch history before our cutover, our tape after | computed | — |
+| /api/exit-quote | $0.02 | overhang (Kamino oracle, unnamed router) | raw-unclear | as in the R4 table |
+| /api/wallet-holdings/:wallet | $0.008 | Helius DAS getAssetsByOwner | raw-unclear | balances (chain state) and `price_usd`/`value_usd` (Helius price) |
+| /api/token-metadata/:mint, /api/token-risk/:mint, /api/token-holders/:mint, /api/wallet-activity/:wallet | $0.005 to $0.02 | Solana chain state | clean | — |
+| /api/priority-fees, /api/jito-tips, /api/sol-network | $0.005 | Solana chain state | clean | — |
+| /api/base-gas, /api/base-balance | $0.005 | Base/Ethereum RPC (PublicNode only as a fallback; ENS resolvers) | raw-unclear (fallback only) | as in the R4 table |
+| /api/honeypot-check, /api/base-launches | $0.01, $0.02 | chain state | clean | — |
+| /api/hl-whales | $0.02 | Hyperliquid | clean | — |
+| /api/macro-calendar | $0.005 | Fed, BLS, BEA | clean | — |
+| /api/web-markdown, /api/pdf-markdown, /api/sec-filings, /api/insider-trades, /api/sec-8k | $0.005 to $0.01 | the caller's URL; SEC EDGAR | clean | — |
+
+**Free routes:**
+- /api/last-liquidation passes tape prints (raw-banned, C7).
+- /api/fear-greed is clean, with attribution.
+- /api/exit-method and /api/forecast-record are computed.
+- /api/sample serves the stored captures. Since C5, OKX and Binance values and the Alpaca reference are null there, and so are the copies in the 402 challenges. The sample of each route changed in Phase C was recaptured after the change. /api/oi-spike-scan was not: a fresh process has no baseline, so its sample is the earlier Bybit-only capture.
+
+### C7: the CEX liquidation tape stays, and its risk
+
+- **What it is:** liqcollector.js stores every liquidation print from the public WebSocket streams of Bybit (terms unclear), OKX and Binance (terms forbid redistribution: OKX API Agreement §9.4(a); Binance licence cl. 27 and the Vision dataset terms).
+- **What is exposed raw:**
+  - /api/liquidations and the free /api/last-liquidation return single prints (ts, symbol, exchange, side, size, price, usd);
+  - nine routes return a single MAX or MIN print without naming the exchange.
+- **What is computed:** every other tape output (sums, counts, splits, forecasts).
+- **The risk:**
+  - a venue could treat the raw prints as redistribution of its market data and ask us to stop;
+  - the API Agreement terms allow suspension of access, which would end that venue's stream and blank its share of the tape.
+  - No venue has contacted us.
+- **Smallest change that removes the raw exposure, kept for a decision:** drop size, price and usd from individual prints, and replace the MAX/MIN print fields with bucketed or rounded aggregates. The tape keeps its value (cascade detection, forecasts and splits are all computed).
+- **Decision of 12 Oct (planning chat):** keep the tape as is and record the risk here.
+
 ## Added in R5 Phase B (terms read 2026-10-12, before building)
 
 Every source below was read before its route was built. Quotes are verbatim and short; the
@@ -81,7 +182,7 @@ Routes in this section and the upstreams they reach (all clean, so none is in li
 | GET /api/tradfi-perps | $0.005 | api.hyperliquid.xyz/info (perpDexs, metaAndAssetCtxs per dex) |
 | GET /api/fx-rates | $0.002 | data-api.ecb.europa.eu (EXR daily), plus the tradfi-perps cache for HIP-3 FX and commodity marks |
 
-## Raw values by route (inventory of 12 Oct 2026, after the R4 deploy)
+## Raw values by route (inventory of 12 Oct 2026, after the R4 deploy; superseded by the R5 Phase C table above)
 
 A static read of the deployed tree: each route, the upstreams it reaches, and which response
 fields carry an upstream value unchanged (rounded, unit-converted or renamed counts as raw)

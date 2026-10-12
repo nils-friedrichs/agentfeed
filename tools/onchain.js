@@ -1,4 +1,4 @@
-// tools/onchain.js — Helius DAS: wallet holdings + token metadata.
+// tools/onchain.js — wallet holdings (Helius DAS getAssetsByOwner) + token metadata (standard RPC since R5 C4).
 // Premium tools ($0.005-0.008 in Session 2). Key from .env only.
 const HELIUS_URL = () =>
   `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`;
@@ -70,27 +70,31 @@ async function getWalletHoldings(wallet) {
   };
 }
 
-// getAsset — metadata for one mint
+// metadata for one mint, from the mint account and its metadata account (R5 C4: standard RPC,
+// no DAS). price_usd is gone: it was Helius's own price, not chain state.
 async function getTokenMetadata(mint) {
   if (mint == null || mint === '') {
     throw badRequest('missing required parameter: mint — an SPL mint address (base58), e.g. mint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v (USDC)');
   }
   if (!BASE58_RE.test(mint)) throw badRequest('invalid mint address');
 
-  const a = await rpc('getAsset', { id: mint });
-  const meta = a?.content?.metadata || {};
-  const info = a?.token_info || {};
-
+  const m = await require('../lib/solrpc').mintInfo(mint);
+  const meta = m.metadata || {};
   return {
     mint,
     name: meta.name || null,
-    symbol: meta.symbol || info.symbol || null,
-    interface: a?.interface || null,
-    decimals: info.decimals ?? null,
-    supply: info.supply ?? null,
-    price_usd: info.price_info?.price_per_token ?? null,
-    mutable: a?.mutable ?? null,
-    source: 'helius-das',
+    symbol: meta.symbol || null,
+    uri: meta.uri || null,
+    program: m.program,
+    decimals: m.decimals,
+    supply: m.supply,
+    supply_raw: m.supply_raw,
+    mint_authority: m.mint_authority,
+    freeze_authority: m.freeze_authority,
+    mutable: m.metadata ? meta.mutable : null,
+    extensions: m.extensions,
+    metadata_source: meta.source || null,
+    source: 'Solana RPC: the mint account and its metadata account',
   };
 }
 

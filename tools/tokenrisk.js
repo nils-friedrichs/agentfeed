@@ -1,4 +1,5 @@
 // tools/tokenrisk.js — token risk signals: authorities + holder concentration.
+// Standard Solana RPC only since R5 C4 (lib/solrpc.js mintInfo, no DAS).
 // v1 honest scope: no LP-lock or honeypot claims. Concentration fails soft on
 // mega-holder tokens (USDC-scale) where getTokenLargestAccounts times out.
 const HELIUS_URL = () =>
@@ -29,17 +30,15 @@ async function getTokenRisk(mint) {
   }
   if (!BASE58_RE.test(mint)) throw badRequest('invalid mint address');
 
-  const [asset, largestRes] = await Promise.all([
-    rpc('getAsset', { id: mint }),
+  const [mi, largestRes] = await Promise.all([
+    require('../lib/solrpc').mintInfo(mint),
     rpc('getTokenLargestAccounts', [mint])
       .then(v => ({ ok: true, v }))
       .catch(e => ({ ok: false, err: e.message })),
   ]);
 
-  const ti = asset?.token_info || {};
-  const meta = asset?.content?.metadata || {};
-  const decimals = ti.decimals ?? 0;
-  const supply = ti.supply != null ? ti.supply / Math.pow(10, decimals) : null;
+  const meta = mi.metadata || {};
+  const supply = mi.supply;
 
   const accounts = largestRes.ok
     ? (largestRes.v?.value || []).slice(0, 10).map(a => ({
@@ -53,8 +52,8 @@ async function getTokenRisk(mint) {
   const top1_pct = largestRes.ok && supply && accounts[0]
     ? Math.round((accounts[0].amount / supply) * 10000) / 100 : null;
 
-  const mintAuth = ti.mint_authority || null;
-  const freezeAuth = ti.freeze_authority || null;
+  const mintAuth = mi.mint_authority;
+  const freezeAuth = mi.freeze_authority;
 
   const flags = [];
   if (mintAuth) flags.push('mint_authority_active: supply can be inflated');
@@ -66,7 +65,7 @@ async function getTokenRisk(mint) {
     name: meta.name || null,
     symbol: meta.symbol || null,
     supply,
-    price_usd: ti.price_info?.price_per_token ?? null,
+    program: mi.program,
     authorities: {
       mint_authority: mintAuth,       // null = revoked (good)
       freeze_authority: freezeAuth,   // null = revoked (good)
@@ -81,6 +80,7 @@ async function getTokenRisk(mint) {
     },
     risk_flags: flags,
     risk_flag_count: flags.length,
+    source: 'Solana RPC: the mint account, its metadata account and getTokenLargestAccounts',
   };
 }
 

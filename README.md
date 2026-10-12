@@ -245,20 +245,20 @@ The flagship is [`get_squeeze_score`](#the-moat--our-own-liquidation-tape) — a
 
 | Tool | Price | Route | What you get |
 |---|---|---|---|
-| `get_squeeze_score` | $0.1 | `/api/squeeze-score` | FLAGSHIP: short-squeeze / long-flush score 0-100 for any USDT perp. Composite of funding, long/short crowding, 24h OI build, and liq-skew from our exclusive tape. One number that answers "is this trade crowded and about to hurt someone". |
-| `get_liq_history` | $0.05 | `/api/liq-history` | HISTORICAL liquidation tape, time-bucketed: total/long/short USD, prints, biggest print per bucket. Any USDT perp or the whole recorded universe, up to 7 days back. Bybit is the only complete liq tape in crypto and no exchange publishes history of it — this data exists nowhere else. |
-| `get_liq_heatmap` | $0.02 | `/api/liq-heatmap` | Liquidation heatmap by PRICE LEVEL from our own tape: where leverage actually got flushed in the last N hours — USD, prints, long/short split per price zone, hottest zone flagged. Real prints, not entry-price estimates. |
-| `get_cascade_history` | $0.03 | `/api/cascade-history` | PAST liquidation cascades reconstructed from our tape: clustered same-side flush events with start/end, prints, USD total, peak print. get_cascade_alert tells you NOW; this tells you what already happened, up to 72h back. |
-| `get_venue_liq_share` | $0.02 | `/api/venue-liq-share` | Which venue is flushing whom: per-exchange liquidation share (Bybit/OKX/Binance) with long/short split and biggest print, any symbol or whole universe. |
-| `get_cascade_forecast` | $0.02 | `/api/cascade-forecast` | FORWARD-LOOKING liquidation forecast, not a description of what already happened. Returns the probability that a symbol will liquidate more in the NEXT 15 minutes than its own 90th-percentile 15-minute window. Calibrated on a 28-day tape of 1.4M Bybit liquidations across 799 symbols, which cannot be reconstructed by anyone starting today because no exchange publishes liquidation history. Every answer carries the exact question, the threshold in USD, the window it read, the number of historical occurrences behind the number, and instructions for settling it yourself from the public feed. When a state has too little history the tool DECLINES rather than guessing, and says why. |
+| `get_squeeze_score` | $0.1 | `/api/squeeze-score` | Short squeeze score and long flush score, 0-100, for any USDT perp. Composite of the funding rate, long/short crowding, 24h open-interest build, and liquidation skew from our own tape. One number for whether a trade is crowded and about to hurt someone. |
+| `get_liq_history` | $0.05 | `/api/liq-history` | Liquidation history, time-bucketed: total, long and short USD, prints and biggest print per bucket, for any USDT perp or the whole recorded universe, up to 7 days back. Bybit is the only complete liq tape in crypto and no exchange publishes history of it. |
+| `get_liq_heatmap` | $0.02 | `/api/liq-heatmap` | Liquidation heatmap by PRICE LEVEL: where leverage actually got flushed in the last N hours — USD, prints and long/short split per price zone, with the hottest zone flagged. Built from real liquidation prints, not entry-price estimates. BTC, ETH, SOL, HYPE or any other USDT perp on our Bybit, OKX and Binance tape. |
+| `get_cascade_history` | $0.03 | `/api/cascade-history` | Liquidation cascade history: past clustered same-side flush events reconstructed from our own tape, with start and end, prints, USD total and peak print, up to 72h back. /api/cascade tells you what is happening NOW; this tells you what already happened. |
+| `get_venue_liq_share` | $0.02 | `/api/venue-liq-share` | Liquidations by exchange: per-venue liquidation share across Bybit, OKX and Binance with long/short split and biggest print, for any symbol or the whole recorded universe. Which venue is flushing whom. |
+| `get_cascade_forecast` | $0.02 | `/api/cascade-forecast` | Liquidation forecast, FORWARD-LOOKING and not a description of what already happened. Returns the probability that a symbol will liquidate more in the NEXT 15 minutes than its own 90th-percentile 15-minute window. Calibrated on a 28-day tape of 1.4M Bybit liquidations across 799 symbols, which cannot be reconstructed by anyone starting today because no exchange publishes liquidation history. Every answer carries the exact question, the threshold in USD, the window it read, the number of historical occurrences behind the number, and instructions for settling it yourself from the public feed. When a state has too little history the tool DECLINES rather than guessing, and says why. The settled record is free at /api/forecast-record. |
 
 ### The second moat — our own tokenized-equity peg tape
 
 | Tool | Price | Route | What you get |
 |---|---|---|---|
-| `get_peg_universe` | $0.05 | `/api/peg-universe` | Every tokenized US equity we track, ranked by off-hours peg risk: p95 and max deviation bps, market-open deviation as control, median liquidity. Dead pools are excluded rather than reported as perfect pegs. |
-| `get_peg_sessions` | $0.03 | `/api/peg-sessions` | Peg deviation broken out by trading session (open, premarket, afterhours, overnight, weekend): mean, p95, max bps and median liquidity per session, with the worst off-hours window flagged. Market-open acts as the control. |
-| `get_peg_deviation` | $0.02 | `/api/peg-deviation` | Peg deviation for a tokenized US equity on Solana: on-chain DEX price vs the underlying last real trade, in bps, with 24h stats split into market-open and off-hours. Sampled every 5 minutes by our own collector; this tape exists nowhere else. |
+| `get_peg_universe` | $0.05 | `/api/peg-universe` | Tokenized stocks ranked by off-hours peg risk: every tokenized US equity we track, with p95 and max deviation bps, market-open deviation as the control, and median liquidity. Dead pools are excluded rather than reported as perfect pegs. |
+| `get_peg_sessions` | $0.03 | `/api/peg-sessions` | Tokenized stock peg by trading session: deviation broken out across open, premarket, afterhours, overnight and weekend — mean, p95, max bps and median liquidity each, with the worst off-hours window flagged. Market-open acts as the control. |
+| `get_peg_deviation` | $0.02 | `/api/peg-deviation` | Tokenized stock peg deviation on Solana: the on-chain DEX price of a tokenized US equity versus the underlying's last real trade, in bps, with 24h stats split into market-open and off-hours. Sampled every 5 minutes by our own collector; the token price is read on-chain. |
 
 Sampled every 5 minutes since 19 July 2026. Deviation is measured against the underlying's last real trade — outside US market hours that is the last print before the close, not a live quote. Dead pools are excluded rather than reported as perfect pegs.
 
@@ -273,78 +273,78 @@ Sampled every 5 minutes since 19 July 2026. Deviation is measured against the un
 
 | Tool | Price | Route | What you get |
 |---|---|---|---|
-| `get_recent_liquidations` | $0.005 | `/api/liquidations` | Recent liquidations across the USDT perps we record on Bybit (complete unthrottled tape), OKX and Binance. Any symbol, not just majors; defaults to majors. The measured market count is published live at / under coverage.perp_markets_7d |
-| `get_cascade_alert` | $0.01 | `/api/cascade` | Liquidation cascade detector for the 5 majors (SOL/BTC/ETH/XRP/DOGE) across Bybit+OKX+Binance. For every perp we record use /api/cascade-scan |
-| `get_cascade_scan` | $0.05 | `/api/cascade-scan` | FULL-UNIVERSE cascade scan: every USDT perp we record across Bybit+OKX+Binance. Bybit is the only complete unthrottled liquidation tape in crypto and no exchange publishes history of it |
-| `get_liquidation_leaders` | $0.02 | `/api/liquidation-leaders` | What is blowing up right now: top symbols by liquidation USD across every USDT perp we record, with long/short split, biggest print and venue count |
-| `get_liquidation_stats` | $0.01 | `/api/liquidation-stats` | 1h/24h liquidation totals for the 5 majors (SOL/BTC/ETH/XRP/DOGE), long/short split, biggest print, per-exchange breakdown |
+| `get_recent_liquidations` | $0.005 | `/api/liquidations` | Crypto liquidations, live tape: recent perp liquidation prints across Bybit, OKX and Binance with timestamp, side liquidated, size, price and USD value. Any USDT perp we record, not just majors. The Bybit tape is complete and unthrottled. |
+| `get_cascade_alert` | $0.01 | `/api/cascade` | Liquidation cascade detector, live: clustered same-side liquidations happening NOW on SOL, BTC, ETH, XRP and DOGE across Bybit, OKX and Binance, with side, USD total, prints, duration and severity. For every perp we record use /api/cascade-scan. |
+| `get_cascade_scan` | $0.05 | `/api/cascade-scan` | Liquidation cascade scan across EVERY USDT perp we record on Bybit, OKX and Binance at once, not just the majors: symbol, side liquidated, USD total, prints, duration, severity. Bybit is the only complete unthrottled liquidation tape in crypto. |
+| `get_liquidation_leaders` | $0.02 | `/api/liquidation-leaders` | Liquidation leaderboard: top symbols by liquidation USD right now across every USDT perp we record on Bybit, OKX and Binance, with long/short split, biggest single print and venue count. What is blowing up, ranked. |
+| `get_liquidation_stats` | $0.01 | `/api/liquidation-stats` | Liquidation stats, 1h and 24h totals for SOL, BTC, ETH, XRP and DOGE: long vs short USD split, biggest single print, and a per-exchange breakdown across Bybit, OKX and Binance. |
 | `get_liq_pulse` | $0.005 | `/api/liq-pulse` | Use when an agent needs to know what is being liquidated right now. Returns the last 60 minutes across every USDT perp we record: total USD, long/short split, prints and the top 5 symbols. Declines with the tape age if our recording is stale. |
 
 ### Derivatives
 
 | Tool | Price | Route | What you get |
 |---|---|---|---|
-| `get_funding_cross` | $0.01 | `/api/funding-cross` | Funding for ANY USDT perp across Bybit + OKX + Hyperliquid in one call, with cross-venue spread and crowding read. |
-| `get_funding_radar` | $0.02 | `/api/funding-radar` | Funding rates radar across Bybit, OKX and Hyperliquid: tracks every USDT perp listed on at least two of them from $5M combined OI and shows $10M and up by default; current 8h-equivalent funding per venue, each venue's 30-day z-score, the cross-venue spread and a flag on any \|z\| ≥ 2, most extreme first. Precomputed every 5 min, with `as_of` and `stale`. |
+| `get_funding_cross` | $0.01 | `/api/funding-cross` | Funding rate for ANY USDT perp across Bybit, OKX and Hyperliquid in one call, with the cross-venue spread and a crowding read. |
+| `get_funding_radar` | $0.02 | `/api/funding-radar` | Funding rates radar across Bybit, OKX and Hyperliquid. It tracks every USDT perp listed on at least two of them from $5M combined open interest and, by default, shows the ones with $10M and up; min_oi_usd changes that. Per symbol: the current funding per venue at its 8h equivalent, each venue's 30-day z-score against its own settled history, the cross-venue spread, and a flag on any \|z\| of 2 or more, most extreme first. Precomputed every 5 minutes, with as_of and stale. |
 | `get_options_summary` | $0.02 | `/api/options-summary` | Implied volatility and options skew for BTC, ETH, SOL, XRP and HYPE from Deribit: DVOL (or our 30-day ATM implied vol where Deribit publishes none) with its 24h change, the ATM IV term structure, 25-delta risk reversal and butterfly per expiry, put/call ratio by open interest and 24h volume, options open interest in USD, max pain for the next three expiries and the top strikes. Precomputed every 5 minutes; a snapshot older than 15 minutes answers 503 and is never charged. |
 | `get_options_gex` | $0.03 | `/api/options-gex` | Gamma exposure (GEX) for BTC, ETH, SOL, XRP and HYPE options on Deribit: gamma by strike in USD per 1% move, net GEX under a dealer-sign convention stated in every response, the gamma flip level and the call and put walls. Black-Scholes gamma on Deribit mark implied volatility across every live expiry. Precomputed every 5 minutes; a snapshot older than 15 minutes answers 503 and is never charged. |
 | `get_market_state` | $0.02 | `/api/market-state` | Market state for BTC, ETH, SOL or HYPE in one call: spot and perp basis, realized vol 7d and 30d, implied vol (DVOL or 30-day ATM) and the IV minus RV spread, funding per venue with 30-day z-scores, open interest and its 24h change, long/short, liquidations 1h and 24h by side, Fear and Greed, the next FOMC or CPI release, and flags with stated thresholds. Every part carries its source and as-of time; a part we do not hold is null with a reason. |
-| `get_funding_extremes` | $0.02 | `/api/funding-extremes` | Most crowded trades across every Bybit USDT perp: top most-positive and most-negative funding with annualized %, 24h price move and OI. Crowded shorts = squeeze candidates. |
-| `get_open_interest` | $0.01 | `/api/open-interest` | Open interest for ANY USDT perp: Bybit OI in base + USD with 1h/24h change, plus OKX OI. (get_positioning covers SOL+BTC only.) |
-| `get_oi_spike_scan` | $0.02 | `/api/oi-spike-scan` | Abnormal open-interest jumps across every Bybit USDT perp vs a 30min+ baseline — where new leverage is piling in, with funding and price context. Squeeze/flush precursor screener. |
-| `get_long_short` | $0.01 | `/api/long-short` | Long/short account ratio for ANY USDT perp with 1h and 24h trend (retail crowding gauge). |
-| `get_basis` | $0.01 | `/api/basis` | Perp-vs-spot basis for any USDT pair: premium/discount %, contango/backwardation read, funding context. |
-| `get_volatility` | $0.01 | `/api/volatility` | Realized volatility for any USDT perp: 7d and 30d annualized from daily closes, plus today's range. Position-sizing input. |
-| `get_funding_history` | $0.005 | `/api/funding-history` | Funding-rate history for any USDT perp (up to 200 intervals): average, annualized, share of positive intervals — what the carry has actually been. |
-| `get_top_movers` | $0.01 | `/api/top-movers` | 24h top gainers and losers across every Bybit USDT perp with a liquidity floor, funding attached. The "what moved" screener. |
+| `get_funding_extremes` | $0.02 | `/api/funding-extremes` | Funding rate extremes across every Bybit USDT perp and every Hyperliquid perp: the most positive and most negative funding with annualized %, 24h price move and open interest. The most crowded trades in the market — crowded shorts are squeeze candidates. |
+| `get_open_interest` | $0.01 | `/api/open-interest` | Open interest for ANY USDT perp: Bybit OI in base units and in USD with 1h and 24h change, plus OKX and Hyperliquid open interest and the mark price. /api/positioning covers SOL and BTC only. |
+| `get_oi_spike_scan` | $0.02 | `/api/oi-spike-scan` | Open interest spikes across every Bybit USDT perp and every Hyperliquid perp: abnormal OI jumps against an earlier snapshot of the same universe, at least 30 minutes old and with its exact age returned as baseline_min_ago, plus funding and 24h price context. |
+| `get_long_short` | $0.01 | `/api/long-short` | Long/short ratio for ANY USDT perp: the retail long and short account percentages from Bybit with 1h and 24h trend. The crowding gauge. |
+| `get_basis` | $0.01 | `/api/basis` | Perp-vs-spot basis for any USDT pair: the premium or discount in % on Bybit, a contango or backwardation read and the funding context, plus Hyperliquid's mark against its oracle price. |
+| `get_volatility` | $0.01 | `/api/volatility` | Realized volatility for any USDT perp: 7-day and 30-day annualized from daily closes, plus today's range in %, on Bybit and on Hyperliquid. A position-sizing input. |
+| `get_funding_history` | $0.005 | `/api/funding-history` | Funding rate history for any USDT perp, up to 200 intervals on Bybit and the same number of hourly settlements on Hyperliquid: the average rate, its annualized %, the share of intervals that were positive, and the raw series. What the carry has actually been. |
+| `get_top_movers` | $0.01 | `/api/top-movers` | Top gainers and losers over 24h across every Bybit USDT perp and every Hyperliquid perp above a liquidity floor, each with its funding rate attached. The "what moved" screener. |
 | `get_perp` | $0.005 | `/api/perp` | Use when an agent needs one perp market in a single call. Returns cross-venue funding (Bybit, OKX, Hyperliquid), open interest with 1h/24h change, long/short ratio, and 24h liquidations with long/short split and biggest print from our own tape. |
-| `get_funding_pulse` | $0.005 | `/api/funding-pulse` | Use when an agent needs the most extreme funding rates right now. Returns the 5 largest absolute annualised rates across the whole Bybit USDT perp universe, each with venue, 8h rate, open interest and 24h price move. One call, not a full screen. |
+| `get_funding_pulse` | $0.005 | `/api/funding-pulse` | Use when an agent needs the most extreme funding rates right now. Returns the 5 largest absolute annualised rates across the whole Bybit USDT perp universe, and the 5 on Hyperliquid, each with venue, 8h rate, open interest and 24h price move. One call, not a full screen. |
 
 ### Microstructure
 
 | Tool | Price | Route | What you get |
 |---|---|---|---|
-| `get_orderbook_imbalance` | $0.01 | `/api/orderbook-imbalance` | Bid/ask resting-liquidity imbalance within ±N bps of mid for any USDT perp: USD each side, ratio, skew read. |
-| `get_orderbook_walls` | $0.01 | `/api/orderbook-walls` | Largest resting orders each side of the book for any USDT perp, with USD size and distance from mid. |
-| `get_whale_trades` | $0.02 | `/api/whale-trades` | Large prints from the live trade tape for any USDT perp: trades over a USD threshold, buy/sell totals, net flow, dominant side. |
-| `get_spread_arb` | $0.02 | `/api/spread-arb` | Best bid/ask for a USDT perp across Bybit, OKX and Hyperliquid, with the best cross-venue edge in bps (pre-fee). |
+| `get_orderbook_imbalance` | $0.01 | `/api/orderbook-imbalance` | Orderbook imbalance for any USDT perp on Bybit and Hyperliquid: resting bid and ask liquidity in USD within ±N bps of mid, the ratio between the two sides, and a skew read. |
+| `get_orderbook_walls` | $0.01 | `/api/orderbook-walls` | Orderbook walls for any USDT perp on Bybit and Hyperliquid: the largest resting orders on each side of the book, with USD size and distance from mid. |
+| `get_whale_trades` | $0.02 | `/api/whale-trades` | Whale trades for any USDT perp: prints from the live trade tape above a USD threshold, with buy and sell totals, net flow and the dominant side. |
+| `get_spread_arb` | $0.02 | `/api/spread-arb` | Cross-exchange spread and arbitrage edge for any USDT perp: the best bid and ask on Bybit, OKX and Hyperliquid, with the best cross-venue edge in bps, pre-fee. |
 
 ### Market & positioning
 
 | Tool | Price | Route | What you get |
 |---|---|---|---|
-| `get_spot` | $0.001 | `/api/price` | Use when an agent needs a spot price without choosing a venue. Returns the price and the venue that actually served it, Coinbase first, then Kraken. Serves SOL, BTC and ETH; anything else is declined. |
-| `get_sol_price` | $0.001 | `/api/sol-price` | SOL spot price (Coinbase, then Kraken) |
-| `get_btc_price` | $0.001 | `/api/btc-price` | BTC spot price (Coinbase, then Kraken) |
-| `get_eth_price` | $0.001 | `/api/eth-price` | ETH spot price in USD, aggregated across five exchanges (Coinbase, Kraken, Binance, OKX, Gemini). Returns the lead figure plus every venue quote that answered, so a caller can see the spread rather than trust one exchange. Venues are ranked in a fixed declared order, not completion order, so identical market state always returns the same lead price. |
-| `get_funding_rate` | $0.005 | `/api/funding-rate` | Funding rate for any USDT perp on Bybit + OKX + Hyperliquid, each at its own interval: raw rate, interval hours, 8h equivalent, annualised, next funding time, mark price. No symbol: SOL+BTC from Hyperliquid |
-| `get_market_snapshot` | $0.005 | `/api/market-snapshot` | Full market snapshot in one call |
-| `get_positioning` | $0.005 | `/api/positioning` | SOL+BTC long/short account ratio + open interest with 1h/24h OI change |
-| `get_trade_context` | $0.01 | `/api/trade-context` | Full market state in one call: prices, funding, fear/greed, positioning, liquidations |
+| `get_spot` | $0.001 | `/api/price` | Use when an agent needs a spot price without choosing a venue. Returns the on-chain DEX price for SOL, BTC or ETH, the median of deep USDC pools on Solana, Ethereum and Base read from chain state, and the pools that served it. Anything else is declined. |
+| `get_sol_price` | $0.001 | `/api/sol-price` | SOL price / Solana spot price in USD, live, read on-chain: the median of the two deepest SOL/USDC pools on Solana (Orca Whirlpool, Raydium CLMM), computed from chain state. Returns the price, the read time and the pools that answered. |
+| `get_btc_price` | $0.001 | `/api/btc-price` | BTC price / Bitcoin spot price in USD, live, read on-chain: the median of three Uniswap V3 reads on Base and Ethereum (cbBTC/USDC, and cbBTC and WBTC through WETH/USDC), computed from chain state. Returns the price, the read time and the pools that answered. |
+| `get_eth_price` | $0.001 | `/api/eth-price` | ETH spot price in USD, read on-chain from the two deepest WETH/USDC Uniswap V3 pools, on Ethereum and on Base. Returns their median plus each pool's own price, so a caller can see the spread between chains. Computed from chain state; no exchange feed. |
+| `get_funding_rate` | $0.005 | `/api/funding-rate` | Funding rate for any USDT perp on Bybit, OKX and Hyperliquid: per venue the raw rate, its interval in hours, the 8h equivalent, the annualised rate, next funding time and mark price. Without a symbol: funding rates for the SOL and BTC perps on Hyperliquid, with open interest. Cross-venue spread and crowding: /api/funding-cross. |
+| `get_market_snapshot` | $0.005 | `/api/market-snapshot` | Crypto market snapshot in one call: SOL and BTC spot prices read on-chain from DEX pools, both Hyperliquid perp funding rates with mark price and open interest, and the Fear & Greed index with its classification. Five reads, one payment. |
+| `get_positioning` | $0.005 | `/api/positioning` | Open interest and long/short ratio for SOL and BTC perps: the retail long/short account ratio plus Bybit open interest with 1h and 24h change, and Hyperliquid open interest. For any other USDT perp use /api/open-interest and /api/long-short. |
+| `get_trade_context` | $0.01 | `/api/trade-context` | Crypto trading context in one call: SOL and BTC prices read on-chain from DEX pools, perp funding rates, Fear & Greed, long/short positioning, open interest and 1h/24h liquidation stats. The whole pre-trade picture, one payment. |
 | `get_hl_whales` | $0.02 | `/api/hl-whales` | Use when an agent needs to know how the biggest Hyperliquid traders are positioned. Returns the open perp positions of the largest Hyperliquid accounts aggregated per coin: net long or short USD, account counts, size-weighted entries, notional-weighted distance to liquidation, notional within 10% of liquidation and uPnL. With coin=BTC: whale liquidation levels in 5% price bands and the largest positions. Refreshed every 5 minutes; stale data answers 503. |
 
 ### Solana on-chain
 
 | Tool | Price | Route | What you get |
 |---|---|---|---|
-| `get_wallet_holdings` | $0.008 | `/api/wallet-holdings/:wallet` | Solana wallet holdings via Helius DAS |
-| `get_token_metadata` | $0.005 | `/api/token-metadata/:mint` | SPL token metadata via Helius DAS |
-| `get_token_risk` | $0.01 | `/api/token-risk/:mint` | Token rug-risk signals: mint/freeze authority status, top-holder concentration, risk flags |
-| `get_token_holders` | $0.02 | `/api/token-holders/:mint` | Top holders of any SPL token with per-account share and top1/top5/top10 concentration. Deeper cut than get_token_risk's summary. |
-| `get_wallet_activity` | $0.02 | `/api/wallet-activity/:wallet` | Recent transactions of any Solana wallet, parsed human-readable: type, protocol, description, fee, failures (Helius enhanced). |
-| `get_priority_fees` | $0.005 | `/api/priority-fees` | Solana priority-fee estimate right now, all levels (min to unsafeMax) in micro-lamports/CU, with a recommended tip. For bots that need txs to land. |
-| `get_jito_tips` | $0.005 | `/api/jito-tips` | Jito bundle tip floor percentiles (p25-p99, SOL) — what landed bundles are actually paying, with a landing recommendation. |
-| `get_sol_network` | $0.005 | `/api/sol-network` | Solana network health: recent average TPS, current slot, epoch and epoch progress. |
+| `get_wallet_holdings` | $0.008 | `/api/wallet-holdings/:wallet` | Solana wallet holdings / portfolio for any address: native SOL with its USD value, every SPL token with amount, unit price and USD value, and an NFT count. Helius DAS getAssetsByOwner, up to 100 assets. |
+| `get_token_metadata` | $0.005 | `/api/token-metadata/:mint` | SPL token metadata for any Solana mint: name, symbol, URI, decimals, total supply, mint and freeze authority, token program, and whether the metadata is still mutable. Read from the mint account and its metadata account. |
+| `get_token_risk` | $0.01 | `/api/token-risk/:mint` | Solana token rug check / risk signals for any SPL mint: mint and freeze authority status (revoked is safer), top-1 and top-10 holder concentration, supply, and a list of risk flags. Not a honeypot or LP-lock checker. |
+| `get_token_holders` | $0.02 | `/api/token-holders/:mint` | Top holders of any SPL token: per-account share with top-1, top-5 and top-10 concentration for a Solana mint. A deeper cut than the summary in /api/token-risk. |
+| `get_wallet_activity` | $0.02 | `/api/wallet-activity/:wallet` | Solana wallet activity: recent transactions for any address, each with the wallet's SOL and token balance changes, the fee, failures and the programs invoked. Read from the chain and summarised by us. |
+| `get_priority_fees` | $0.005 | `/api/priority-fees` | Solana priority fees right now: percentiles from min to max of the per-slot minimum fee paid on the busiest SOL/USDC pools over the last ~150 slots, in micro-lamports per compute unit, with a recommended level. For bots that need their transactions to land. |
+| `get_jito_tips` | $0.005 | `/api/jito-tips` | Jito tips sampled on-chain: p25 to p99 in SOL of the newest transfers into Jito's tip accounts, what landed bundles actually paid, refreshed every 5 minutes, with a landing recommendation. |
+| `get_sol_network` | $0.005 | `/api/sol-network` | Solana network health: recent average TPS, the current slot, the current epoch and epoch progress in %. |
 
 ### Base / EVM
 
 | Tool | Price | Route | What you get |
 |---|---|---|---|
-| `get_base_gas` | $0.005 | `/api/base-gas` | Current gas price on Base (chain 8453) in BOTH gwei and wei, with base fee, priority fee and block number when the node supplies them. Both units are returned because a caller asking in wei and a caller asking in gwei are asking the same question. Served from keyless public RPC with three-node fallback, so there is no API key to rotate or expire. |
-| `get_base_balance` | $0.005 | `/api/base-balance` | Native ETH or any ERC20 balance for an address on Base or Ethereum mainnet. decimals() and symbol() are read from the contract at request time rather than assumed, because assuming 18 reports a USDC balance a trillion times too large. Accepts a 0x address or an ENS name; ENS is resolved through two independent resolvers and the answer is used only when they agree, so a wrong address can never produce a confident balance for the wrong wallet. An unsupported chain is refused rather than silently answered from the wrong one. |
+| `get_base_gas` | $0.005 | `/api/base-gas` | Base gas price (chain 8453) in BOTH gwei and wei, with base fee, priority fee and block number when the node supplies them. Both units are returned because a caller asking in wei and a caller asking in gwei are asking the same question. Served from keyless public RPC with three-node fallback, so there is no API key to rotate or expire. |
+| `get_base_balance` | $0.005 | `/api/base-balance` | ERC20 and native ETH wallet balance on Base or Ethereum mainnet, for a 0x address or an ENS name. decimals() and symbol() are read from the contract at request time rather than assumed, because assuming 18 reports a USDC balance a trillion times too large. ENS is resolved through two independent resolvers and the answer is used only when they agree, so a wrong address can never produce a confident balance for the wrong wallet. An unsupported chain is refused rather than silently answered from the wrong one. |
 
-| `get_honeypot_check` | $0.01 | `/api/honeypot-check` | Can this token be sold on Base, BNB Chain or Ethereum? Our own buy-then-sell simulation (an eth_call with a state override, nothing broadcast) on its deepest pool (Base: Uniswap V2/V3/V4 and Aerodrome; BNB Chain: PancakeSwap V2/V3; Ethereum: Uniswap V2/V3): verdict, measured buy and sell tax, wallet-transfer test, bytecode flags (mintable, blacklist, proxy, pausable, owner) and where the two disagree, each with its block. Simulator source: `contracts/HoneypotSim.sol`. |
-| `get_base_launches` | $0.02 | `/api/base-launches` | New Base pools from the last 24 hours (Uniswap V4, V3, V2, Aerodrome), newest first: pair, creation time, launchpad named from the V4 hook (Zora, Clanker, Doppler, Flaunch, from their own published addresses), quote-side liquidity, 24h volume and swaps, and the honeypot simulation for the busiest. Read from Base logs every minute; stale data answers 503. |
+| `get_honeypot_check` | $0.01 | `/api/honeypot-check` | Use when an agent needs to know whether a token on Base, BNB Chain or Ethereum can be sold before it buys. Returns a verdict from our own buy-then-sell simulation on the token's deepest pool, with the buy and sell tax measured. Also: whether a wallet transfer works, bytecode flags (mintable, blacklist, proxy, pausable, owner), where simulation and bytecode disagree, and the block. Uniswap, Aerodrome and PancakeSwap pools. No pool found is a finding; RPC failure answers 503. |
+| `get_base_launches` | $0.02 | `/api/base-launches` | Use when an agent needs the newest token launches on Base. Returns pools created on Base in the last 24 hours on Uniswap V4, V3, V2 and Aerodrome, newest first, with launchpad, liquidity and volume. Each carries its pair, creation time, launchpad named from the V4 hook (Zora, Clanker, Doppler, Flaunch), quote-side liquidity, 24h volume and swaps, and our honeypot simulation for the busiest. Read from Base logs every minute; a snapshot older than 5 minutes answers 503. |
 
 ### Filings, documents & web
 
@@ -493,9 +493,9 @@ on — `MPP_SECRET_KEY` have no working default.
 | Variable | Default | Notes |
 |---|---|---|
 | `PORT` | `3006` | |
-| `HELIUS_API_KEY` | — | **required**; Solana RPC + DAS + enhanced transactions |
+| `HELIUS_API_KEY` | — | **required**; the Solana RPC transport for chain state, and DAS for wallet-holdings |
 | `HELIUS_RPC` | `https://mainnet.helius-rpc.com/?api-key=$HELIUS_API_KEY` | |
-| `HELIUS_ENH` | `https://api.helius.xyz` | |
+| `SOLANA_RPC_URL` | Helius, from `HELIUS_API_KEY` | standard-RPC reads: on-chain spot, the peg tape, token and wallet routes |
 | `X402_MODE` | `on` | `off` serves every route free |
 | `X402_NETWORK` | — | **required** when `X402_MODE` is on: `mainnet` in production, `devnet` for tests; boot fails without it |
 | `PAY_TO` | — | **required**; Solana treasury that receives USDC |
@@ -508,7 +508,9 @@ on — `MPP_SECRET_KEY` have no working default.
 | `MPP_REALM` | `x402.ochinimus.app` | the `realm` in the `WWW-Authenticate` challenge |
 | `MPP_RPC_URL` | Helius, from `HELIUS_API_KEY` | |
 | `LIQ_DB` | `/opt/agentfeed/liquidations.db` | the liquidation tape (read-only) |
-| `PEGWATCH_DB` | `/opt/pegwatch/pegwatch.db` | tokenized-equity peg tape (read-only) |
+| `PEGWATCH_DB` | `/opt/pegwatch/pegwatch.db` | tokenized-equity peg tape before our cutover, and its reference (read-only) |
+| `PEG_ONCHAIN_DB` | `peg-onchain.db` alongside the source | our on-chain peg tape, written by `bin/peg-collect.js` |
+| `JITO_TIPS_FILE` | `jito-tips.json` alongside the source | the on-chain Jito tip sample, written by `bin/jito-tips-collect.js` |
 | `OVERHANG_DB_PATH` | `/opt/overhang/overhang.db` | collateral exit-liquidity tape (read-only) |
 | `CALIPER_DIR` | `/opt/caliper` | forecast model directory |
 | `CALIPER_MODEL` | `$CALIPER_DIR/model.json` | |
@@ -519,10 +521,6 @@ on — `MPP_SECRET_KEY` have no working default.
 | `OKX_WS` `OKX_REST` `OKX_API` | OKX public | |
 | `BINANCE_WS` | Binance public | |
 | `HL_API` | `https://api.hyperliquid.xyz/info` | |
-| `JUP_API` | `https://lite-api.jup.ag` | |
-| `JITO_API` | `https://bundles.jito.wtf` | |
-| `LLAMA_API` | `https://api.llama.fi` | |
-| `STABLES_API` | `https://stablecoins.llama.fi` | |
 | `BASE_RPC` | `https://mainnet.base.org` | |
 
 `DB_PATH`, `SIGNATURE`, `VERIFY_DELAY_MS`, `HOME` and `PATH` appear only in the MPP test

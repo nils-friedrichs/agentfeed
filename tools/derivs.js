@@ -4,6 +4,8 @@
 // All endpoints env-overridable for offline testing (same philosophy as liqcollector EP).
 'use strict';
 const { cached, fetchJson } = require('../lib/cache');
+// R5 C6: Hyperliquid as a second venue on every product that read only Bybit (and OKX)
+const HLP = require('./hlperp');
 
 const BYBIT = () => process.env.BYBIT_REST || 'https://api.bybit.com';
 const OKX = () => process.env.OKX_REST || 'https://www.okx.com';
@@ -200,11 +202,14 @@ async function getFundingExtremes(p = {}) {
       };
     })
     .sort((a, b) => b.funding_rate_8h - a.funding_rate_8h);
+  const hl = await HLP.universe({ minVolumeUsd: minTurn }).then((rows) => rows.sort((a, b) => b.funding_rate_8h - a.funding_rate_8h), () => null);
   return {
     source: 'bybit_linear_universe', universe_size: list.length, min_turnover_usd: minTurn,
     most_positive: list.slice(0, limit),        // longs paying most — short-squeeze fuel is spent, long-flush risk
     most_negative: list.slice(-limit).reverse(), // shorts paying most — crowded shorts, squeeze candidates
     ...(unranked.length ? { unranked_interval_unknown: unranked } : {}),
+    hyperliquid: hl ? { universe_size: hl.length, min_volume_24h_usd: minTurn, most_positive: hl.slice(0, limit), most_negative: hl.slice(-limit).reverse(), source: HLP.SRC }
+      : { available: false, reason: 'Hyperliquid read failed', source: HLP.SRC },
   };
 }
 
@@ -223,6 +228,7 @@ async function getOpenInterest(p = {}) {
       bybit: { oi_base: o[0], oi_usd: Math.round(n(tick.openInterestValue)), change_1h_pct: pct(o[0], o[1]), change_24h_pct: pct(o[0], o[24]) },
       okx: ok ? { oi_base: n(ok.oiCcy), oi_usd: Math.round(n(ok.oiUsd)) } : null,
       mark_price: n(tick.markPrice),
+      hyperliquid: await HLP.block(sym, async (c, x) => ({ oi_base: x.oi_base, oi_usd: x.oi_usd, mark_price: x.mark })),
     };
   });
 }
@@ -237,7 +243,9 @@ async function getOiSpikeScan(p = {}) {
   const nowMap = {};
   for (const t of list) if (n(t.openInterestValue) > 0) nowMap[t.symbol] = n(t.openInterestValue);
   const now = Date.now();
-  if (!oiSnaps.length || now - oiSnaps[oiSnaps.length - 1].at > 5 * 60_000) oiSnaps.push({ at: now, map: nowMap });
+  const hlNow = {};
+  try { for (const c of (await HLP.contexts()).values()) if (c.oi_usd > 0) hlNow[c.coin] = c.oi_usd; } catch { /* Hyperliquid part only */ }
+  if (!oiSnaps.length || now - oiSnaps[oiSnaps.length - 1].at > 5 * 60_000) oiSnaps.push({ at: now, map: nowMap, hl: hlNow });
   while (oiSnaps.length > 30) oiSnaps.shift();
   const base = oiSnaps.find((s) => now - s.at >= 30 * 60_000);
   if (!base) {
@@ -258,10 +266,19 @@ async function getOiSpikeScan(p = {}) {
     const raw = n(tickBySym[r.symbol]?.fundingRate), ih = ivs[r.symbol] ?? null;
     return { ...r, funding_rate_8h: to8h(raw, ih), ...rateBasis(raw, ih), price_24h_pct: Number((n(tickBySym[r.symbol]?.price24hPcnt) * 100).toFixed(2)) };
   });
+  const hlRows = [];
+  for (const [coin, oiNow] of Object.entries(hlNow)) {
+    const oiThen = base.hl && base.hl[coin];
+    if (!oiThen || oiNow < 3_000_000) continue;
+    const chg = pct(oiNow, oiThen);
+    if (chg != null) hlRows.push({ coin, oi_usd: Math.round(oiNow), oi_change_pct: chg });
+  }
+  hlRows.sort((a, b) => Math.abs(b.oi_change_pct) - Math.abs(a.oi_change_pct));
   return {
     source: 'bybit_linear_universe',
     baseline_min_ago: Math.round((now - base.at) / 60_000),
     spikes,
+    hyperliquid: base.hl ? { spikes: hlRows.slice(0, limit), source: HLP.SRC } : { available: false, reason: 'no Hyperliquid baseline yet', source: HLP.SRC },
     ...(spikes.some((x) => x.funding_rate_raw != null && x.funding_interval_hours == null) ? { funding_interval_note: ROWS_INTERVAL_UNKNOWN } : {}),
   };
 }
@@ -373,11 +390,21 @@ async function getBasis(p = {}) {
       funding_rate_8h: to8h(n(perp.fundingRate), ivs[sym] ?? null),
       ...rateBasis(n(perp.fundingRate), ivs[sym] ?? null),
       ...intervalNote(ivs[sym] ?? null),
+      hyperliquid: await HLP.block(sym, async (c, x) => {
+        const b = x.mark != null && x.oracle ? Number((((x.mark - x.oracle) / x.oracle) * 100).toFixed(4)) : null;
+        return { mark_price: x.mark, oracle_price: x.oracle, basis_pct: b, basis_against: 'Hyperliquid oracle price (validators\' weighted median of spot venues)', funding_rate_8h: x.funding_1h != null ? x.funding_1h * 8 : null, funding_rate_raw: x.funding_1h, funding_interval_hours: 1 };
+      }),
     };
   });
 }
 
 // ---- get_volatility ($0.01) — realized vol from daily klines
+const rvAnn = (closes) => {
+  const rets = [];
+  for (let i = 1; i < closes.length; i++) rets.push(Math.log(closes[i] / closes[i - 1]));
+  const rv = (arr) => { const m = arr.reduce((s, x) => s + x, 0) / arr.length; const v = arr.reduce((s, x) => s + (x - m) ** 2, 0) / arr.length; return Number((Math.sqrt(v) * Math.sqrt(365) * 100).toFixed(2)); };
+  return { d7: rv(rets.slice(-7)), d30: rv(rets) };
+};
 async function getVolatility(p = {}) {
   const sym = normSym(p.symbol);
   return cached(`vol:${sym}`, 300_000, async () => {
@@ -397,6 +424,13 @@ async function getVolatility(p = {}) {
       realized_vol_7d_ann_pct: rv(rets.slice(-7)),
       realized_vol_30d_ann_pct: rv(rets),
       today_range_pct: Number((((parseFloat(last[2]) - parseFloat(last[3])) / parseFloat(last[4])) * 100).toFixed(2)),
+      hyperliquid: await HLP.block(sym, async (c) => {
+        const k = await HLP.candles(c, '1d', 32);
+        const cl = k.map((x) => Number(x.c));
+        if (cl.length < 8) return { available: false, reason: 'not enough daily candles' };
+        const v = rvAnn(cl); const t = k[k.length - 1];
+        return { realized_vol_7d_ann_pct: v.d7, realized_vol_30d_ann_pct: v.d30, today_range_pct: Number((((Number(t.h) - Number(t.l)) / Number(t.c)) * 100).toFixed(2)), basis: 'daily perp candles' };
+      }),
     };
   });
 }
@@ -449,6 +483,16 @@ async function getFundingHistory(p = {}) {
       positive_share_pct: rows.length ? Math.round((rows.filter((x) => x.funding_rate_raw > 0).length / rows.length) * 100) : null,
       ...(untimed ? { funding_interval_note: `${untimed} of ${rows.length} settlements had no readable interval (a switch-over, a halt or a first settlement), so their rate_8h is null and they are left out of avg_rate_8h` } : {}),
       history: rows,
+      // Hyperliquid settles hourly: the same number of settlements covers fewer hours
+      hyperliquid: await HLP.block(sym, async (c) => {
+        const h = (await HLP.fundingHistory(c, limit)).slice(-limit).reverse();
+        const raw = h.map((x) => Number(x.fundingRate));
+        const avg = raw.length ? (8 * raw.reduce((s, x) => s + x, 0)) / raw.length : null;
+        return { intervals: h.length, funding_interval_hours: 1,
+          avg_rate_8h: avg != null ? Number(avg.toFixed(8)) : null, avg_annualized_pct: avg != null ? Number((avg * 3 * 365 * 100).toFixed(2)) : null,
+          positive_share_pct: raw.length ? Math.round((raw.filter((x) => x > 0).length / raw.length) * 100) : null,
+          history: h.map((x) => ({ ts: x.time, rate_8h: Number(x.fundingRate) * 8, funding_rate_raw: Number(x.fundingRate), funding_interval_hours: 1 })) };
+      }),
     };
   });
 }
@@ -473,10 +517,12 @@ async function getTopMovers(p = {}) {
     })
     .sort((a, b) => b.change_24h_pct - a.change_24h_pct);
   const gainers = list.slice(0, limit), losers = list.slice(-limit).reverse();
+  const hl = await HLP.universe({ minVolumeUsd: minTurn }).then((rows) => rows.filter((r) => r.change_24h_pct != null).sort((a, b) => b.change_24h_pct - a.change_24h_pct), () => null);
   return {
     source: 'bybit_linear_universe', universe_size: list.length, min_turnover_usd: minTurn,
     gainers,
     losers,
+    hyperliquid: hl ? { universe_size: hl.length, gainers: hl.slice(0, limit), losers: hl.slice(-limit).reverse(), source: HLP.SRC } : { available: false, reason: 'Hyperliquid read failed', source: HLP.SRC },
     ...([...gainers, ...losers].some((x) => x.funding_rate_raw != null && x.funding_interval_hours == null) ? { funding_interval_note: ROWS_INTERVAL_UNKNOWN } : {}),
   };
 }

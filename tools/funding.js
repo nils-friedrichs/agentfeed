@@ -20,7 +20,7 @@ async function refresh() {
   const [meta, ctxs] = await res.json();
   const byName = {};
   meta.universe.forEach((u, i) => {
-    if (SYMBOLS.includes(u.name) && ctxs[i]) byName[u.name] = ctxs[i];
+    if (ctxs[i]) byName[u.name] = ctxs[i]; // every perp: getHlCtx serves the others
   });
   cached = { at: Date.now(), byName };
   return byName;
@@ -79,4 +79,11 @@ async function getFundingRate(p = {}) {
   };
 }
 
-module.exports = { getFunding, getFundingRate };
+// one Hyperliquid perp's raw context (oraclePx, markPx, funding, openInterest, prevDayPx), 60 s cache
+async function getHlCtx(coin) {
+  const c = (await refresh())[coin];
+  if (!c) throw Object.assign(new Error(`hyperliquid: no perp context for ${coin}`), { status: 503 });
+  return c;
+}
+
+module.exports = { getFunding, getFundingRate, getHlCtx };

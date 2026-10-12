@@ -53,9 +53,12 @@ async function onePair(sym) {
   };
 }
 
+// R5 C6: Hyperliquid open interest beside Bybit's (Hyperliquid publishes no long/short account ratio)
+const HLP = require('./hlperp');
 async function getPositioning() {
-  const [sol, btc] = await Promise.all([onePair(SYMBOLS.SOL), onePair(SYMBOLS.BTC)]);
-  return { source: 'bybit_v5_public', period: '1h', sol, btc };
+  const [sol, btc, hs, hb] = await Promise.all([onePair(SYMBOLS.SOL), onePair(SYMBOLS.BTC),
+    HLP.block(SYMBOLS.SOL, async (c, x) => ({ oi_base: x.oi_base, oi_usd: x.oi_usd })), HLP.block(SYMBOLS.BTC, async (c, x) => ({ oi_base: x.oi_base, oi_usd: x.oi_usd }))]);
+  return { source: 'bybit_v5_public', period: '1h', sol: { ...sol, hyperliquid_open_interest: hs }, btc: { ...btc, hyperliquid_open_interest: hb } };
 }
 
 module.exports = { getPositioning };

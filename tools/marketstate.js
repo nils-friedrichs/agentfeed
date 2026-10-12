@@ -9,6 +9,7 @@ const D = require('./derivs');
 const L = require('./liqdb');
 const { getPrice } = require('./prices');
 const { getFearGreed } = require('./feargreed');
+const { getHlCtx } = require('./funding');
 const FR = require('./fundingradar');
 const OPT = require('./options');
 const MACRO = require('./macro');
@@ -37,7 +38,8 @@ async function getMarketState(p = {}, { now = Date.now() } = {}) {
 
   const [spot, vol, oi, ls, basis, fg, radar, options, liq] = await Promise.all([
     part(async () => {
-      if (base === 'HYPE') { const b = await D.getBasis({ symbol: sym }); return { value: b.spot_price, source: 'Bybit spot (via the basis read)', as_of: iso(now) }; }
+      // HYPE has no deep USDC pool we read; Hyperliquid's own oracle price for it is public chain state (R5 C1)
+      if (base === 'HYPE') { const c = await getHlCtx('HYPE'); return { value: Number(c.oraclePx), source: 'Hyperliquid HYPE oracle price (validator-published)', as_of: iso(now) }; }
       const q = await getPrice(base);
       return { value: q.price, source: q.source || q.venue || 'multi-source spot', as_of: q.publish_time ? iso(q.publish_time * 1000) : iso(now) };
     }),

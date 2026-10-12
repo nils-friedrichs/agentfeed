@@ -18,7 +18,6 @@ const MIN_TRACK_USD = 250_000;      // OI or 24h volume needed to keep a market'
 const STALE_AFTER_S = 15 * 60;
 const WINDOW_DAYS = 30;
 const HOUR = 3_600_000, DAY = 86_400_000;
-const PEGWATCH_DB = () => process.env.PEGWATCH_DB || '/opt/pegwatch/pegwatch.db';
 const SNAP_PATH = () => process.env.FUNDING_RADAR_SNAPSHOT || path.join(__dirname, '..', 'funding-radar.json');
 let CLASSES = {};
 try { CLASSES = require('../data/tradfi-classes.json').markets || {}; } catch { CLASSES = {}; }
@@ -222,15 +221,40 @@ function sessionLabel(now) {
   return 'overnight';
 }
 
-let pegDb = null;
-function peg() {
-  if (pegDb) return pegDb;
-  const Database = require('better-sqlite3');
-  pegDb = new Database(PEGWATCH_DB(), { readonly: true, fileMustExist: true });
-  return pegDb;
+// ---- the last regular-session price, from the HIP-3 market itself (R5 C2) ----
+// Until 12 Oct 2026 this came from the pegwatch reference (Alpaca), whose terms forbid
+// redistribution. Now: the close of the last hourly candle of the deepest HIP-3 market for the
+// ticker that ended inside a New York regular session (10:00-16:00, Mon-Fri), from Hyperliquid's
+// candleSnapshot. A perp trade price, not the exchange's closing auction; holidays not detected.
+const HL_INFO = () => process.env.HL_API || 'https://api.hyperliquid.xyz/info';
+const candleCache = new Map(); // market -> { at, candles }
+function nyClock(ms) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+  return { weekday: p.weekday, mins: Number(p.hour) * 60 + Number(p.minute) };
+}
+async function lastRegularClose(market, now, fetchImpl = fetch) {
+  let hit = candleCache.get(market);
+  if (!hit || now - hit.at > 5 * 60_000) {
+    const res = await fetchImpl(HL_INFO(), { method: 'POST', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(8000),
+      body: JSON.stringify({ type: 'candleSnapshot', req: { coin: market, interval: '1h', startTime: now - 5 * DAY, endTime: now } }) });
+    if (!res.ok) throw new Error(`hyperliquid candles http ${res.status}`);
+    const candles = await res.json();
+    if (!Array.isArray(candles)) throw new Error('hyperliquid candles: unexpected body');
+    hit = { at: now, candles }; candleCache.set(market, hit);
+  }
+  for (let i = hit.candles.length - 1; i >= 0; i--) {
+    const c = hit.candles[i]; const end = Number(c.T) + 1;
+    if (end > now) continue;
+    const k = nyClock(end);
+    if (!['Sat', 'Sun'].includes(k.weekday) && k.mins >= 10 * 60 && k.mins <= 16 * 60) {
+      return { price: Number(c.c), as_of: new Date(end).toISOString(), source: `Hyperliquid HIP-3 ${market} perp: close of the hourly candle ending at this time, the last full hour of a New York regular session (a perp trade price, not the exchange's closing auction)` };
+    }
+  }
+  return null;
 }
 
-function getEquity24h(p = {}, { now = Date.now() } = {}) {
+function getEquity24h(p = {}, opts = {}) { return equity24h(p, opts); }
+async function equity24h(p = {}, { now = Date.now(), fetchImpl = fetch } = {}) {
   const sym = String(p.symbol || '').toUpperCase().replace(/X$/, '').trim();
   if (!/^[A-Z0-9.]{1,12}$/.test(sym)) { const e = new Error('symbol required: a US stock or index ticker, e.g. TSLA, NVDA, SP500'); e.kind = 'bad_request'; throw e; }
   const { s, age } = fresh(now);
@@ -241,11 +265,11 @@ function getEquity24h(p = {}, { now = Date.now() } = {}) {
   }));
   let dex = null, close = null;
   try {
-    const t = peg().prepare('SELECT ts, onchain, liq_usd, dex FROM ticks WHERE symbol = ? ORDER BY ts DESC LIMIT 1').get(`${sym}x`);
-    if (t && now - t.ts * 1000 < 30 * 60_000) dex = { source: `${sym}x tokenized stock on Solana (${t.dex || 'DEX'}), our pegwatch collector`, price: t.onchain, liquidity: { pool_liquidity_usd: Math.round(t.liq_usd) }, as_of: new Date(t.ts * 1000).toISOString() };
-    const c = peg().prepare("SELECT ts, ref, ref_source FROM ticks WHERE symbol = ? AND session = 'open' ORDER BY ts DESC LIMIT 1").get(`${sym}x`);
-    if (c) close = { price: c.ref, as_of: new Date(c.ts * 1000).toISOString(), source: `${c.ref_source} latest trade at our last regular-session sample (5-minute sampling; not the official closing auction print)` };
-  } catch { /* no pegwatch for this symbol */ }
+    const t = require('./pegonchain').latest(`${sym}x`, { maxAgeS: 30 * 60, now });
+    if (t) dex = { source: `${sym}x tokenized stock on Solana (${t.dex} pool ${t.pool}), read on-chain by our collector`, price: round(t.onchain, 4), liquidity: { pool_liquidity_usd: Math.round(t.liq_usd) }, as_of: new Date(t.ts * 1000).toISOString() };
+  } catch { /* no on-chain tape for this symbol */ }
+  const hip3 = s.markets.filter((m) => m.venue === 'hyperliquid' && m.ticker === sym && m.market).sort((a, b) => (b.oi_usd || 0) - (a.oi_usd || 0))[0];
+  if (hip3) { try { close = await lastRegularClose(hip3.market, now, fetchImpl); } catch { close = null; } }
   const sources = [...perps, ...(dex ? [dex] : [])];
   const liquid = sources.filter((x) => (x.liquidity.open_interest_usd || 0) > 0 || (x.liquidity.pool_liquidity_usd || 0) > 0 || (x.liquidity.volume_24h_usd || 0) > 0);
   if (!liquid.length) throw unavailable(`no source with liquidity for ${sym}: ${sources.length ? 'every source has zero open interest or pool liquidity' : 'not listed as a HIP-3 perp and not a tokenized stock we track'}`);
@@ -257,10 +281,10 @@ function getEquity24h(p = {}, { now = Date.now() } = {}) {
     notice: 'INDICATIVE price from 24/7 venues, not an exchange quote. US exchange holidays are not detected in the session label.',
     session: sessionLabel(now),
     indicative_price: best.price, indicative_source: best.source,
-    last_regular_session: close || { price: null, reason: `we do not hold a regular-session price for ${sym} (only for the tokenized stocks our pegwatch collector tracks)` },
+    last_regular_session: close || { price: null, reason: hip3 ? `Hyperliquid candles for ${hip3.market} were unavailable` : `no HIP-3 market for ${sym}, so no regular-session reference` },
     implied_gap_pct: close && best.price ? round(((best.price - close.price) / close.price) * 100, 3) : null,
     sources, as_of: s.as_of, age_s: age,
   };
 }
 
-module.exports = { collectTradfi, getTradfiRadar, getEquity24h, sessionLabel, CLASS_NAMES, STALE_AFTER_S };
+module.exports = { collectTradfi, getTradfiRadar, getEquity24h, sessionLabel, CLASS_NAMES, STALE_AFTER_S, _lastRegularClose: lastRegularClose };

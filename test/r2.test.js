@@ -99,9 +99,11 @@ test('token-holders: known-large mints refused before any upstream call; a new o
   const realFetch = global.fetch;
   global.fetch = async (_url, init) => {
     const body = JSON.parse(init.body); calls.push(body.method);
+    // standard RPC since R5 C4: the mint account (jsonParsed), no metadata account, then the ranking
+    const mintAcc = { value: { owner: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', data: { parsed: { type: 'mint', info: { decimals: 6, supply: '1', mintAuthority: null, freezeAuthority: null } } } } };
     const j = body.method === 'getTokenLargestAccounts'
       ? { jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'Too many accounts requested (10000000 pubkeys), try adding filters to narrow down results' } }
-      : { jsonrpc: '2.0', id: 1, result: { token_info: { decimals: 6, supply: 1 } } };
+      : { jsonrpc: '2.0', id: 1, result: body.params[1] && body.params[1].encoding === 'jsonParsed' ? mintAcc : { value: null } };
     return new Response(JSON.stringify(j), { status: 200, headers: { 'content-type': 'application/json' } });
   };
   try {

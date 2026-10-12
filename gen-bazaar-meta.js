@@ -249,6 +249,34 @@ function schemaOf(v, depth = 0) {
   }
 }
 
+// ---- banned-venue values out of the stored samples (R5 C5) ------------------
+// The captured example is published twice: in every 402 challenge (Bazaar output example) and on
+// the free /api/sample routes. OKX and Binance forbid redistributing their market data
+// (docs/SOURCES.md), so their raw values are nulled in the STORED copy: every numeric leaf under a
+// key named for them, and every number in a row whose exchange, venue or source names them; the
+// peg tape's US-market reference (Alpaca) likewise. Field names and structure stay, and the schema
+// is computed from the unredacted capture, so the declared shape is the real one.
+const BANNED_VENUE = /^(okx|binance)\b/i;
+const BANNED_KEYS = new Set(['okx', 'binance', 'okx_usd', 'binance_usd']);
+function nullLeaves(v) {
+  if (Array.isArray(v)) return v.map(nullLeaves);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, nullLeaves(x)]));
+  return typeof v === 'number' || (typeof v === 'string' && v !== '' && Number.isFinite(Number(v))) ? null : v;
+}
+function redactBanned(v, tool, key) {
+  if (key && BANNED_KEYS.has(key)) return nullLeaves(v);
+  if (Array.isArray(v)) return v.map((x) => redactBanned(x, tool));
+  if (!v || typeof v !== 'object') return v;
+  const named = ['exchange', 'venue', 'source'].some((k) => typeof v[k] === 'string' && BANNED_VENUE.test(v[k]));
+  const out = {};
+  for (const [k, x] of Object.entries(v)) {
+    if (named && (typeof x === 'number' || (x && typeof x === 'object'))) { out[k] = nullLeaves(x); continue; }
+    if (tool === 'get_peg_deviation' && k === 'reference' && typeof x === 'number') { out[k] = null; continue; }
+    out[k] = redactBanned(x, tool, k);
+  }
+  return out;
+}
+
 // ---- route table ---------------------------------------------------------
 const { PRICES } = require('./payments');
 const { EXP } = require('./expansion');
@@ -404,6 +432,20 @@ async function captureExample(r, callArgs) {
   return { status, note, example, plan };
 }
 
+/** --redact-only: apply redactBanned to every stored example in place; idempotent, no upstream call */
+function redactOnly() {
+  const prev = JSON.parse(fs.readFileSync(OUT_FILE, 'utf8'));
+  let changed = 0;
+  for (const [pattern, e] of Object.entries(prev.routes)) {
+    if (!e.output || !e.output.example) continue;
+    const red = redactBanned(e.output.example, e.tool);
+    if (JSON.stringify(red) !== JSON.stringify(e.output.example)) { changed++; console.log(`  redacted: ${pattern}`); e.output.example = red; }
+  }
+  prev._redacted_at = new Date().toISOString();
+  fs.writeFileSync(OUT_FILE, JSON.stringify(prev, null, 1) + '\n');
+  console.log(`redact-only: ${changed} of ${Object.keys(prev.routes).length} stored examples changed`);
+}
+
 /**
  * --recapture=get_a,get_b: a fresh output example for the named tools, every
  * other byte of the file kept, the output-half twin of --schemas-only. Each entry
@@ -429,7 +471,7 @@ async function recapture(tools) {
     const c = await captureExample(r, { ...input, ...pathParams });
     process.stdout.write(`  ${c.status.padEnd(5)} ${r.pattern.replace('GET ', '').padEnd(30)} ex=${String(c.example ? bytes(c.example) : 0).padStart(4)}B  ${c.note}\n`);
     if (c.status !== 'OK' || !c.example) { console.error(`FATAL: ${r.pattern} did not capture cleanly; nothing written`); process.exit(1); }
-    next.push([r.pattern, { ...old, output: { example: c.example, schema: schemaOf(c.example) } }]);
+    next.push([r.pattern, { ...old, output: { example: redactBanned(c.example, r.tool), schema: schemaOf(c.example) } }]);
   }
   for (const [pattern, entry] of next) prev.routes[pattern] = entry;
   prev._outputs_recaptured_at = new Date().toISOString();
@@ -439,6 +481,7 @@ async function recapture(tools) {
 
 async function main() {
   if (process.argv.includes('--schemas-only')) return schemasOnly();
+  if (process.argv.includes('--redact-only')) return redactOnly();
   const only = process.argv.find((a) => a.startsWith('--recapture='));
   if (only) return recapture(only.slice('--recapture='.length).split(',').filter(Boolean));
   const rows = buildRoutes();
@@ -471,7 +514,7 @@ async function main() {
       // one real invocable URL per route in /.well-known/x402.
       entry.pathParams = pathParams;
     }
-    if (example) entry.output = { example, schema: schemaOf(example) };
+    if (example) entry.output = { example: redactBanned(example, r.tool), schema: schemaOf(example) };
 
     meta[r.pattern] = entry;
     report.push({
