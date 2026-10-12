@@ -29,9 +29,9 @@ const { challengeDesc, ICON_URL } = require('./payments');
 const SERVER_VERSION = (() => { try { return require('./server.json').version; } catch { return '1.0.0'; } })();
 
 const TOOL_DEFS = [
-  { name: 'get_sol_price', usd: 0.001, desc: 'Live SOL/USD spot price (multi-source: Coinbase, Kraken, Pyth Hermes fallback). The confidence and publish_time fields are null unless Pyth Hermes served the request; Coinbase and Kraken publish neither.',
+  { name: 'get_sol_price', usd: 0.001, desc: 'Live SOL/USD spot price (multi-source: Coinbase, then Kraken). The confidence and publish_time fields are null: neither venue publishes them.',
     schema: {}, run: () => getPrice('SOL') },
-  { name: 'get_btc_price', usd: 0.001, desc: 'Live BTC/USD spot price (multi-source: Coinbase, Kraken, Pyth Hermes fallback). The confidence and publish_time fields are null unless Pyth Hermes served the request; Coinbase and Kraken publish neither.',
+  { name: 'get_btc_price', usd: 0.001, desc: 'Live BTC/USD spot price (multi-source: Coinbase, then Kraken). The confidence and publish_time fields are null: neither venue publishes them.',
     schema: {}, run: () => getPrice('BTC') },
   { name: 'get_funding_rate', usd: 0.005, desc: 'Funding rate for any USDT perp on Bybit, OKX and Hyperliquid, each at its own interval: raw rate, interval hours, 8h equivalent, annualised rate, next funding time and mark price per venue. Without a symbol, SOL and BTC from Hyperliquid with open interest.',
     schema: { symbol: z.string().optional().describe('USDT perp symbol e.g. ETHUSDT, ONDOUSDT (omit for SOL and BTC from Hyperliquid)') },
@@ -87,7 +87,7 @@ const TOOL_DEFS = [
     schema: {}, run: () => getPositioning() },
   { name: 'get_trade_context', usd: 0.01, desc: 'Full market state in one call: SOL+BTC prices, funding, Fear & Greed, long/short positioning, open interest, and liquidation stats. The complete pre-trade picture.',
     schema: {}, run: () => getTradeContext() },
-  { name: 'get_token_risk', usd: 0.01, desc: 'SPL token rug-risk signals: mint/freeze authority status (revoked = safer), top-1/top-10 holder concentration, risk flags and, for mints in our launch ledger, a launch block with launchpad, t0 snapshot and outcome labels. Not a honeypot/LP-lock checker.',
+  { name: 'get_token_risk', usd: 0.01, desc: 'SPL token rug-risk signals: mint/freeze authority status (revoked = safer), top-1/top-10 holder concentration, and risk flags. Not a honeypot/LP-lock checker.',
     schema: { mint: z.string().describe('SPL token mint address (base58)') },
     run: (a) => getTokenRisk(a.mint) },
   { name: 'get_exit_method', usd: 0, desc: "FREE: how overhang measures exit liquidity on lending collateral, and the counts behind every paid answer - computed from the tape at request time, nothing hardcoded. Returns what is measured (the protocol's own live-refetched mark vs realisable value from sell-direction quotes at real clip sizes), the corroboration rule in plain terms (a terminal verdict needs six consecutive agreeing floor observations from the symbol's own tape; one sample is never enough; a contradicted floor buys a fresh probe rather than writing a hole), the full status vocabulary including why a router refusal and an empty book are different facts, the size-matched control design and its results, the gated sweep and row counts, covered symbols and markets, and the measured cadence. Read this before paying for get_exit_quote, and to check the claim rather than trust it.",
@@ -181,8 +181,11 @@ async function initMcp(app) {
     ? require('@coinbase/x402').facilitator
     : { url: facilitatorUrl };
   const payToEvm = process.env.PAY_TO_EVM;
-  const EVM = require('./lib/rails').evmRails();
-  const rs = new x402ResourceServer(new HTTPFacilitatorClient(facilitatorCfg))
+  const { evmRails, railPrice, railPayTo } = require('./lib/rails');
+  const EVM = evmRails();
+  const facilitators = [new HTTPFacilitatorClient(facilitatorCfg)];
+  if (EVM.some((r) => r.facilitator === 'circle')) facilitators.push(new (require('./lib/circle-arc').CircleArcFacilitator)());
+  const rs = new x402ResourceServer(facilitators)
     .register(network, new ExactSvmScheme());
   for (const r of EVM) rs.register(r.network, new ExactEvmScheme());
   await rs.initialize();
@@ -191,11 +194,11 @@ async function initMcp(app) {
   for (const def of TOOL_DEFS) {
     if (!def.usd) continue;
     const accepts = await rs.buildPaymentRequirements({
-      scheme: 'exact', network, payTo, price: `$${def.usd}`,
+      scheme: 'exact', network, payTo, price: `$${def.usd}`, extra: { name: 'USDC' },
     });
     for (const r of EVM) {
       const evmAccepts = await rs.buildPaymentRequirements({
-        scheme: 'exact', network: r.network, payTo: payToEvm, price: `$${def.usd}`,
+        scheme: 'exact', network: r.network, payTo: railPayTo(r), price: railPrice(r, def.usd),
       });
       accepts.push(...evmAccepts);
     }

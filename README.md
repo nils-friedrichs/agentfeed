@@ -85,7 +85,7 @@ Every paid route, cheapest question last. Generated from
 [`/.well-known/x402.json`](https://x402.ochinimus.app/.well-known/x402.json),
 read 2026-10-12 — names, prices and routes are the manifest's, not a copy kept
 in sync by hand. What each one returns is under
-[70 tools](#70-tools-63-paid-http-routes--7-free--pricing), word for word as
+[66 tools](#66-tools-59-paid-http-routes--7-free--pricing), word for word as
 the service publishes it.
 
 | Tool | Price | Route |
@@ -102,6 +102,7 @@ the service publishes it.
 | `get_exit_quote` | $0.02 | `/api/exit-quote` |
 | `get_funding_extremes` | $0.02 | `/api/funding-extremes` |
 | `get_funding_radar` | $0.02 | `/api/funding-radar` |
+| `get_hl_whales` | $0.02 | `/api/hl-whales` |
 | `get_liq_heatmap` | $0.02 | `/api/liq-heatmap` |
 | `get_liquidation_leaders` | $0.02 | `/api/liquidation-leaders` |
 | `get_market_state` | $0.02 | `/api/market-state` |
@@ -119,14 +120,11 @@ the service publishes it.
 | `get_equity_24h` | $0.01 | `/api/equity-24h` |
 | `get_funding_cross` | $0.01 | `/api/funding-cross` |
 | `get_honeypot_check` | $0.01 | `/api/honeypot-check` |
-| `get_launch_odds` | $0.01 | `/api/launch-odds` |
 | `get_liquidation_stats` | $0.01 | `/api/liquidation-stats` |
 | `get_long_short` | $0.01 | `/api/long-short` |
 | `get_open_interest` | $0.01 | `/api/open-interest` |
 | `get_orderbook_imbalance` | $0.01 | `/api/orderbook-imbalance` |
 | `get_orderbook_walls` | $0.01 | `/api/orderbook-walls` |
-| `get_rwa_yields` | $0.01 | `/api/rwa-yields` |
-| `get_stablecoin_flows` | $0.01 | `/api/stablecoin-flows` |
 | `get_token_risk` | $0.01 | `/api/token-risk/:mint` |
 | `get_top_movers` | $0.01 | `/api/top-movers` |
 | `get_trade_context` | $0.01 | `/api/trade-context` |
@@ -134,7 +132,6 @@ the service publishes it.
 | `get_wallet_holdings` | $0.008 | `/api/wallet-holdings/:wallet` |
 | `get_base_balance` | $0.005 | `/api/base-balance` |
 | `get_base_gas` | $0.005 | `/api/base-gas` |
-| `get_dex_quote` | $0.005 | `/api/dex-quote` |
 | `get_funding_history` | $0.005 | `/api/funding-history` |
 | `get_funding_pulse` | $0.005 | `/api/funding-pulse` |
 | `get_funding_rate` | $0.005 | `/api/funding-rate` |
@@ -148,7 +145,6 @@ the service publishes it.
 | `get_recent_liquidations` | $0.005 | `/api/liquidations` |
 | `get_sol_network` | $0.005 | `/api/sol-network` |
 | `get_token_metadata` | $0.005 | `/api/token-metadata/:mint` |
-| `get_tvl` | $0.005 | `/api/tvl` |
 | `get_btc_price` | $0.001 | `/api/btc-price` |
 | `get_eth_price` | $0.001 | `/api/eth-price` |
 | `get_sol_price` | $0.001 | `/api/sol-price` |
@@ -160,6 +156,8 @@ Every paid route answers `402` with an x402 v2 challenge in the `PAYMENT-REQUIRE
 the same challenge as an x402 v1 body (`{x402Version: 1, accepts}`) for Base and Solana. Pay with
 `PAYMENT-SIGNATURE` (v2, any rail) or `X-PAYMENT` (v1 on Base or Solana, verified and settled
 through the CDP facilitator's v1 kinds; Polygon and Arbitrum have no v1 kind there and stay v2).
+Arc (`eip155:5042`, USDC) is a fifth v2 rail, settled through Circle's Facilitator Service to a
+dedicated Arc address; CDP keeps every other network.
 Every paid route also carries MPP `tempo`/`charge` challenges in `WWW-Authenticate` (Tempo
 mainnet, chain 4217, OUSD first, then USDC.e, at the route's price; no fee payer, the payer pays
 gas). Only signed transactions (pull mode) are accepted: the server validates the transfer, runs
@@ -227,10 +225,10 @@ The pay-kit fix ships here as `mpp/patches/@solana+mpp+0.7.0.patch`, applied by
 dependency, not a dev one, because a `--omit=dev` install would otherwise complete silently
 *unpatched*.
 
-## 70 tools (63 paid HTTP routes + 7 free) & pricing
+## 66 tools (59 paid HTTP routes + 7 free) & pricing
 
-**63 paid + 7 free**, 70 total on the MCP rail. Every call is metered individually in USDC over
-x402 — no bundles, no minimums. Calling all 63 paid tools once costs **$0.947** — the entire
+**59 paid + 7 free**, 66 total on the MCP rail. Every call is metered individually in USDC over
+x402 — no bundles, no minimums. Calling all 59 paid tools once costs **$0.927** — the entire
 market read for 95 cents. Counts and prices are summed from
 [the live manifest](https://x402.ochinimus.app/.well-known/x402.json), read 2026-10-12.
 
@@ -308,14 +306,15 @@ Sampled every 5 minutes since 19 July 2026. Deviation is measured against the un
 
 | Tool | Price | Route | What you get |
 |---|---|---|---|
-| `get_spot` | $0.001 | `/api/price` | Use when an agent needs a spot price without choosing a venue. Returns the price, the venue that actually served it, and a Pyth confidence when Pyth served. Coinbase, then Kraken, then Pyth Hermes. Serves SOL, BTC and ETH; anything else is declined. |
-| `get_sol_price` | $0.001 | `/api/sol-price` | SOL spot price (multi-source: Coinbase, Kraken, Pyth Hermes fallback) |
-| `get_btc_price` | $0.001 | `/api/btc-price` | BTC spot price (multi-source: Coinbase, Kraken, Pyth Hermes fallback) |
-| `get_eth_price` | $0.001 | `/api/eth-price` | ETH spot price in USD, aggregated across seven independent venues (CoinGecko, Coinbase, Kraken, Binance, OKX, Gemini, DefiLlama). Returns the lead figure plus every venue quote that answered, so a caller can see the spread rather than trust one exchange. Venues are ranked in a fixed declared order, not completion order, so identical market state always returns the same lead price. |
+| `get_spot` | $0.001 | `/api/price` | Use when an agent needs a spot price without choosing a venue. Returns the price and the venue that actually served it, Coinbase first, then Kraken. Serves SOL, BTC and ETH; anything else is declined. |
+| `get_sol_price` | $0.001 | `/api/sol-price` | SOL spot price (Coinbase, then Kraken) |
+| `get_btc_price` | $0.001 | `/api/btc-price` | BTC spot price (Coinbase, then Kraken) |
+| `get_eth_price` | $0.001 | `/api/eth-price` | ETH spot price in USD, aggregated across five exchanges (Coinbase, Kraken, Binance, OKX, Gemini). Returns the lead figure plus every venue quote that answered, so a caller can see the spread rather than trust one exchange. Venues are ranked in a fixed declared order, not completion order, so identical market state always returns the same lead price. |
 | `get_funding_rate` | $0.005 | `/api/funding-rate` | Funding rate for any USDT perp on Bybit + OKX + Hyperliquid, each at its own interval: raw rate, interval hours, 8h equivalent, annualised, next funding time, mark price. No symbol: SOL+BTC from Hyperliquid |
 | `get_market_snapshot` | $0.005 | `/api/market-snapshot` | Full market snapshot in one call |
 | `get_positioning` | $0.005 | `/api/positioning` | SOL+BTC long/short account ratio + open interest with 1h/24h OI change |
 | `get_trade_context` | $0.01 | `/api/trade-context` | Full market state in one call: prices, funding, fear/greed, positioning, liquidations |
+| `get_hl_whales` | $0.02 | `/api/hl-whales` | Use when an agent needs to know how the biggest Hyperliquid traders are positioned. Returns the open perp positions of the largest Hyperliquid accounts aggregated per coin: net long or short USD, account counts, size-weighted entries, notional-weighted distance to liquidation, notional within 10% of liquidation and uPnL. With coin=BTC: whale liquidation levels in 5% price bands and the largest positions. Refreshed every 5 minutes; stale data answers 503. |
 
 ### Solana on-chain
 
@@ -323,8 +322,7 @@ Sampled every 5 minutes since 19 July 2026. Deviation is measured against the un
 |---|---|---|---|
 | `get_wallet_holdings` | $0.008 | `/api/wallet-holdings/:wallet` | Solana wallet holdings via Helius DAS |
 | `get_token_metadata` | $0.005 | `/api/token-metadata/:mint` | SPL token metadata via Helius DAS |
-| `get_token_risk` | $0.01 | `/api/token-risk/:mint` | Token rug-risk signals: mint/freeze authority status, top-holder concentration, risk flags; for mints in our launch ledger, a `launch` block with launchpad, t0 snapshot and 1/7/30-day outcome labels |
-| `get_launch_odds` | $0.01 | `/api/launch-odds` | Odds that a Solana launch survives: per launchpad (pump-fun, pumpswap, meteora-dbc, ...), the share of followed pools whose liquidity was removed, collapsed, went inactive or stayed active at 1, 7 and 30 days with n, optionally in a t0 liquidity band; or one mint's pools, t0 snapshot and labels. Only pools past our ledger's traction threshold are followed; an untracked mint answers 422, never charged. |
+| `get_token_risk` | $0.01 | `/api/token-risk/:mint` | Token rug-risk signals: mint/freeze authority status, top-holder concentration, risk flags |
 | `get_token_holders` | $0.02 | `/api/token-holders/:mint` | Top holders of any SPL token with per-account share and top1/top5/top10 concentration. Deeper cut than get_token_risk's summary. |
 | `get_wallet_activity` | $0.02 | `/api/wallet-activity/:wallet` | Recent transactions of any Solana wallet, parsed human-readable: type, protocol, description, fee, failures (Helius enhanced). |
 | `get_priority_fees` | $0.005 | `/api/priority-fees` | Solana priority-fee estimate right now, all levels (min to unsafeMax) in micro-lamports/CU, with a recommended tip. For bots that need txs to land. |
@@ -338,17 +336,13 @@ Sampled every 5 minutes since 19 July 2026. Deviation is measured against the un
 | `get_base_gas` | $0.005 | `/api/base-gas` | Current gas price on Base (chain 8453) in BOTH gwei and wei, with base fee, priority fee and block number when the node supplies them. Both units are returned because a caller asking in wei and a caller asking in gwei are asking the same question. Served from keyless public RPC with three-node fallback, so there is no API key to rotate or expire. |
 | `get_base_balance` | $0.005 | `/api/base-balance` | Native ETH or any ERC20 balance for an address on Base or Ethereum mainnet. decimals() and symbol() are read from the contract at request time rather than assumed, because assuming 18 reports a USDC balance a trillion times too large. Accepts a 0x address or an ENS name; ENS is resolved through two independent resolvers and the answer is used only when they agree, so a wrong address can never produce a confident balance for the wrong wallet. An unsupported chain is refused rather than silently answered from the wrong one. |
 
-| `get_honeypot_check` | $0.01 | `/api/honeypot-check` | Can this Base token be sold? Our own buy-then-sell simulation (an eth_call with a state override, nothing broadcast) on its deepest pool across Uniswap V2/V3/V4 and Aerodrome: verdict, measured buy and sell tax, wallet-transfer test, bytecode flags (mintable, blacklist, proxy, pausable, owner) and where the two disagree, each with its block. Simulator source: `contracts/HoneypotSim.sol`. |
+| `get_honeypot_check` | $0.01 | `/api/honeypot-check` | Can this token be sold on Base, BNB Chain or Ethereum? Our own buy-then-sell simulation (an eth_call with a state override, nothing broadcast) on its deepest pool (Base: Uniswap V2/V3/V4 and Aerodrome; BNB Chain: PancakeSwap V2/V3; Ethereum: Uniswap V2/V3): verdict, measured buy and sell tax, wallet-transfer test, bytecode flags (mintable, blacklist, proxy, pausable, owner) and where the two disagree, each with its block. Simulator source: `contracts/HoneypotSim.sol`. |
 | `get_base_launches` | $0.02 | `/api/base-launches` | New Base pools from the last 24 hours (Uniswap V4, V3, V2, Aerodrome), newest first: pair, creation time, launchpad named from the V4 hook (Zora, Clanker, Doppler, Flaunch, from their own published addresses), quote-side liquidity, 24h volume and swaps, and the honeypot simulation for the busiest. Read from Base logs every minute; stale data answers 503. |
 
-### DeFi / macro
+### Macro
 
 | Tool | Price | Route | What you get |
 |---|---|---|---|
-| `get_tvl` | $0.005 | `/api/tvl` | TVL for any DeFi protocol (with 1d/7d change) or top-15 chains ranking. DefiLlama-backed. |
-| `get_stablecoin_flows` | $0.01 | `/api/stablecoin-flows` | Total stablecoin supply with 7d/30d deltas and top stables — the macro risk-on/risk-off dial for crypto. |
-| `get_dex_quote` | $0.005 | `/api/dex-quote` | Live Jupiter swap quote for any SPL pair: output amount, price impact, route. The real executable price on Solana, not an index price. |
-| `get_rwa_yields` | $0.01 | `/api/rwa-yields` | Yields on tokenized treasuries and money-market funds (BUIDL, USDY, OUSG, USYC, TBILL, Invesco USTB and more): APY, TVL and its 7-day change, chains, issuer, as_of; NAV, price, premium and pool depth where a source exists, null with the reason where not. DefiLlama via our RWAYield index, current state only. |
 | `get_macro_calendar` | $0.005 | `/api/macro-calendar` | FOMC, CPI, NFP and PCE calendar for traders: the next Fed rate decisions and the CPI, nonfarm payrolls and PCE release dates with UTC times converted from New York time (DST-aware), each with its official Fed, BLS or BEA source URL and the time we verified it. Read daily from the agencies' own pages and never entered by hand; data verified more than 35 days ago answers 503 and is never charged. |
 
 ### TradFi perps & stocks

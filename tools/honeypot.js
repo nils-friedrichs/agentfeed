@@ -1,4 +1,4 @@
-// tools/honeypot.js — /api/honeypot-check: can a Base token be bought AND sold right now? (R3, 2026-10-12)
+// tools/honeypot.js — /api/honeypot-check: can a token be bought AND sold right now? (R3 2026-10-12, R4 chains)
 //
 // THE PRODUCT IS OUR OWN SIMULATION. contracts/HoneypotSim.sol is placed at a throwaway
 // address with an eth_call state override and run once against the token's deepest pool:
@@ -7,43 +7,78 @@
 // what we sent vs what the pool was credited; round-trip loss also includes pool fees and
 // price impact. All reads are pinned to one block.
 //
-// SOURCES, AND WHY ONLY THESE. Everything is read from Base itself: mainnet.base.org, with
-// base.gateway.tenderly.co as fallback. GoPlus, honeypot.is and DexScreener were the brief's
-// cross-checks and pool finder; their API terms (read 2026-10-12) forbid commercial use of
-// their data (GoPlus), resale or third-party access (honeypot.is) and selling or making
-// any portion of the API available to third parties (DexScreener), so none is called. The
-// cross-check is our own: the simulation against the deployed bytecode, and every
-// contradiction between them is listed under `disagreements`.
+// CHAINS (one config each below). Base: Uniswap V2/V3/V4 and Aerodrome. BNB Chain:
+// PancakeSwap V2/V3. Ethereum: Uniswap V2/V3. A chain is listed only where a keyless RPC
+// with permissive terms answers eth_call with state overrides (measured 2026-10-12:
+// mainnet.base.org and base.drpc.org; bsc-dataseed.bnbchain.org; eth.drpc.org). Uniswap V4
+// is Base only, because V4 pools are found in our own Initialize index and there is no
+// index on Ethereum.
 //
-// POOLS. Uniswap V2 pairs, Uniswap V3 pools, Aerodrome v2 and Slipstream pools are found by
-// asking each factory (WETH and USDC quotes). Uniswap V4 pools are found in our own index
-// of PoolManager Initialize events (bin/base-launches-collect.js), so a V4 pool created
-// before that collector started is not seen. The deepest pool by quote-side liquidity wins.
+// SOURCES, AND WHY ONLY THESE. Everything is read from the chain itself. GoPlus,
+// honeypot.is, DexScreener and the Tenderly gateway are not called: their terms forbid
+// reselling or third-party use of their data or service (docs/SOURCES.md). The cross-check
+// is our own: the simulation against the deployed bytecode, and every contradiction between
+// them is listed under `disagreements`.
 //
-// CONTRACT. A finding, including "no pool found", is 200 and billable. Base RPC failing on
-// both nodes is 503. A malformed address, an address with no contract, or an unsupported
-// chain is 400. All of 4xx/5xx are never settled.
+// CONTRACT. A finding, including "no pool found", is 200 and billable. The chain's RPCs all
+// failing is 503. A malformed address, an address with no contract, or an unsupported chain
+// is 400. All of 4xx/5xx are never settled.
 'use strict';
 const V = require('viem');
 const path = require('node:path');
 const SIM = require('../contracts/honeypot-sim.json');
 
-// One line per chain. bsc and ethereum are added by appending their entry here.
+// One entry per chain. quotes: the assets a pool may be quoted in (native = the wrapped
+// native token, funded by deposit; others by overriding the balance slot, each verified
+// on-chain by writing the slot and reading balanceOf). usdPool: a deep native/stable V3
+// pool whose slot0 prices the native token. Every address was checked on-chain 2026-10-12.
 const CHAINS = {
   base: {
     id: 8453, name: 'Base',
-    rpcs: [process.env.BASE_SIM_RPC || 'https://mainnet.base.org', 'https://base.gateway.tenderly.co'],
-    weth: '0x4200000000000000000000000000000000000006',
-    usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', usdcBalanceSlot: 9n,
+    rpcs: [process.env.BASE_SIM_RPC || 'https://mainnet.base.org', 'https://base.drpc.org'],
+    wnative: '0x4200000000000000000000000000000000000006',
+    quotes: [
+      { address: '0x4200000000000000000000000000000000000006', symbol: 'WETH', decimals: 18, native: true },
+      { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', decimals: 6, slot: 9n },
+    ],
     multicall: '0xcA11bde05977b3631167028862bE2a173976CA11',
-    ethUsdPool: '0xd0b53D9277642d899DF5C87A3966A349A798F224',   // Uniswap V3 WETH/USDC 0.05%
-    v2: { factory: '0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6', feeBps: 30n },
-    v3: { factory: '0x33128a8fC17869897dcE68Ed026d694621f6FDfD', fees: [100, 500, 3000, 10000] },
+    usdPool: { address: '0xd0b53D9277642d899DF5C87A3966A349A798F224', usdIs0: false, dec0: 18, dec1: 6 }, // Uniswap V3 WETH/USDC 0.05%
+    v2: { name: 'uniswap-v2', factory: '0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6', feeBps: 30n },
+    v3: { name: 'uniswap-v3', factory: '0x33128a8fC17869897dcE68Ed026d694621f6FDfD', fees: [100, 500, 3000, 10000] },
     aero: { factory: '0x420DD381b31aEf6683db6B902084cB0FFECe40Da' },
     aeroCL: { factory: '0x5e7BB104d84c7CB9B682AaC2F3d509f5F406809A', spacings: [1, 50, 100, 200, 2000] },
     v4: { poolManager: '0x498581fF718922c3f8e6A244956aF099B2652b2b', stateView: '0xA3c0c9b65baD0b08107Aa264b0f3dB444b867A71' },
   },
+  bsc: {
+    id: 56, name: 'BNB Chain',
+    rpcs: ['https://bsc-dataseed.bnbchain.org', 'https://bsc-dataseed1.bnbchain.org'],
+    wnative: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c',
+    quotes: [
+      { address: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', symbol: 'WBNB', decimals: 18, native: true },
+      { address: '0x55d398326f99059fF775485246999027B3197955', symbol: 'USDT', decimals: 18, slot: 1n },
+      { address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', symbol: 'USDC', decimals: 18, slot: 1n },
+    ],
+    multicall: '0xcA11bde05977b3631167028862bE2a173976CA11',
+    usdPool: { address: '0x36696169C63e42cd08ce11f5deeBbCeBae652050', usdIs0: true, dec0: 18, dec1: 18 },    // PancakeSwap V3 USDT/WBNB 0.05%
+    v2: { name: 'pancakeswap-v2', factory: '0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73', feeBps: 25n },
+    v3: { name: 'pancakeswap-v3', factory: '0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865', fees: [100, 500, 2500, 10000] },
+  },
+  ethereum: {
+    id: 1, name: 'Ethereum',
+    rpcs: ['https://eth.drpc.org'],
+    wnative: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
+    quotes: [
+      { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', symbol: 'WETH', decimals: 18, native: true },
+      { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', decimals: 6, slot: 9n },
+      { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', symbol: 'USDT', decimals: 6, slot: 2n },
+    ],
+    multicall: '0xcA11bde05977b3631167028862bE2a173976CA11',
+    usdPool: { address: '0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640', usdIs0: true, dec0: 6, dec1: 18 },     // Uniswap V3 USDC/WETH 0.05%
+    v2: { name: 'uniswap-v2', factory: '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f', feeBps: 30n },
+    v3: { name: 'uniswap-v3', factory: '0x1F98431c8aD98523631AE4a59f267346ea31F984', fees: [100, 500, 3000, 10000] },
+  },
 };
+const quoteOf = (chain, addr) => chain.quotes.find((q) => q.address.toLowerCase() === String(addr).toLowerCase()) || null;
 
 const SIM_ADDR = '0xa402a402a402a402a402a402a402a402a402a402';
 const FROM = '0x000000000000000000000000000000000000a402';
@@ -75,7 +110,7 @@ const ABI = V.parseAbi([
 ]);
 const RUN_ABI = [{
   type: 'function', name: 'run', stateMutability: 'nonpayable',
-  inputs: [{ type: 'uint8' }, { type: 'address' }, { type: 'address' }, { type: 'address' }, { type: 'uint256' }, { type: 'uint256' }, { type: 'bytes' }],
+  inputs: [{ type: 'uint8' }, { type: 'address' }, { type: 'address' }, { type: 'address' }, { type: 'uint256' }, { type: 'uint256' }, { type: 'bytes' }, { type: 'address' }],
   outputs: [{ type: 'tuple', components: [
     { name: 'buy', type: 'tuple', components: [{ name: 'ok', type: 'bool' }, { name: 'err', type: 'bytes' }, { name: 'sent', type: 'uint256' }, { name: 'arrived', type: 'uint256' }, { name: 'received', type: 'uint256' }, { name: 'gasUsed', type: 'uint256' }] },
     { name: 'sell', type: 'tuple', components: [{ name: 'ok', type: 'bool' }, { name: 'err', type: 'bytes' }, { name: 'sent', type: 'uint256' }, { name: 'arrived', type: 'uint256' }, { name: 'received', type: 'uint256' }, { name: 'gasUsed', type: 'uint256' }] },
@@ -83,7 +118,7 @@ const RUN_ABI = [{
   ] }],
 }];
 const POOLKEY = [{ type: 'address' }, { type: 'tuple', components: [{ name: 'currency0', type: 'address' }, { name: 'currency1', type: 'address' }, { name: 'fee', type: 'uint24' }, { name: 'tickSpacing', type: 'int24' }, { name: 'hooks', type: 'address' }] }];
-const KIND = { 'uniswap-v2': 1, 'aerodrome-v2': 2, 'uniswap-v3': 3, 'aerodrome-cl': 3, 'uniswap-v4': 4 };
+const KIND = { 'uniswap-v2': 1, 'pancakeswap-v2': 1, 'aerodrome-v2': 2, 'uniswap-v3': 3, 'pancakeswap-v3': 3, 'aerodrome-cl': 3, 'uniswap-v4': 4 };
 
 // selectors present in deployed bytecode -> what the function can do
 const FLAG_SELECTORS = {
@@ -215,52 +250,61 @@ function v4Pools(chain, token) {
   }
 }
 
-async function ethUsd(chain, block) {
-  const [s] = await multicall(chain, block, [call(chain.ethUsdPool, 'slot0')]);
-  if (!s) throw unavailable('ETH/USD read from the WETH/USDC pool failed');
+// USD per native token from a native/stable V3 pool: price of token0 in token1 is
+// sqrtP^2 scaled by the decimals; invert when the stable is token0.
+async function nativeUsd(chain, block) {
+  const u = chain.usdPool;
+  const [s] = await multicall(chain, block, [call(u.address, 'slot0')]);
+  if (!s) throw unavailable(`${chain.name} native/USD read from ${u.address} failed`);
   const sp = Number(s[0]) / 2 ** 96;
-  return sp * sp * 1e12; // token0 WETH (18), token1 USDC (6)
+  const p1per0 = sp * sp * 10 ** (u.dec0 - u.dec1);
+  return u.usdIs0 ? 1 / p1per0 : p1per0;
 }
+const usdOfQuote = (q, usdPerNative) => (q.native ? usdPerNative : 1);
 
-async function findPools(chain, block, token, usdPerEth) {
-  const quotes = [chain.weth, chain.usdc];
+async function findPools(chain, block, token, usdPerNative) {
   const SIG = {
-    'uniswap-v2': V.parseAbi(['function getPair(address,address) view returns (address)']),
-    'uniswap-v3': V.parseAbi(['function getPool(address,address,uint24) view returns (address)']),
-    'aerodrome-v2': V.parseAbi(['function getPool(address,address,bool) view returns (address)']),
-    'aerodrome-cl': V.parseAbi(['function getPool(address,address,int24) view returns (address)']),
+    v2: V.parseAbi(['function getPair(address,address) view returns (address)']),
+    v3: V.parseAbi(['function getPool(address,address,uint24) view returns (address)']),
+    aero: V.parseAbi(['function getPool(address,address,bool) view returns (address)']),
+    cl: V.parseAbi(['function getPool(address,address,int24) view returns (address)']),
   };
   const meta = [];
-  for (const q of quotes) {
-    meta.push({ venue: 'uniswap-v2', quote: q, target: chain.v2.factory, args: [token, q] });
-    for (const f of chain.v3.fees) meta.push({ venue: 'uniswap-v3', quote: q, fee: f, target: chain.v3.factory, args: [token, q, f] });
-    for (const st of [false, true]) meta.push({ venue: 'aerodrome-v2', quote: q, stable: st, target: chain.aero.factory, args: [token, q, st] });
-    for (const ts of chain.aeroCL.spacings) meta.push({ venue: 'aerodrome-cl', quote: q, tickSpacing: ts, target: chain.aeroCL.factory, args: [token, q, ts] });
+  for (const q of chain.quotes) {
+    meta.push({ venue: chain.v2.name, abi: SIG.v2, quote: q.address, target: chain.v2.factory, args: [token, q.address] });
+    for (const f of chain.v3.fees) meta.push({ venue: chain.v3.name, abi: SIG.v3, quote: q.address, fee: f, target: chain.v3.factory, args: [token, q.address, f] });
+    if (chain.aero) for (const st of [false, true]) meta.push({ venue: 'aerodrome-v2', abi: SIG.aero, quote: q.address, stable: st, target: chain.aero.factory, args: [token, q.address, st] });
+    if (chain.aeroCL) for (const ts of chain.aeroCL.spacings) meta.push({ venue: 'aerodrome-cl', abi: SIG.cl, quote: q.address, tickSpacing: ts, target: chain.aeroCL.factory, args: [token, q.address, ts] });
   }
-  const calls = meta.map((m) => ({ target: m.target, abi: SIG[m.venue], data: V.encodeFunctionData({ abi: SIG[m.venue], functionName: SIG[m.venue][0].name, args: m.args }) }));
+  const calls = meta.map((m) => ({ target: m.target, abi: m.abi, data: V.encodeFunctionData({ abi: m.abi, functionName: m.abi[0].name, args: m.args }) }));
   const raw = await multicallRaw(chain, block, calls);
   const found = [];
   raw.forEach((r, i) => {
     if (!r) return;
     let a;
     try { a = V.decodeFunctionResult({ abi: calls[i].abi, functionName: calls[i].abi[0].name, data: r }); } catch { return; }
-    if (a && a.toLowerCase() !== ZERO) { const { target, args, ...m } = meta[i]; found.push({ ...m, pool: a }); }
+    if (a && a.toLowerCase() !== ZERO) { const { target, args, abi, ...m } = meta[i]; found.push({ ...m, pool: a }); }
   });
   // quote-side balance of each pool
   const bals = found.length ? await multicall(chain, block, found.map((p) => call(p.quote, 'balanceOf', [p.pool]))) : [];
   const out = found.map((p, i) => {
+    const q = quoteOf(chain, p.quote);
     const raw = bals[i] == null ? 0n : bals[i];
-    const quoteAmt = p.quote === chain.usdc ? Number(raw) / 1e6 : Number(raw) / 1e18;
-    const usd = p.quote === chain.usdc ? quoteAmt : quoteAmt * usdPerEth;
-    return { ...p, kind: KIND[p.venue], quote_symbol: p.quote === chain.usdc ? 'USDC' : 'WETH', quote_liquidity_usd: Math.round(usd * 100) / 100, liquidity_basis: 'quote asset held by the pool' };
+    const usd = (Number(raw) / 10 ** q.decimals) * usdOfQuote(q, usdPerNative);
+    return { ...p, kind: KIND[p.venue], quote_symbol: q.symbol, quote_liquidity_usd: Math.round(usd * 100) / 100, liquidity_basis: 'quote asset held by the pool' };
   });
+  if (!chain.v4) {
+    out.sort((a, b) => b.quote_liquidity_usd - a.quote_liquidity_usd);
+    return { pools: out, v4Index: { since: null, unavailable: true, absent: true } };
+  }
 
   // V4 from our own Initialize index
   const v4 = v4Pools(chain, token);
   const v4c = [];
   for (const r of v4.rows) {
     const other = r.token0 === token.toLowerCase() ? r.token1 : r.token0;
-    const quote = other === ZERO ? ZERO : other === chain.weth.toLowerCase() ? chain.weth : other === chain.usdc.toLowerCase() ? chain.usdc : null;
+    const q = quoteOf(chain, other);
+    const quote = other === ZERO ? ZERO : q ? q.address : null;
     if (!quote) continue;
     v4c.push({ venue: 'uniswap-v4', kind: 4, pool: r.pool_id, quote, key: { currency0: V.getAddress(r.token0), currency1: V.getAddress(r.token1), fee: r.fee, tickSpacing: r.tick_spacing, hooks: V.getAddress(r.hooks) }, launchpad: r.launchpad });
   }
@@ -269,7 +313,8 @@ async function findPools(chain, block, token, usdPerEth) {
     v4c.forEach((p, i) => {
       const s0 = st[2 * i]; const L = st[2 * i + 1];
       if (!s0 || L == null || s0[0] === 0n) return;
-      const quoteSym = p.quote === ZERO ? 'ETH' : p.quote === chain.usdc ? 'USDC' : 'WETH';
+      const qq = p.quote === ZERO ? { symbol: 'ETH', decimals: 18, native: true } : quoteOf(chain, p.quote);
+      const quoteSym = qq.symbol;
       // the collector prices the quote side from the pool's own positions; that wins
       const known = v4.liq[p.pool];
       if (L === 0n) { out.push({ ...p, quote_symbol: quoteSym, quote_liquidity_usd: 0, liquidity_basis: 'no in-range liquidity (StateView getLiquidity = 0)' }); return; }
@@ -277,8 +322,7 @@ async function findPools(chain, block, token, usdPerEth) {
       const sp = Number(s0[0]) / 2 ** 96;
       const quoteIs1 = p.key.currency1.toLowerCase() === p.quote.toLowerCase();
       const virt = quoteIs1 ? Number(L) * sp : Number(L) / sp; // virtual reserve of the quote side, raw units
-      const dec = p.quote === chain.usdc ? 1e6 : 1e18;
-      const usd = (virt / dec) * (p.quote === chain.usdc ? 1 : usdPerEth);
+      const usd = (virt / 10 ** qq.decimals) * usdOfQuote(qq, usdPerNative);
       out.push({ ...p, quote_symbol: quoteSym, quote_liquidity_usd: Math.round(usd * 100) / 100, liquidity_basis: 'in-range virtual reserve of the quote side at the current price: an upper bound, the pool may hold less' });
     });
   }
@@ -294,16 +338,17 @@ async function multicallRaw(chain, block, calls) {
 }
 
 // ---- the simulation ----
-async function simulate(chain, block, token, p, usdPerEth) {
-  const isUsdc = p.quote === chain.usdc;
+async function simulate(chain, block, token, p, usdPerNative) {
+  const q = p.quote === ZERO ? { symbol: 'ETH', decimals: 18, native: true, address: ZERO } : quoteOf(chain, p.quote);
   const usdIn = Math.max(1, Math.min(PROBE_USD, (p.quote_liquidity_usd || 0) / 100)); // $10, or 1% of the quote side if thinner
-  const amountIn = isUsdc ? BigInt(Math.round(usdIn * 1e6)) : BigInt(Math.round((usdIn / usdPerEth) * 1e18));
+  const amountIn = BigInt(Math.round((usdIn / usdOfQuote(q, usdPerNative)) * 10 ** q.decimals));
   const v4 = p.kind === 4 ? V.encodeAbiParameters(POOLKEY, [chain.v4.poolManager, p.key]) : '0x';
-  const data = V.encodeFunctionData({ abi: RUN_ABI, functionName: 'run', args: [p.kind, p.kind === 4 ? chain.v4.poolManager : p.pool, token, p.quote, amountIn, p.venue === 'uniswap-v2' ? chain.v2.feeBps : 0n, v4] });
+  const feeBps = p.kind === 1 ? chain.v2.feeBps : 0n;
+  const data = V.encodeFunctionData({ abi: RUN_ABI, functionName: 'run', args: [p.kind, p.kind === 4 ? chain.v4.poolManager : p.pool, token, p.quote, amountIn, feeBps, v4, chain.wnative] });
   const override = { [SIM_ADDR]: { code: SIM.runtime, balance: '0x56bc75e2d63100000' } };
-  if (isUsdc) {
-    const slot = V.keccak256(V.encodeAbiParameters([{ type: 'address' }, { type: 'uint256' }], [SIM_ADDR, chain.usdcBalanceSlot]));
-    override[chain.usdc] = { stateDiff: { [slot]: V.toHex(amountIn * 10n, { size: 32 }) } };
+  if (q.slot != null) {
+    const slot = V.keccak256(V.encodeAbiParameters([{ type: 'address' }, { type: 'uint256' }], [SIM_ADDR, q.slot]));
+    override[q.address] = { stateDiff: { [slot]: V.toHex(amountIn * 10n, { size: 32 }) } };
   }
   const tx = { from: FROM, to: SIM_ADDR, data, gas: '0x1c9c380' };
   const { result, error, url } = await rpc(chain, 'eth_call', [tx, hexBlock(block), override]);
@@ -312,7 +357,7 @@ async function simulate(chain, block, token, p, usdPerEth) {
     throw unavailable(`simulation could not run: ${String(error.message).slice(0, 160)}`);
   }
   const r = V.decodeFunctionResult({ abi: RUN_ABI, functionName: 'run', data: result });
-  return { r, amountIn, usdIn, rpc: new URL(url).host };
+  return { r, amountIn, usdIn, qdec: q.decimals, rpc: new URL(url).host };
 }
 
 const pct = (num, den) => (den > 0n ? Math.round((1 - Number(num) / Number(den)) * 10000) / 100 : null);
@@ -351,10 +396,10 @@ const inflight = new Map();
 async function getHoneypotCheck(p = {}) {
   const token = String(p.token || '').trim();
   const chainName = String(p.chain || 'base').trim().toLowerCase();
-  if (!token) throw bad('missing required parameter: token, a 0x token contract address on Base, e.g. token=0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed');
+  if (!token) throw bad('missing required parameter: token, a 0x token contract address, e.g. token=0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed (Base); chain=base (default), bsc or ethereum');
   if (!ADDR_RE.test(token)) throw bad('token must be a 0x contract address (40 hex characters)');
   const chain = CHAINS[chainName];
-  if (!chain) throw bad(`chain ${chainName} is not supported yet; supported: ${Object.keys(CHAINS).join(', ')}`);
+  if (!chain) throw bad(`chain ${chainName} is not supported; supported: ${Object.keys(CHAINS).join(', ')}`);
   const key = `${chainName}:${token.toLowerCase()}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return { ...hit.value, cached: true };
@@ -375,16 +420,15 @@ async function run(chain, chainName, token) {
   const code = (await rpc(chain, 'eth_getCode', [token, hexBlock(block)])).result;
   if (!code || code === '0x') throw bad(`no contract deployed at ${token} on ${chain.name}`);
   const [name, symbol, decimals, supply] = await multicall(chain, block, [call(token, 'name'), call(token, 'symbol'), call(token, 'decimals'), call(token, 'totalSupply')]);
-  const usdPerEth = await ethUsd(chain, block);
-  const [{ pools, v4Index }, contract] = await Promise.all([findPools(chain, block, token, usdPerEth), contractFlags(chain, block, token, code)]);
+  const usdPerNative = await nativeUsd(chain, block);
+  const [{ pools, v4Index }, contract] = await Promise.all([findPools(chain, block, token, usdPerNative), contractFlags(chain, block, token, code)]);
 
   const best = pools.find((x) => x.quote_liquidity_usd > 0) || null;
   let sim = null;
-  if (best) sim = await simulate(chain, block, token, best, usdPerEth);
+  if (best) sim = await simulate(chain, block, token, best, usdPerNative);
   const v = !best && pools.length ? { verdict: 'no_liquidity', sellable: null } : verdictOf(sim);
   const r = sim && sim.r;
   const dec = typeof decimals === 'number' ? decimals : null;
-  const qdec = best && best.quote === chain.usdc ? 6 : 18;
   return {
     chain: chainName, token, name: name || null, symbol: symbol || null, decimals: dec,
     total_supply: supply != null && dec != null ? Number(supply) / 10 ** dec : null,
@@ -396,7 +440,7 @@ async function run(chain, chainName, token) {
     round_trip_loss_pct: r && r.sell.ok && r.buy.received > 0n ? pct(r.sell.received, (r.buy.sent * r.sell.sent) / r.buy.received) : null,
     simulation: sim ? {
       pool: best.pool, venue: best.venue, quote: best.quote_symbol,
-      amount_in: Number(sim.amountIn) / 10 ** qdec, amount_in_usd: Math.round(sim.usdIn * 100) / 100,
+      amount_in: Number(sim.amountIn) / 10 ** sim.qdec, amount_in_usd: Math.round(sim.usdIn * 100) / 100,
       buy: leg(r.buy), sell: r.buy.ok ? leg(r.sell) : null,
       transfer: r.buy.ok ? (r.transferOk ? { ok: true } : { ok: false, revert: decodeRevert(r.transferErr).reason }) : null,
       method: `eth_call at block ${block} with a state override that places our simulator contract at ${SIM_ADDR}: buy, send 1% to another address, sell 99% of the rest into the same pool. Nothing is broadcast. Taxes compare what each side sent with what arrived; round-trip loss also includes pool fees and price impact.`,
@@ -410,12 +454,20 @@ async function run(chain, chainName, token) {
     } : pools.length ? {
       pools_found: pools.length, note: 'Every pool found holds no quote liquidity: nothing can be sold into them right now (liquidity removed, or never added on the quote side).',
       pools: pools.slice(0, 5).map((x) => ({ address: x.pool, venue: x.venue, quote: x.quote_symbol, quote_liquidity_usd: x.quote_liquidity_usd, liquidity_basis: x.liquidity_basis })),
-    } : { pools_found: 0, searched: 'Uniswap V2, Uniswap V3 (4 fee tiers), Aerodrome v2 (stable and volatile), Aerodrome Slipstream (5 tick spacings) against WETH and USDC, and Uniswap V4 pools in our own Initialize index', v4_index_since: v4Index.since },
+    } : { pools_found: 0, searched: searchedText(chain), ...(chain.v4 ? { v4_index_since: v4Index.since } : {}) },
     contract,
     disagreements: disagreementsOf(v, contract, sim),
-    as_of: { block, at, simulation: sim ? { block, at } : null, contract: { block, at }, pools: { block, at, v4_index_since: v4Index.since } },
-    sources: ['Base chain reads (mainnet.base.org, base.gateway.tenderly.co fallback)', 'our simulator contract (contracts/HoneypotSim.sol), run with eth_call state overrides', 'our Uniswap V4 Initialize index'],
+    as_of: { block, at, simulation: sim ? { block, at } : null, contract: { block, at }, pools: { block, at, ...(chain.v4 ? { v4_index_since: v4Index.since } : {}) } },
+    sources: [`${chain.name} chain reads (${chain.rpcs.map((u) => new URL(u).host).join(', ')})`, 'our simulator contract (contracts/HoneypotSim.sol), run with eth_call state overrides', ...(chain.v4 ? ['our Uniswap V4 Initialize index'] : [])],
   };
+}
+
+function searchedText(chain) {
+  const qs = chain.quotes.map((q) => q.symbol).join(', ');
+  const parts = [`${chain.v2.name} pairs`, `${chain.v3.name} pools (${chain.v3.fees.length} fee tiers)`];
+  if (chain.aero) parts.push('Aerodrome v2 (stable and volatile)');
+  if (chain.aeroCL) parts.push(`Aerodrome Slipstream (${chain.aeroCL.spacings.length} tick spacings)`);
+  return `${parts.join(', ')} against ${qs}${chain.v4 ? ', and Uniswap V4 pools in our own Initialize index' : ''}`;
 }
 
 module.exports = { getHoneypotCheck, CHAINS, _push4s: push4s, _decodeRevert: decodeRevert, _verdictOf: verdictOf };

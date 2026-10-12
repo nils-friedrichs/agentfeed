@@ -8,7 +8,6 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const V = require('viem');
-const Database = require('better-sqlite3');
 const express = require('express');
 
 const tmp = (name) => path.join(os.tmpdir(), `r3-${process.pid}-${name}`);
@@ -101,7 +100,7 @@ test('honeypot-check refuses bad input before any network call', async () => {
   const realFetch = global.fetch; let calls = 0;
   global.fetch = async () => { calls++; throw new Error('no network in this test'); };
   try {
-    for (const a of [{}, { token: '0x12' }, { token: '4ed4E862860beD51a9570b96d89aF5E1B0Efefed' }, { token: '0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed', chain: 'bsc' }]) {
+    for (const a of [{}, { token: '0x12' }, { token: '4ed4E862860beD51a9570b96d89aF5E1B0Efefed' }, { token: '0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed', chain: 'solana' }]) {
       await assert.rejects(H.getHoneypotCheck(a), (e) => e.kind === 'bad_request');
     }
     assert.equal(calls, 0);
@@ -129,99 +128,25 @@ test('base-launches: fresh snapshot filters and limits; stale is 503; bad number
   } finally { fs.unlinkSync(file); delete process.env.BASE_LAUNCHES_SNAPSHOT; }
 });
 
-// ---- rwa-yields ----
-function rwaDb(file, ts) {
-  const db = new Database(file);
-  db.exec(`CREATE TABLE products (id INTEGER PRIMARY KEY, key TEXT, symbol TEXT, name TEXT, issuer TEXT, category TEXT, chain TEXT, duration_days INTEGER, mint TEXT, pool TEXT, source_urls TEXT, active INTEGER, llama TEXT, verified INTEGER, unverified_reason TEXT);
-    CREATE TABLE snapshots (id INTEGER PRIMARY KEY, product_id INTEGER, ts INTEGER, price REAL, nav REAL, premium_bps REAL, yield_apy REAL, tvl_usd REAL, pool_depth_usd REAL, source TEXT, flags TEXT, pool_count INTEGER, chain_breakdown TEXT);`);
-  db.prepare("INSERT INTO products VALUES (1,'b','BUIDL','BlackRock fund','BlackRock','mmf','multi',30,NULL,NULL,'[]',1,NULL,1,NULL)").run();
-  db.prepare("INSERT INTO products VALUES (2,'x','BENJI','Franklin fund','Franklin','mmf','multi',30,NULL,NULL,'[]',1,NULL,0,'no issuer-level entry')").run();
-  const s = db.prepare('INSERT INTO snapshots (product_id, ts, yield_apy, tvl_usd, source, flags, chain_breakdown) VALUES (?,?,?,?,?,?,?)');
-  s.run(1, ts - 8 * 86400, 3.5, 1000, 'defillama:x', '[]', '{"Ethereum":1000}');
-  s.run(1, ts, 3.6, 1200, 'defillama:x', '["nav_unverified"]', '{"Ethereum":700,"Solana":500}');
-  s.run(2, ts, null, null, 'none', '["source_unmapped"]', null);
-  db.close();
-}
-test('rwa-yields: latest state with 7-day TVL change and honest nulls; stale is 503; bad input is 400', () => {
-  const file = tmp('rwa.db');
-  const now = 1791800000;
-  rwaDb(file, now - 3600);
-  process.env.RWAYIELD_DB = file;
-  delete require.cache[require.resolve('../tools/rwayields')];
-  const RW = require('../tools/rwayields');
-  try {
-    const r = RW.getRwaYields({}, { now });
-    const b = r.products.find((p) => p.symbol === 'BUIDL');
-    assert.equal(b.tvl_change_7d_usd, 200); assert.equal(b.tvl_change_7d_pct, 20);
-    assert.equal(b.nav_usd, null, 'NAV unknown stays null');
-    assert.deepStrictEqual(b.chains.map((c) => c.chain), ['Ethereum', 'Solana']);
-    const x = r.products.find((p) => p.symbol === 'BENJI');
-    assert.equal(x.verified, false); assert.equal(x.yield_apy_pct, null); assert.ok(x.unverified_reason);
-    assert.equal(RW.getRwaYields({ symbol: 'buidl' }, { now }).count, 1);
-    assert.throws(() => RW.getRwaYields({ symbol: 'NOPE' }, { now }), (e) => e.kind === 'bad_request' && /BUIDL/.test(e.message));
-    assert.throws(() => RW.getRwaYields({ category: 'stocks' }, { now }), (e) => e.kind === 'bad_request');
-    assert.throws(() => RW.getRwaYields({}, { now: now + 9 * 3600 }), (e) => e.status === 503);
-  } finally { fs.unlinkSync(file); delete process.env.RWAYIELD_DB; }
-});
-
-// ---- launch-odds ----
-function ledgerDb(file, lastCycle) {
-  const db = new Database(file);
-  db.exec(`CREATE TABLE pools (id INTEGER PRIMARY KEY, pool_address TEXT, base_mint TEXT, quote_mint TEXT, name TEXT, symbol TEXT, dex TEXT, discovered_ts INTEGER, pool_created_ts INTEGER, t0_liquidity_usd REAL, t0_volume24h_usd REAL, t0_price_usd REAL, t0_fdv_usd REAL, t0_txns24h INTEGER, t0_mint_authority TEXT, t0_freeze_authority TEXT, t0_supply REAL, cohort INTEGER, cohort_ts INTEGER, cohort_reason TEXT, retired INTEGER, t0_ts INTEGER, promo_ts INTEGER);
-    CREATE TABLE checks (id INTEGER PRIMARY KEY, pool_id INTEGER, ts INTEGER, age_hours REAL, liquidity_usd REAL, volume24h_usd REAL, price_usd REAL, fdv_usd REAL, txns24h INTEGER, ok INTEGER);
-    CREATE TABLE labels (id INTEGER PRIMARY KEY, pool_id INTEGER, horizon_days INTEGER, label TEXT, evidence TEXT, labeled_ts INTEGER);
-    CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT);`);
-  const p = db.prepare('INSERT INTO pools (id, pool_address, base_mint, dex, discovered_ts, t0_liquidity_usd, cohort, cohort_reason) VALUES (?,?,?,?,?,?,?,?)');
-  const l = db.prepare('INSERT INTO labels (pool_id, horizon_days, label, evidence, labeled_ts) VALUES (?,?,?,?,?)');
-  const M = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
-  p.run(1, 'P1', M, 'pump-fun', 1, 6000, 1, 'liquidity>=5000');
-  p.run(2, 'P2', 'So11111111111111111111111111111111111111112', 'pump-fun', 1, 30000, 1, 'volume>=1000');
-  p.run(3, 'P3', 'Gack9UtqfeZxFA1LqeqjLgC3JGuD7rS6CsSHKoXsD4Tu', 'pump-fun', 1, 7000, 1, 'liquidity>=5000');
-  l.run(1, 1, 'active', '{"rule":"retain>=50%"}', 2); l.run(2, 1, 'lp_removed', '{"rule":"drop>=90%"}', 2); l.run(3, 1, 'unknown', null, 2);
-  db.prepare("INSERT INTO meta VALUES ('last_cycle', ?)").run(String(lastCycle));
-  db.close();
-}
-test('launch-odds: shares over decided pools, t0 band, 422 untracked, 503 stale, 400 input', async () => {
-  const file = tmp('ledger.db');
-  ledgerDb(file, Math.floor(Date.now() / 1000) - 60);
-  process.env.LAUNCHLEDGER_DB = file;
-  delete require.cache[require.resolve('../tools/launchodds')];
-  const LO = require('../tools/launchodds');
-  try {
-    const r = await LO.getLaunchOdds({ launchpad: 'PumpFun' });
-    assert.equal(r.launchpad, 'pump-fun'); assert.equal(r.pools_followed, 3);
-    const h1 = r.horizons.find((h) => h.horizon_days === 1);
-    assert.equal(h1.n_decided, 2, 'unknown is excluded from the base');
-    assert.equal(h1.share.active, 0.5); assert.equal(h1.share.lp_removed, 0.5); assert.equal(h1.excluded.unknown, 1);
-    assert.match(r.cohort, /Only pools that crossed/);
-    const band = await LO.getLaunchOdds({ launchpad: 'pump-fun', t0_liq_usd: '6500' });
-    assert.deepStrictEqual([band.t0_liquidity_band.min_usd, band.t0_liquidity_band.max_usd, band.pools_followed], [5000, 10000, 2]);
-    const m = await LO.getLaunchOdds({ mint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263' });
-    assert.equal(m.pools[0].labels[0].label, 'active');
-    await assert.rejects(LO.getLaunchOdds({ mint: '4a8o45skRPcyjAdyR8yES215Swvh8uTpZD6KLarhxCJ7' }), (e) => e.status === 422 && e.code === 'not_tracked');
-    await assert.rejects(LO.getLaunchOdds({ mint: "x'; DROP TABLE pools; --" }), (e) => e.kind === 'bad_request');
-    await assert.rejects(LO.getLaunchOdds({}), (e) => e.kind === 'bad_request');
-    await assert.rejects(LO.getLaunchOdds({ launchpad: 'nope' }), (e) => e.kind === 'bad_request' && /pump-fun \(3\)/.test(e.message));
-    assert.equal(await LO.launchBlock('4a8o45skRPcyjAdyR8yES215Swvh8uTpZD6KLarhxCJ7'), null, 'token-risk: no block for an untracked mint');
-  } finally { fs.unlinkSync(file); }
-  // a ledger whose last cycle is two hours old answers 503
-  ledgerDb(file, Math.floor(Date.now() / 1000) - 7200);
-  delete require.cache[require.resolve('../tools/launchodds')];
-  try {
-    await assert.rejects(require('../tools/launchodds').getLaunchOdds({ launchpad: 'pump-fun' }), (e) => e.status === 503);
-  } finally { fs.unlinkSync(file); delete process.env.LAUNCHLEDGER_DB; }
-});
-
-// ---- lib/tool.js: the 422 emitter ----
-test('a 422-marked throw is a JSON 422 with its code, logged as bad_request', async (t) => {
-  const { makeTool } = require('../lib/tool');
-  const logged = [];
-  const { tool } = makeTool({ paymentsOn: false, PRICES: {}, decodeSettlement: () => null, logCall: (r) => logged.push(r) });
+// ---- R4: withdrawn routes ----
+test('withdrawn routes answer a neutral 410 on any method, with a pointer to /pricing', async (t) => {
+  const compat = require('../lib/compat');
   const app = express();
-  app.get('/x', tool('get_x', 0.01, () => { throw Object.assign(new Error('not_tracked: nope'), { status: 422, kind: 'bad_request', code: 'not_tracked' }); }));
-  const srv = app.listen(0); t.after(() => srv.close());
-  const r = await fetch(`http://127.0.0.1:${srv.address().port}/x`);
-  assert.equal(r.status, 422);
-  assert.deepStrictEqual(await r.json(), { tool: 'get_x', error: 'not_tracked: nope', code: 'not_tracked' });
-  assert.equal(logged[0].status, 'bad_request');
+  for (const p of compat.WITHDRAWN) app.all(p, compat.makeWithdrawn({ ORIGIN: 'https://x' }));
+  const srv = app.listen(0); t.after(() => srv.close()); const u = `http://127.0.0.1:${srv.address().port}`;
+  assert.deepStrictEqual(compat.WITHDRAWN, ['/api/tvl', '/api/stablecoin-flows', '/api/launch-odds', '/api/rwa-yields', '/api/dex-quote']);
+  for (const p of compat.WITHDRAWN) {
+    for (const method of ['GET', 'POST']) {
+      const r = await fetch(u + p, { method });
+      assert.equal(r.status, 410, `${method} ${p}`);
+      assert.deepStrictEqual(await r.json(), { error: 'gone', status: 'withdrawn', route: p, withdrawn: '2026-10-12', pricing: 'https://x/pricing' });
+    }
+  }
+});
+
+test('withdrawn routes and sources are gone from the price table and the eth-price venues', () => {
+  const { PRICES } = require('../payments');
+  for (const k of ['GET /api/tvl', 'GET /api/stablecoin-flows', 'GET /api/launch-odds', 'GET /api/rwa-yields', 'GET /api/dex-quote']) assert.ok(!(k in PRICES), k);
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'tools', 'prices.js'), 'utf8');
+  for (const host of ['api.coingecko.com', 'coins.llama.fi', 'api.coinpaprika.com', 'hermes.pyth.network/v2/updates']) assert.ok(!src.includes(host), host);
 });

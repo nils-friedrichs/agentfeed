@@ -20,8 +20,8 @@ const { ExactEvmScheme } = require('@x402/evm/exact/server');
 // paying customer, not a docs typo. The price tools said "via Pyth" until
 // 2026-08-27, by which point prices.js had been multi-source for a day.
 const PRICES = {
-  'GET /api/sol-price':                { usd: 0.001, tool: 'get_sol_price',       desc: 'SOL price / Solana spot price in USD, live. Multi-source with a fixed fallback order — Coinbase, then Kraken, then Pyth Hermes — first finite quote wins. Returns the price, the venue that served it, and a Pyth confidence interval when Pyth did.' },
-  'GET /api/btc-price':                { usd: 0.001, tool: 'get_btc_price',       desc: 'BTC price / Bitcoin spot price in USD, live. Multi-source with a fixed fallback order — Coinbase, then Kraken, then Pyth Hermes — first finite quote wins. Returns the price, the venue that served it, and a Pyth confidence interval when Pyth did.' },
+  'GET /api/sol-price':                { usd: 0.001, tool: 'get_sol_price',       desc: 'SOL price / Solana spot price in USD, live. Multi-source with a fixed fallback order — Coinbase, then Kraken — first finite quote wins. Returns the price and the venue that served it.' },
+  'GET /api/btc-price':                { usd: 0.001, tool: 'get_btc_price',       desc: 'BTC price / Bitcoin spot price in USD, live. Multi-source with a fixed fallback order — Coinbase, then Kraken — first finite quote wins. Returns the price and the venue that served it.' },
   'GET /api/funding-rate':             { usd: 0.005, tool: 'get_funding_rate',    desc: 'Funding rate for any USDT perp on Bybit, OKX and Hyperliquid: per venue the raw rate, its interval in hours, the 8h equivalent, the annualised rate, next funding time and mark price. Without a symbol: funding rates for the SOL and BTC perps on Hyperliquid, with open interest. Cross-venue spread and crowding: /api/funding-cross.' },
   'GET /api/market-snapshot':          { usd: 0.005, tool: 'get_market_snapshot', desc: 'Crypto market snapshot in one call: SOL and BTC spot prices, both perp funding rates with mark price and open interest, and the Fear & Greed index with its classification. Five reads, one payment.' },
   'GET /api/wallet-holdings/:wallet':  { usd: 0.008, tool: 'get_wallet_holdings', desc: 'Solana wallet holdings / portfolio for any address: native SOL with its USD value, every SPL token with amount, unit price and USD value, and an NFT count. Helius DAS getAssetsByOwner, up to 100 assets.' },
@@ -33,7 +33,7 @@ const PRICES = {
   'GET /api/liquidation-stats':        { usd: 0.01,  tool: 'get_liquidation_stats',   desc: 'Liquidation stats, 1h and 24h totals for SOL, BTC, ETH, XRP and DOGE: long vs short USD split, biggest single print, and a per-exchange breakdown across Bybit, OKX and Binance.' },
   'GET /api/positioning':              { usd: 0.005, tool: 'get_positioning',        desc: 'Open interest and long/short ratio for SOL and BTC perps: the retail long/short account ratio plus Bybit open interest with 1h and 24h change. For any other USDT perp use /api/open-interest and /api/long-short.' },
   'GET /api/trade-context':            { usd: 0.01,  tool: 'get_trade_context',      desc: 'Crypto trading context in one call: SOL and BTC prices, perp funding rates, Fear & Greed, long/short positioning, open interest and 1h/24h liquidation stats. The whole pre-trade picture, one payment.' },
-  'GET /api/token-risk/:mint':         { usd: 0.01,  tool: 'get_token_risk',         desc: 'Solana token rug check / risk signals for any SPL mint: mint and freeze authority status (revoked is safer), top-1 and top-10 holder concentration, supply, price, risk flags and, for mints in our launch ledger, the launchpad, t0 snapshot and 1, 7 and 30-day outcome labels. Not a honeypot or LP-lock checker.' },
+  'GET /api/token-risk/:mint':         { usd: 0.01,  tool: 'get_token_risk',         desc: 'Solana token rug check / risk signals for any SPL mint: mint and freeze authority status (revoked is safer), top-1 and top-10 holder concentration, supply, price, and a list of risk flags. Not a honeypot or LP-lock checker.' },
 };
 
 Object.assign(PRICES, require('./expansion').PRICES_ADD);
@@ -228,8 +228,19 @@ function buildPaymentLayer() {
   const payToEvm = process.env.PAY_TO_EVM;
   // Base, Polygon and Arbitrum USDC, same payTo, same exact scheme, same
   // facilitator. One list (lib/rails.js) for every surface that names a rail.
-  const EVM = require('./lib/rails').evmRails();
-  const resourceServer = new x402ResourceServer(facilitator)
+  const { evmRails, railPrice, railPayTo } = require('./lib/rails');
+  const EVM = evmRails();
+  // CDP first: it keeps every network it supports. Circle is added only for Arc, and its
+  // client advertises Arc alone (lib/circle-arc.js).
+  const arc = EVM.find((r) => r.facilitator === 'circle');
+  const facilitators = [facilitator];
+  if (arc) {
+    const { CircleArcFacilitator } = require('./lib/circle-arc');
+    const c = new CircleArcFacilitator();
+    facilitators.push(c);
+    console.log(`[payments] Arc rail: Circle Facilitator Service (${c.mode}), payTo ${c.payTo}`);
+  }
+  const resourceServer = new x402ResourceServer(facilitators)
     .register(network, new ExactSvmScheme());
   for (const r of EVM) resourceServer.register(r.network, new ExactEvmScheme());
   resourceServer
@@ -253,9 +264,9 @@ function buildPaymentLayer() {
         },
         ...EVM.map((r) => ({
           scheme: 'exact',
-          price: `$${p.usd}`,
-          network: r.network,       // USDC auto-resolved per chain
-          payTo: payToEvm,
+          price: railPrice(r, p.usd), // USDC auto-resolved per chain; Arc names its asset
+          network: r.network,
+          payTo: railPayTo(r),
         })),
       ],
       description: challengeDesc(challengeLead(p)), // challenge only; p.desc stays whole

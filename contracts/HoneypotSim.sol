@@ -10,8 +10,10 @@ pragma solidity 0.8.26;
 // would send, what actually arrived, gas used. A transfer tax shows up as "arrived less
 // than the pool sent" (buy) or "the pool received less than we sent" (sell).
 //
-// kind 1 = Uniswap V2 pair (fee in bps), 2 = Aerodrome v2 pool (getAmountOut),
-// 3 = Uniswap V3 / Aerodrome Slipstream pool, 4 = Uniswap V4 pool (PoolManager).
+// kind 1 = Uniswap V2 / PancakeSwap V2 pair (fee in bps), 2 = Aerodrome v2 pool (getAmountOut),
+// 3 = Uniswap V3 / PancakeSwap V3 / Aerodrome Slipstream pool, 4 = Uniswap V4 pool (PoolManager).
+// wnative is the chain's wrapped native token (WETH, WBNB): a quote equal to it is funded
+// by depositing the simulator's overridden native balance.
 
 interface IERC20 {
     function balanceOf(address) external view returns (uint256);
@@ -58,7 +60,6 @@ interface IPoolManager {
 contract HoneypotSim {
     uint160 internal constant MIN_SQRT = 4295128739 + 1;
     uint160 internal constant MAX_SQRT = 1461446703485210103287273052203988822378723970342 - 1;
-    address internal constant WETH = 0x4200000000000000000000000000000000000006;
 
     struct Leg {
         bool ok;
@@ -81,8 +82,8 @@ contract HoneypotSim {
 
     receive() external payable {}
 
-    function run(uint8 kind, address pool, address token, address quote, uint256 amountIn, uint256 feeBps, bytes calldata v4) external returns (Result memory r) {
-        if (quote == WETH) IWETH(WETH).deposit{value: amountIn}();
+    function run(uint8 kind, address pool, address token, address quote, uint256 amountIn, uint256 feeBps, bytes calldata v4, address wnative) external returns (Result memory r) {
+        if (wnative != address(0) && quote == wnative) IWETH(wnative).deposit{value: amountIn}();
 
         uint256 g = gasleft();
         try this.buyLeg(kind, pool, token, quote, amountIn, feeBps, v4) returns (uint256 arrived, uint256 received) {
@@ -189,6 +190,15 @@ contract HoneypotSim {
     }
 
     function uniswapV3SwapCallback(int256 a0, int256 a1, bytes calldata data) external {
+        _payCallback(a0, a1, data);
+    }
+
+    // PancakeSwap V3 pools call their own name; same contract otherwise.
+    function pancakeV3SwapCallback(int256 a0, int256 a1, bytes calldata data) external {
+        _payCallback(a0, a1, data);
+    }
+
+    function _payCallback(int256 a0, int256 a1, bytes calldata data) internal {
         require(msg.sender == cbPool, "cb");
         address tokenIn = abi.decode(data, (address));
         uint256 owed = uint256(a0 > 0 ? a0 : a1);

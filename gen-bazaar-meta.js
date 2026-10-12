@@ -102,16 +102,15 @@ const EXTRA_ARGS = {
 
 function fixture(key, tool) {
   switch (key) {
-    case 'mint': return tool === 'get_launch_odds' ? undefined : BONK; // never USDC: a stablecoin has no interesting holder concentration; launch-odds shows the launchpad mode
-    case 'token': return '0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed'; // DEGEN on Base: a live token with V3 and Aerodrome pools
-    case 'launchpad': return 'pump-fun';
+    case 'mint': return BONK;                  // never USDC: a stablecoin has no interesting holder concentration
+    case 'token': return tool === 'get_honeypot_check' ? '0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed' : undefined; // DEGEN on Base; base-balance keeps its native-ETH example
     case 'wallet': return SOL_WALLET;
     case 'address': return EVM_ADDRESS;
     case 'input_mint': return WSOL;
     case 'output_mint': return USDC;
     case 'amount': return '1000000000';        // 1 SOL in raw base units
     case 'target': return 'jito';
-    case 'symbol': return tool === 'get_rwa_yields' ? undefined : SYMBOL_FOR[tool] || 'SOLUSDT'; // rwa-yields: the whole index
+    case 'symbol': return SYMBOL_FOR[tool] || 'SOLUSDT';
     default: return undefined;                 // numeric/enum knobs stay out of the example
   }
 }

@@ -11,7 +11,6 @@ const D = require('./tools/derivs');
 const M = require('./tools/micro');
 const L = require('./tools/liqdb');
 const S = require('./tools/solana2');
-const F = require('./tools/defi');
 const P = require('./tools/peg');
 const CF = require('./tools/cascade-forecast');
 const OV = require('./tools/overhang');
@@ -24,9 +23,8 @@ const MS = require('./tools/marketstate');
 const MAC = require('./tools/macro');
 const TF = require('./tools/tradfi');
 const HP = require('./tools/honeypot');
+const HW = require('./tools/hlwhales');
 const BL = require('./tools/baselaunches');
-const LO = require('./tools/launchodds');
-const RW = require('./tools/rwayields');
 
 const sym = (d) => z.string().optional().describe(`USDT perp symbol e.g. SOLUSDT, BTCUSDT (default ${d})`);
 // Twelve routes -- liq-heatmap, squeeze-score, six derivatives and four
@@ -207,20 +205,6 @@ const EXP = [
     schema: {}, run: () => S.getSolNetwork() },
 
   // ---- DeFi / macro suite ----
-  { name: 'get_tvl', route: 'GET /api/tvl', usd: 0.005,
-    desc: 'TVL for any DeFi protocol with 1d and 7d change, or a top-15 chains ranking. DefiLlama-backed; a protocol family is aggregated across its deployments and the change is TVL-weighted.',
-    tags: ['defi', 'tvl', 'protocols', 'macro'],
-    schema: { target: z.string().optional().describe('protocol slug/name e.g. jito, marinade — omit for top chains') },
-    run: (a) => F.getTvl(a) },
-  { name: 'get_stablecoin_flows', route: 'GET /api/stablecoin-flows', usd: 0.01,
-    desc: 'Stablecoin supply and flows: total stablecoin market cap with 7d and 30d deltas and the top stables by size — the macro risk-on / risk-off dial for crypto.',
-    tags: ['stablecoins', 'macro', 'flows', 'defi'],
-    schema: {}, run: () => F.getStablecoinFlows() },
-  { name: 'get_dex_quote', route: 'GET /api/dex-quote', usd: 0.005,
-    desc: 'Solana DEX quote from Jupiter for any SPL pair: output amount, price impact %, the route taken and the slippage assumed. The real executable price on Solana, not an index price.',
-    tags: ['solana', 'dex', 'jupiter', 'swap'],
-    schema: { input_mint: z.string().describe('input mint (base58)'), output_mint: z.string().describe('output mint (base58)'), amount: z.string().describe('amount in raw base units of input mint') },
-    run: (a) => F.getDexQuote(a) },
 
   // ---- MOAT: our own tokenized-equity peg tape ----
   { name: 'get_peg_deviation', route: 'GET /api/peg-deviation', usd: 0.02,
@@ -253,7 +237,7 @@ const EXP = [
   // telegraph.js and were never on the paid rail, so they are registered here
   // rather than lost when that mirror is unmounted.
   { name: 'get_eth_price', route: 'GET /api/eth-price', usd: 0.001,
-    desc: 'ETH spot price in USD, aggregated across seven independent venues (CoinGecko, Coinbase, Kraken, Binance, OKX, Gemini, DefiLlama). Returns the lead figure plus every venue quote that answered, so a caller can see the spread rather than trust one exchange. Venues are ranked in a fixed declared order, not completion order, so identical market state always returns the same lead price.',
+    desc: 'ETH spot price in USD, aggregated across five exchanges (Coinbase, Kraken, Binance, OKX, Gemini). Returns the lead figure plus every venue quote that answered, so a caller can see the spread rather than trust one exchange. Venues are ranked in a fixed declared order, not completion order, so identical market state always returns the same lead price.',
     tags: ['price', 'eth', 'ethereum', 'crypto', 'multi-venue'],
     schema: {},
     run: () => PX.getPriceQuotes('ETH') },
@@ -270,15 +254,15 @@ const EXP = [
               chain: z.string().optional().describe('base (default) or ethereum') },
     run: (a) => B.getBaseBalance({ query: a }) },
 
-  // ---- R3 (2026-10-12): Base token safety and launches, Solana launch outcomes, RWA yields ----
-  // honeypot-check runs our own buy-then-sell simulation on Base (tools/honeypot.js);
-  // base-launches serves the snapshot bin/base-launches-collect.js writes every minute;
-  // launch-odds reads LaunchLedger read-only; rwa-yields reads the RWAYield index read-only.
+  // ---- R3 (2026-10-12): Base token safety and launches, from on-chain reads only ----
+  // honeypot-check runs our own buy-then-sell simulation (tools/honeypot.js);
+  // base-launches serves the snapshot bin/base-launches-collect.js writes every minute.
+  // launch-odds and rwa-yields shipped in R3 and were withdrawn in R4 (source terms).
   { name: 'get_honeypot_check', route: 'GET /api/honeypot-check', usd: 0.01,
     tags: ['base', 'honeypot', 'rug-check', 'token-security', 'simulation', 'evm'],
-    desc: 'Use when an agent needs to know whether a Base token can be sold before it buys. Returns a verdict from our own buy-then-sell simulation on the token\'s deepest Base pool, with the buy and sell tax measured. Also: whether a wallet transfer works, bytecode flags (mintable, blacklist, proxy, pausable, owner), where simulation and bytecode disagree, and the block. No pool found is a finding; RPC failure answers 503.',
-    schema: { token: z.string().describe('token contract address on Base, 0x followed by 40 hex characters'),
-              chain: z.string().optional().describe('base (default); other chains are refused for now') },
+    desc: 'Use when an agent needs to know whether a token on Base, BNB Chain or Ethereum can be sold before it buys. Returns a verdict from our own buy-then-sell simulation on the token\'s deepest pool, with the buy and sell tax measured. Also: whether a wallet transfer works, bytecode flags (mintable, blacklist, proxy, pausable, owner), where simulation and bytecode disagree, and the block. Uniswap, Aerodrome and PancakeSwap pools. No pool found is a finding; RPC failure answers 503.',
+    schema: { token: z.string().describe('token contract address, 0x followed by 40 hex characters'),
+              chain: z.string().optional().describe('base (default: Uniswap V2/V3/V4, Aerodrome), bsc (PancakeSwap V2/V3) or ethereum (Uniswap V2/V3)') },
     run: (a) => HP.getHoneypotCheck(a) },
   { name: 'get_base_launches', route: 'GET /api/base-launches', usd: 0.02,
     tags: ['base', 'new-tokens', 'launches', 'uniswap-v4', 'memecoins', 'dex'],
@@ -286,19 +270,14 @@ const EXP = [
     schema: { min_liq_usd: z.number().optional().describe('minimum quote-side liquidity (ETH, WETH or USDC held) in USD, default 1000; 0 lists every launch'),
               limit: z.number().optional().describe('launches returned, newest first, 1-100, default 20') },
     run: (a) => BL.getBaseLaunches(a) },
-  { name: 'get_launch_odds', route: 'GET /api/launch-odds', usd: 0.01,
-    tags: ['solana', 'launches', 'rug-rate', 'survival', 'memecoins', 'exclusive'],
-    desc: 'Use when an agent needs the odds that a Solana launch survives. Returns the share of a launchpad\'s followed pools whose liquidity was removed, collapsed, went inactive or stayed active at 1, 7 and 30 days, with n. Narrow it to a t0 liquidity band, or pass a mint for its pools, t0 snapshot, authorities and outcome labels. Only pools past our ledger\'s traction threshold are followed; an untracked mint answers 422.',
-    schema: { launchpad: z.string().optional().describe('launchpad or DEX as the ledger names it, e.g. pump-fun, pumpswap, meteora-dbc, raydium-launchlab, bags-fm; an unknown name lists them'),
-              t0_liq_usd: z.number().optional().describe('liquidity at discovery in USD: narrows the launchpad odds to that band (0-5k, 5-10k, 10-25k, 25-50k, 50-100k, 100-250k, 250k+)'),
-              mint: z.string().optional().describe('a Solana mint instead of a launchpad: that mint\'s pools, t0 snapshot and outcome labels') },
-    run: (a) => LO.getLaunchOdds(a) },
-  { name: 'get_rwa_yields', route: 'GET /api/rwa-yields', usd: 0.01,
-    tags: ['rwa', 'treasuries', 'yield', 'tokenized-funds', 'money-market', 'defi'],
-    desc: 'Use when an agent needs current yields on tokenized treasuries and money-market funds. Returns the APY, TVL and 7-day TVL change of BUIDL, USDY, OUSG, USYC, TBILL, Invesco USTB and more. Also chains, issuer and as_of per product; NAV, price, premium and pool depth where a source exists, null with the reason where not. From DefiLlama via our RWAYield index, refreshed every 6 hours; stale data answers 503.',
-    schema: { symbol: z.string().optional().describe('one product, e.g. BUIDL, USDY, OUSG; unknown symbols list the covered ones'),
-              category: z.string().optional().describe('treasury, mmf, credit, commodity or equity') },
-    run: (a) => RW.getRwaYields(a) },
+
+  // ---- R4 (2026-10-12): Hyperliquid whale positioning, on demand with a 5-minute cache ----
+  { name: 'get_hl_whales', route: 'GET /api/hl-whales', usd: 0.02,
+    tags: ['hyperliquid', 'whales', 'smart-money', 'positioning', 'liquidations', 'perps', 'trading'],
+    desc: 'Use when an agent needs to know how the biggest Hyperliquid traders are positioned. Returns the open perp positions of the largest Hyperliquid accounts aggregated per coin: net long or short USD, account counts, size-weighted entries, notional-weighted distance to liquidation, notional within 10% of liquidation and uPnL. With coin=BTC: whale liquidation levels in 5% price bands and the largest positions. Refreshed every 5 minutes; stale data answers 503.',
+    schema: { coin: z.string().optional().describe('one Hyperliquid perp, e.g. BTC, ETH, SOL, HYPE: adds liquidation bands and the top positions'),
+              top: z.number().optional().describe('coins (or positions with coin=) returned, 1-50, default 20') },
+    run: (a) => HW.getHlWhales(a) },
 
   // ---- ENTRY TIER: four routes, composed from functions above ----
   // $0.001 until 2026-10-08, now $0.005: the CDP facilitator charges $0.001 per
@@ -326,7 +305,7 @@ const EXP = [
 
   { name: 'get_spot', route: 'GET /api/price', usd: 0.001,
     tags: ['price', 'spot', 'crypto', 'multi-venue'],
-    desc: 'Use when an agent needs a spot price without choosing a venue. Returns the price, the venue that actually served it, and a Pyth confidence when Pyth served. Coinbase, then Kraken, then Pyth Hermes. Serves SOL, BTC and ETH; anything else is declined.',
+    desc: 'Use when an agent needs a spot price without choosing a venue. Returns the price and the venue that actually served it, Coinbase first, then Kraken. Serves SOL, BTC and ETH; anything else is declined.',
     schema: { symbol: z.string().optional().describe('SOL, BTC or ETH (default SOL). Anything else is declined with the supported list') },
     run: (a) => EN.getSpot(a) },
 ];

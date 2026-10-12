@@ -162,7 +162,7 @@ async function getFundingPulse() {
 }
 
 // ---- d. GET /api/price?symbol= ------------------------------------------
-// The multi-source price module carries one Pyth feed id per symbol and one
+// The multi-source price module carries one Coinbase product and one
 // Kraken pair per symbol, so its real coverage is exactly those keys. Measured,
 // not assumed: SUPPORTED is read from the module's own table at require time,
 // so adding a feed there extends this route with no edit here.

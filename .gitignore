@@ -97,3 +97,8 @@ large-mints.json.tmp
 # by *.db and its log by *.log, the snapshot and its atomic-rename temp are not.
 base-launches.json
 base-launches.json.tmp
+
+# ---- 2026-10-12: Arc rail (R4) ----
+# Circle payments left settlement_pending, for ops/arc-reconcile.js. Not source.
+arc-pending.jsonl
+arc-pending.done.jsonl

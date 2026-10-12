@@ -637,7 +637,7 @@ app.get('/.well-known/x402.json', (_req, res) => res.json({
     asset: 'USDC',
     accepts: [
       { scheme: 'exact', network: x402Network === 'mainnet' ? 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp' : 'solana:devnet', payTo: process.env.PAY_TO, asset: 'USDC', price_usd: p.usd },
-      ...evmRails().map((r) => ({ scheme: 'exact', network: r.network, payTo: process.env.PAY_TO_EVM, asset: 'USDC', asset_address: r.usdc, price_usd: p.usd })),
+      ...evmRails().map((r) => ({ scheme: 'exact', network: r.network, payTo: r.payTo || process.env.PAY_TO_EVM, asset: 'USDC', asset_address: r.usdc, price_usd: p.usd })),
     ],
   })),
 }));
@@ -662,6 +662,7 @@ app.get('/.well-known/agent-card.json', compat.makeAgentCard({
   ORIGIN: discovery.ORIGIN, railNames, mpp: { get active() { return mppOn; }, get routes() { return mppOn ? MPP_ROUTES : []; } }, tempo: { get active() { return !!(tempo && tempo.isReady()); } },
 }));
 app.get('/api/sharp-move', compat.makeSharpMoveGone({ PRICES, ORIGIN: discovery.ORIGIN }));
+for (const p of compat.WITHDRAWN) app.all(p, compat.makeWithdrawn({ ORIGIN: discovery.ORIGIN }));
 app.get('/pricing', compat.makePricing({ PRICES, FREE_TOOLS, ORIGIN: discovery.ORIGIN, railNames, mpp: { get active() { return mppOn; }, get routes() { return mppOn ? MPP_ROUTES : []; } }, tempo: { get active() { return !!(tempo && tempo.isReady()); } } }));
 app.get('/terms', compat.termsHandler);
 

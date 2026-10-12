@@ -44,7 +44,7 @@ const m405 = must('server.js', /res\.set\('Allow',\s*'GET'\);\s*\n\s*res\.status
 const m402v1 = must('lib/x402v1.js', /x402Version: 1,\s*error: pr\.error \|\| 'Payment required',\s*accepts:/, 'x402 v1 402 body');
 const m405json = must('lib/compat.js', /res\.set\('Allow', 'GET'\)\.status\(405\)\.json\(\{ error: `\$\{req\.method\} is not supported on \$\{req\.path\}: paid routes are GET/, '405 JSON emitter (non-GET on a paid route)');
 const m410 = must('lib/compat.js', /res\.status\(410\)\.json\(\{\s*error: 'gone',/, '410 emitter');
-const m422 = must('lib/tool.js', /res\.status\(422\)\.json\(\{\s*tool:\s*name,\s*error:\s*e\.message,\s*code:\s*e\.code \|\| 'unprocessable'\s*\}\)/, '422 emitter');
+const m410w = must('lib/compat.js', /res\.status\(410\)\.json\(\{ error: 'gone', status: 'withdrawn',/, '410 emitter (withdrawn routes)');
 const m503 = must('lib/tool.js', /res\.status\(503\)\.json\(\{\s*tool:\s*name,\s*error:\s*e\.message,\s*retry_after:\s*60\s*\}\)/, '503 emitter');
 const mLimit = must('server.js', /const LIMIT = (\d+);/, 'GET rate limit');
 const mOther = must('server.js', /const OTHER_LIMIT = (\d+);/, 'other-method rate limit');
@@ -80,13 +80,6 @@ const SHARED = [
     note: 'Retry-After is also set as a response header.',
   },
   {
-    status: 422,
-    name: 'Unprocessable Content',
-    when: 'The input is well formed but names something we hold no data for, such as a mint our launch ledger never saw (/api/launch-odds). Never charged.',
-    appliesTo: ['GET /api/launch-odds'],
-    body: { tool: '<tool name>', error: 'not_tracked: <reason>', code: 'not_tracked' },
-  },
-  {
     status: 503,
     name: 'Service Unavailable',
     when: 'The route answers from a precomputed snapshot and that snapshot is past its staleness limit, or no source has data to answer with. Never charged: a status of 400 or more cancels the x402 settlement.',
@@ -102,8 +95,8 @@ const SHARED = [
   {
     status: 410,
     name: 'Gone',
-    when: 'The route was retired. The body names when, what it was and the closest live routes with their prices. Never charged.',
-    body: { error: 'gone', route: '/api/<retired route>', removed: '<date>', was: '<what it did>', closest_live: [{ route: '<url>', tool: '<tool>', price_usd: 0.02, what: '<one line>' }] },
+    when: 'The route was retired. Routes withdrawn on 2026-10-12 because an upstream does not allow reselling its data answer the body below, with a pointer to /pricing; /api/sharp-move (retired Aug 19) names the closest live routes and their prices instead. Never charged.',
+    body: { error: 'gone', status: 'withdrawn', route: '/api/<withdrawn route>', withdrawn: '2026-10-12', pricing: 'https://x402.ochinimus.app/pricing' },
   },
 ];
 
@@ -118,7 +111,7 @@ const BAD_PATH_VALUE = 'not-a-valid-address';
 const BAD_OPTIONAL_VALUE = { symbol: 'not-a-symbol' };
 // Per tool, for routes whose only inputs are optional and validated (R3): probed with
 // that one input malformed, so the documented 400 is the caller error it really is.
-const BAD_OPTIONAL_BY_TOOL = { get_launch_odds: { launchpad: 'not-a-launchpad' }, get_base_launches: { limit: '0' } };
+const BAD_OPTIONAL_BY_TOOL = { get_base_launches: { limit: '0' }, get_hl_whales: { top: '0' } };
 
 function requiredOf(pattern) {
   const m = META[pattern] || {};

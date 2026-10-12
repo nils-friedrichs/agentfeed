@@ -9,7 +9,7 @@
 //
 // WHY ONLY SOL AND BTC. This is not a policy choice, it is what the upstreams
 // actually carry, verified in the sources:
-//   tools/prices.js     FEEDS  = { SOL, BTC }        Pyth feed ids, throws otherwise
+//   tools/prices.js     FEEDS  = { SOL, BTC }        supported symbols, throws otherwise
 //   tools/funding.js    SYMBOLS = ['SOL','BTC']      throws otherwise
 //   tools/positioning.js SYMBOLS = { SOL, BTC }      pinned, takes no argument
 // getLiquidationStats() covers five symbols, but a "full market state" missing

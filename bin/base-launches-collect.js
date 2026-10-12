@@ -7,7 +7,8 @@
 //
 // ON-CHAIN ONLY. Pool creations come from logs: Uniswap V4 PoolManager Initialize, Uniswap
 // V3 and V2 factory PoolCreated/PairCreated, Aerodrome v2 and Slipstream factory
-// PoolCreated (base.gateway.tenderly.co, at most 1000 blocks per call). Volume is summed
+// PoolCreated (base.drpc.org, whose free tier answers getLogs up to about 100 blocks;
+// Tenderly's gateway was dropped in R4: its terms allow use only for our own benefit). Volume is summed
 // from the same pools' Swap logs on the quote side (ETH, WETH or USDC); liquidity is read
 // from the pool (quote-side balance, or V4 in-range virtual reserves). GeckoTerminal was in
 // the brief; CoinGecko's API terms forbid storing or redistributing its data, so it is not
@@ -26,11 +27,11 @@ const ROOT = path.join(__dirname, '..');
 const DB_PATH = process.env.BASE_LAUNCHES_DB || path.join(ROOT, 'baselaunches.db');
 const SNAP_PATH = process.env.BASE_LAUNCHES_SNAPSHOT || path.join(ROOT, 'base-launches.json');
 const LABELS_PATH = path.join(ROOT, 'data', 'base-v4-hooks.json');
-const LOG_RPC = process.env.BASE_LOG_RPC || 'https://base.gateway.tenderly.co';
+const LOG_RPC = process.env.BASE_LOG_RPC || 'https://base.drpc.org';
 const READ_RPC = process.env.BASE_SIM_RPC || 'https://mainnet.base.org';
 const DEADLINE = Date.now() + Number(process.env.COLLECT_DEADLINE_MS || 50000);
-const MAX_SPAN = 900;            // Tenderly public: 1000 blocks per getLogs
-const MAX_CATCHUP = 5 * MAX_SPAN; // further behind than this: jump to head, record the gap
+const MAX_SPAN = Number(process.env.LOG_SPAN || 100); // dRPC free: ranges over ~100 blocks are refused
+const MAX_CATCHUP = 2400;         // 80 minutes; further behind than this: jump to head, record the gap
 const WINDOW_S = 24 * 3600;      // launches listed: the last 24h
 const KEEP_POOLS_S = 30 * 86400; // V4 pool keys kept for the honeypot check
 const SIMS_PER_RUN = Number(process.env.SIMS_PER_RUN || 6);
@@ -66,9 +67,9 @@ const QUOTES = { [ZERO]: { symbol: 'ETH', dec: 18 }, [A.weth]: { symbol: 'WETH',
 const log = (...a) => console.log(new Date().toISOString(), '[base-launches]', ...a);
 const left = () => DEADLINE - Date.now();
 
-// The Tenderly public gateway rate-limits bursts: calls to it are spaced (LOG_GAP_MS) and a
-// "rate limit" answer is retried with backoff before the run gives up.
-let LOG_GAP_MS = Number(process.env.LOG_GAP_MS || 350);
+// The log RPC rate-limits bursts: calls to it are spaced (LOG_GAP_MS) and a "rate limit"
+// answer is retried with backoff before the run gives up.
+let LOG_GAP_MS = Number(process.env.LOG_GAP_MS || 1000);
 let lastLogCall = 0;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function rpc(url, method, params) {
@@ -78,7 +79,7 @@ async function rpc(url, method, params) {
     const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(Math.min(15000, left())) });
     const j = await r.json().catch(() => ({ error: { message: `HTTP ${r.status}` } }));
     if (!j.error) return j.result;
-    if (/rate limit|429|too many/i.test(String(j.error.message)) && attempt < 3 && left() > 6000) { await sleep(1500 * 2 ** attempt); continue; }
+    if (/rate limit|429|too many|timeout|upgrade to paid/i.test(String(j.error.message)) && attempt < 3 && left() > 6000) { await sleep(1500 * 2 ** attempt); continue; }
     throw new Error(`${method}: ${j.error.message}`);
   }
 }
@@ -233,11 +234,19 @@ async function main() {
   let created = 0; let swaps = 0;
   while (from <= headN && left() > 15000) {
     const to = Math.min(from + MAX_SPAN - 1, headN);
+    // a rate limit while catching up ends this run's log reads, not the run: progress is kept
+    // per chunk and the snapshot is still written, so the route stays fresh while it catches up
+    try {
     const logs = await rpc(LOG_RPC, 'eth_getLogs', [{ address: [A.poolManager, A.v3Factory, A.aeroFactory, A.aeroCL, A.v2Factory], topics: [[T.v4Init, T.v3Created, T.aeroCreated, T.clCreated, T.v2Created]], fromBlock: hex(from), toBlock: hex(to) }]);
     const rows = logs.map(parseCreate).filter(Boolean).map((p) => ({ fee: null, tick_spacing: null, hooks: null, stable: null, init_sqrt_price: null, ...p, created_ts: tsOf(p.created_block), launchpad: p.hooks && labels.hooks[p.hooks] ? labels.hooks[p.hooks] : null }));
     db.transaction(() => { for (const r of rows) created += ins.run(r).changes; })();
 
     swaps += await activity(db, from, to, tsOf, new Map(recent().map((p) => [p.pool_id, p])));
+    } catch (e) {
+      // any upstream failure ends this run's log reads; the snapshot below is still written,
+      // stamped with the last block actually processed, so a stall ages into a 503
+      log(`log reads stopped at block ${from}: ${e.message}`); break;
+    }
     setMeta(db, 'last_block', to);
     from = to + 1;
   }
@@ -359,8 +368,9 @@ async function main() {
   const byPad = {};
 
   for (const l of launches) { const k = l.launchpad || (l.venue === 'uniswap-v4' ? `hook ${l.hook}` : l.venue); byPad[k] = (byPad[k] || 0) + 1; }
+  const processed = Number(getMeta(db, 'last_block') || headN);
   const snap = {
-    as_of: new Date(headTs * 1000).toISOString(), head_block: headN, window_hours: 24, eth_usd: usdPerEth,
+    as_of: new Date(tsOf(processed) * 1000).toISOString(), head_block: processed, chain_head_block: headN, window_hours: 24, eth_usd: usdPerEth,
     indexed_since: new Date(Number(getMeta(db, 'first_block_ts')) * 1000).toISOString(),
     volume_counted_since: new Date(volFrom * 1000).toISOString(),
     last_gap: getMeta(db, 'last_gap') ? JSON.parse(getMeta(db, 'last_gap')) : null,
@@ -379,7 +389,7 @@ async function main() {
   db.prepare("DELETE FROM pools WHERE created_ts < ? AND kind != 'uniswap-v4'").run(headTs - 2 * WINDOW_S);
   db.prepare("DELETE FROM pools WHERE created_ts < ?").run(headTs - KEEP_POOLS_S);
   db.close();
-  log(`ok head=${headN} created=${created} swaps=${swaps} sims=${simmed} launches24h=${launches.length} ${Date.now() - t0}ms rss=${Math.round(process.memoryUsage().rss / 1e6)}MB`);
+  log(`ok head=${headN} processed=${processed} created=${created} swaps=${swaps} sims=${simmed} launches24h=${launches.length} ${Date.now() - t0}ms rss=${Math.round(process.memoryUsage().rss / 1e6)}MB`);
 }
 
 // One-off seed: index pool CREATIONS only, going back N hours from the oldest block held,

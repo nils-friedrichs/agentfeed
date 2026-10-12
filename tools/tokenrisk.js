@@ -5,7 +5,6 @@ const HELIUS_URL = () =>
   `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`;
 
 const BASE58_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-const { launchBlock } = require('./launchodds');
 
 // caller-input failures carry kind:'bad_request' so server.js logs them apart
 // from real service failures; an unmarked throw stays status 'error'
@@ -30,13 +29,11 @@ async function getTokenRisk(mint) {
   }
   if (!BASE58_RE.test(mint)) throw badRequest('invalid mint address');
 
-  const [asset, largestRes, launch] = await Promise.all([
+  const [asset, largestRes] = await Promise.all([
     rpc('getAsset', { id: mint }),
     rpc('getTokenLargestAccounts', [mint])
       .then(v => ({ ok: true, v }))
       .catch(e => ({ ok: false, err: e.message })),
-    // our Solana launch ledger, read-only; null when the mint is not in it
-    launchBlock(mint),
   ]);
 
   const ti = asset?.token_info || {};
@@ -84,7 +81,6 @@ async function getTokenRisk(mint) {
     },
     risk_flags: flags,
     risk_flag_count: flags.length,
-    ...(launch ? { launch: { ...launch, note: 'Pools of this mint our launch ledger discovered (since 2026-07-22), with their t0 snapshot and 1, 7 and 30-day outcome labels. For an established token these are later pools, not its launch.' } } : {}),
   };
 }
 

@@ -19,6 +19,8 @@ async function getFearGreed() {
     classification: d.value_classification,
     timestamp: Number(d.timestamp),
     source: 'alternative.me',
+    // alternative.me allows commercial use of the index when attribution sits next to the data
+    attribution: 'Fear & Greed Index by alternative.me, https://alternative.me/crypto/fear-and-greed-index/',
   };
   cached = { at: Date.now(), data };
   return data;

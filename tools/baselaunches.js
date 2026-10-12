@@ -51,7 +51,7 @@ function getBaseLaunches(p = {}, { now = Date.now() } = {}) {
       shadow_pools: 'Bot pools that pair a new token with a fake mmETH token are left out and counted.',
     },
     method: 'From Base logs and pool reads, refreshed every minute. quote_liquidity_usd is the ETH, WETH or USDC the pool holds (for V4, priced from its own positions at the current price), so it is what sellers can take out at most; pools quoted in other tokens show null. volume_24h is the quote side of every swap since volume_counted_from. launchpad comes from the V4 hook or the creating factory, each address from the launchpad\'s own docs; otherwise the raw hook address is shown. honeypot is our own buy-then-sell simulation of the busiest pools, as in /api/honeypot-check; null means not simulated yet.',
-    sources: ['Base chain logs via base.gateway.tenderly.co', 'pool reads via mainnet.base.org', 'our honeypot simulator'],
+    sources: ['Base chain logs via base.drpc.org', 'pool reads via mainnet.base.org', 'our honeypot simulator'],
   };
 }
 

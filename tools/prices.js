@@ -29,6 +29,9 @@
 // interval would be inventing precision the venue never stated, and a made-up
 // number is worse than an absent one. `source` names who actually served.
 
+// Pyth Hermes was dropped from getPrice on 2026-10-12: it needs a paid data plan since
+// Jul 31 2026 (401 keyless) and its terms forbid re-serving raw prices as a machine-readable
+// feed. The feed ids stay as the list of supported symbols.
 const FEEDS = {
   SOL: 'ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d',
   BTC: 'e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43',
@@ -43,7 +46,6 @@ const FEEDS = {
   ETH: 'ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace',
 };
 
-const HERMES = 'https://hermes.pyth.network/v2/updates/price/latest';
 
 // Kraken lists Bitcoin as XBT, and returns the pair under a normalised key
 // ('XXBTZUSD' for XBTUSD) that does not match what was asked for - so the
@@ -76,22 +78,6 @@ const SOURCES = [
       // c = [last trade price, lot volume]
       const p = num(row && row.c && row.c[0]);
       return p === null ? null : { price: p, confidence: null, publish_time: null };
-    },
-  },
-  {
-    name: 'pyth-hermes',
-    url: (sym) => `${HERMES}?ids[]=${FEEDS[sym]}`,
-    parse: (j) => {
-      const p = j && j.parsed && j.parsed[0] && j.parsed[0].price;
-      if (!p) return null;
-      const scale = Math.pow(10, p.expo);
-      const price = num(Number(p.price) * scale);
-      if (price === null) return null;
-      return {
-        price,
-        confidence: num(Number(p.conf) * scale),
-        publish_time: num(p.publish_time),
-      };
     },
   },
 ];
@@ -158,16 +144,14 @@ module.exports = { getPrice, SOURCES, KRAKEN_PAIR };
 // Measured on the same scorer, carrying SEVERAL venues' quotes costs almost
 // nothing (0.9989-1.0000 when one of them matches) and turns that 0.0000 into
 // ~1.0. So this returns every quote it can get rather than the first finite one.
-const CG_ID = { SOL: 'solana', BTC: 'bitcoin', ETH: 'ethereum' };
-const PAPRIKA_ID = { SOL: 'sol-solana', BTC: 'btc-bitcoin', ETH: 'eth-ethereum' };
 const BINANCE_SYM = { SOL: 'SOLUSDT', BTC: 'BTCUSDT', ETH: 'ETHUSDT' };
 
 // Every source here was verified keyless and answering at the time of writing.
+// CoinGecko, DefiLlama and CoinPaprika (free tier) were dropped on 2026-10-12: their terms
+// forbid commercial use or redistribution of their data (docs/SOURCES.md).
 // MORE IS NOT BETTER PAST A HARD LIMIT - see the cliff note in answer.js. This
 // list is the POOL; how many of its quotes reach the sentence is capped there.
 const QUOTE_SOURCES = [
-  { name: 'coingecko', url: (s) => `https://api.coingecko.com/api/v3/simple/price?ids=${CG_ID[s]}&vs_currencies=usd`,
-    parse: (j, s) => { const v = j && j[CG_ID[s]]; return v ? Number(v.usd) : null; } },
   { name: 'coinbase', url: (s) => `https://api.coinbase.com/v2/prices/${s}-USD/spot`,
     parse: (j) => (j && j.data ? Number(j.data.amount) : null) },
   { name: 'kraken', url: (s) => `https://api.kraken.com/0/public/Ticker?pair=${KRAKEN_PAIR[s]}`,
@@ -178,10 +162,6 @@ const QUOTE_SOURCES = [
     parse: (j) => { const d = j && j.data && j.data[0]; return d ? Number(d.last) : null; } },
   { name: 'gemini', url: (s) => `https://api.gemini.com/v1/pubticker/${s.toLowerCase()}usd`,
     parse: (j) => (j && j.last ? Number(j.last) : null) },
-  { name: 'defillama', url: (s) => `https://coins.llama.fi/prices/current/coingecko:${CG_ID[s]}`,
-    parse: (j, s) => { const c = j && j.coins && j.coins[`coingecko:${CG_ID[s]}`]; return c ? Number(c.price) : null; } },
-  { name: 'paprika', url: (s) => `https://api.coinpaprika.com/v1/tickers/${PAPRIKA_ID[s]}?quotes=USD`,
-    parse: (j) => { const q = j && j.quotes && j.quotes.USD; return q ? Number(q.price) : null; } },
 ];
 
 async function getPriceQuotes(symbol) {
