@@ -111,7 +111,7 @@ const BAD_PATH_VALUE = 'not-a-valid-address';
 const BAD_OPTIONAL_VALUE = { symbol: 'not-a-symbol' };
 // Per tool, for routes whose only inputs are optional and validated (R3): probed with
 // that one input malformed, so the documented 400 is the caller error it really is.
-const BAD_OPTIONAL_BY_TOOL = { get_base_launches: { limit: '0' }, get_hl_whales: { top: '0' } };
+const BAD_OPTIONAL_BY_TOOL = { get_base_launches: { limit: '0' }, get_hl_whales: { top: '0' }, get_sec_8k: { hours: '0' }, get_fx_rates: { base: 'XX' }, get_tradfi_perps: { symbol: 'not a symbol!' } };
 
 function requiredOf(pattern) {
   const m = META[pattern] || {};

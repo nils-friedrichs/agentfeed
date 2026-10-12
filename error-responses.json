@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-12T07:03:51.112Z",
+  "generatedAt": "2026-10-12T19:19:27.921Z",
   "limits": {
     "get": 240,
     "other": 2400,
@@ -532,6 +532,91 @@
         "body": {
           "tool": "get_hl_whales",
           "error": "top must be an integer from 1 to 50"
+        }
+      }
+    },
+    "GET /api/web-markdown": {
+      "requiredInputs": [
+        "url"
+      ],
+      "callerError": {
+        "status": 400,
+        "violated": "required query param url omitted",
+        "body": {
+          "tool": "get_web_markdown",
+          "error": "missing required parameter: url (an absolute http or https URL)"
+        }
+      }
+    },
+    "GET /api/pdf-markdown": {
+      "requiredInputs": [
+        "url"
+      ],
+      "callerError": {
+        "status": 400,
+        "violated": "required query param url omitted",
+        "body": {
+          "tool": "get_pdf_markdown",
+          "error": "missing required parameter: url (an absolute http or https URL)"
+        }
+      }
+    },
+    "GET /api/sec-filings": {
+      "requiredInputs": [
+        "ticker"
+      ],
+      "callerError": {
+        "status": 400,
+        "violated": "required query param ticker omitted",
+        "body": {
+          "tool": "get_sec_filings",
+          "error": "ticker must be a US-listed symbol such as AAPL, MSFT or BRK-B"
+        }
+      }
+    },
+    "GET /api/insider-trades": {
+      "requiredInputs": [
+        "ticker"
+      ],
+      "callerError": {
+        "status": 400,
+        "violated": "required query param ticker omitted",
+        "body": {
+          "tool": "get_insider_trades",
+          "error": "ticker must be a US-listed symbol such as AAPL, MSFT or BRK-B"
+        }
+      }
+    },
+    "GET /api/sec-8k": {
+      "requiredInputs": [],
+      "callerError": {
+        "status": 400,
+        "violated": "optional query param hours = 0",
+        "body": {
+          "tool": "get_sec_8k",
+          "error": "hours must be an integer from 1 to 72"
+        }
+      }
+    },
+    "GET /api/tradfi-perps": {
+      "requiredInputs": [],
+      "callerError": {
+        "status": 400,
+        "violated": "optional query param symbol = not a symbol!",
+        "body": {
+          "tool": "get_tradfi_perps",
+          "error": "symbol must be a HIP-3 ticker such as TSLA, GOLD or EUR, or a dex-qualified market such as xyz:TSLA"
+        }
+      }
+    },
+    "GET /api/fx-rates": {
+      "requiredInputs": [],
+      "callerError": {
+        "status": 400,
+        "violated": "optional query param base = XX",
+        "body": {
+          "tool": "get_fx_rates",
+          "error": "base must be a 3-letter currency code such as EUR, USD or JPY"
         }
       }
     },

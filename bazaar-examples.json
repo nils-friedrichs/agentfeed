@@ -5801,8 +5801,745 @@
      }
     }
    }
+  },
+  "GET /api/web-markdown": {
+   "tool": "get_web_markdown",
+   "price_usd": 0.005,
+   "input": {
+    "url": "https://en.wikipedia.org/wiki/Stablecoin"
+   },
+   "inputSchema": {
+    "properties": {
+     "url": {
+      "type": "string",
+      "description": "the page to convert: an absolute http or https URL"
+     }
+    },
+    "required": [
+     "url"
+    ]
+   },
+   "output": {
+    "example": {
+     "tool": "get_web_markdown",
+     "data": {
+      "title": "Stablecoin",
+      "url": "https://en.wikipedia.org/wiki/Stablecoin",
+      "final_url": "https://en.wikipedia.org/wiki/Stablecoin",
+      "fetched_at": "2026-10-12T19:22:41.178Z",
+      "byline": "Contributors to Wikimedia projects",
+      "site_name": "Wikimedia Foundation, Inc.",
+      "lang": "en",
+      "word_count": 8632,
+      "truncated": false,
+      "extraction": "readability",
+      "markdown": "[![An over-the-counter stablecoin exchange](//thumb.wikimedia.org/wikipedia/commons/thumb/c/cf/Over-the-counter-crypto-exchange.jpeg/250px-Over-the-counter-crypto-exchange.jpeg?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail)](https://en.…",
+      "rights": "fetched once from the URL you supplied, on your request, and not stored; the content belongs to its publisher and you are responsible for your use of it"
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "title": {
+         "type": "string"
+        },
+        "url": {
+         "type": "string"
+        },
+        "final_url": {
+         "type": "string"
+        },
+        "fetched_at": {
+         "type": "string"
+        },
+        "byline": {
+         "type": "string"
+        },
+        "site_name": {
+         "type": "string"
+        },
+        "lang": {
+         "type": "string"
+        },
+        "word_count": {
+         "type": "number"
+        },
+        "truncated": {
+         "type": "boolean"
+        },
+        "extraction": {
+         "type": "string"
+        },
+        "markdown": {
+         "type": "string"
+        },
+        "rights": {
+         "type": "string"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
+   }
+  },
+  "GET /api/pdf-markdown": {
+   "tool": "get_pdf_markdown",
+   "price_usd": 0.01,
+   "input": {
+    "url": "https://bitcoin.org/bitcoin.pdf"
+   },
+   "inputSchema": {
+    "properties": {
+     "url": {
+      "type": "string",
+      "description": "the PDF to convert: an absolute http or https URL"
+     }
+    },
+    "required": [
+     "url"
+    ]
+   },
+   "output": {
+    "example": {
+     "tool": "get_pdf_markdown",
+     "data": {
+      "title": null,
+      "url": "https://bitcoin.org/bitcoin.pdf",
+      "final_url": "https://bitcoin.org/bitcoin.pdf",
+      "fetched_at": "2026-10-12T19:22:41.896Z",
+      "pages": 9,
+      "bytes": 184292,
+      "word_count": 3586,
+      "truncated": false,
+      "markdown": "## Page 1\n\nBitcoin: A Peer-to-Peer Electronic Cash System\nSatoshi Nakamoto\nsatoshin@gmx.com\nwww.bitcoin.org\nAbstract. A purely peer-to-peer version of electronic cash would allow online\npayments to be sent directly from one party to another without going throu…",
+      "rights": "fetched once from the URL you supplied, on your request, and not stored; the content belongs to its publisher and you are responsible for your use of it"
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "title": {},
+        "url": {
+         "type": "string"
+        },
+        "final_url": {
+         "type": "string"
+        },
+        "fetched_at": {
+         "type": "string"
+        },
+        "pages": {
+         "type": "number"
+        },
+        "bytes": {
+         "type": "number"
+        },
+        "word_count": {
+         "type": "number"
+        },
+        "truncated": {
+         "type": "boolean"
+        },
+        "markdown": {
+         "type": "string"
+        },
+        "rights": {
+         "type": "string"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
+   }
+  },
+  "GET /api/sec-filings": {
+   "tool": "get_sec_filings",
+   "price_usd": 0.005,
+   "input": {
+    "ticker": "AAPL"
+   },
+   "inputSchema": {
+    "properties": {
+     "ticker": {
+      "type": "string",
+      "description": "a US-listed ticker, e.g. AAPL, MSFT, BRK-B"
+     },
+     "form": {
+      "description": "one EDGAR form type, e.g. 10-K, 10-Q, 8-K, 4",
+      "type": "string"
+     },
+     "limit": {
+      "description": "filings returned, 1-50, default 10",
+      "type": "number"
+     }
+    },
+    "required": [
+     "ticker"
+    ]
+   },
+   "output": {
+    "example": {
+     "tool": "get_sec_filings",
+     "data": {
+      "ticker": "AAPL",
+      "cik": "0000320193",
+      "company": "Apple Inc.",
+      "sic": "3571",
+      "industry": "Electronic Computers",
+      "form": "any",
+      "count": 10,
+      "filings": [
+       {
+        "form": "4",
+        "filed": "2026-10-08",
+        "report_date": "2026-10-06",
+        "accession": "0001140361-26-039158",
+        "description": "FORM 4",
+        "items": null,
+        "document_url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126039158/xslF345X06/form4.xml",
+        "index_url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126039158/0001140361-26-039158-index.htm"
+       },
+       {
+        "form": "4",
+        "filed": "2026-10-05",
+        "report_date": "2026-10-01",
+        "accession": "0001140361-26-038674",
+        "description": "FORM 4",
+        "items": null,
+        "document_url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126038674/xslF345X06/form4.xml",
+        "index_url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126038674/0001140361-26-038674-index.htm"
+       }
+      ],
+      "source": "Source: SEC EDGAR (sec.gov), public filings."
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "ticker": {
+         "type": "string"
+        },
+        "cik": {
+         "type": "string"
+        },
+        "company": {
+         "type": "string"
+        },
+        "sic": {
+         "type": "string"
+        },
+        "industry": {
+         "type": "string"
+        },
+        "form": {
+         "type": "string"
+        },
+        "count": {
+         "type": "number"
+        },
+        "filings": {
+         "type": "array"
+        },
+        "source": {
+         "type": "string"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
+   }
+  },
+  "GET /api/insider-trades": {
+   "tool": "get_insider_trades",
+   "price_usd": 0.01,
+   "input": {
+    "ticker": "NVDA"
+   },
+   "inputSchema": {
+    "properties": {
+     "ticker": {
+      "type": "string",
+      "description": "a US-listed ticker, e.g. NVDA, TSLA"
+     },
+     "days": {
+      "description": "look-back window in days, 1-180, default 30",
+      "type": "number"
+     }
+    },
+    "required": [
+     "ticker"
+    ]
+   },
+   "output": {
+    "example": {
+     "tool": "get_insider_trades",
+     "data": {
+      "ticker": "NVDA",
+      "cik": "0001045810",
+      "company": "NVIDIA CORP",
+      "window_days": 30,
+      "since": "2026-09-12",
+      "form4_filings": 8,
+      "filings_capped": false,
+      "transactions": 15,
+      "open_market_buys_usd": 0,
+      "open_market_sales_usd": 314582260.45,
+      "trades": [
+       {
+        "insider": "COXE TENCH",
+        "role": "director",
+        "date": "2026-10-07",
+        "code": "G",
+        "code_meaning": "gift",
+        "acquired_or_disposed": "disposed",
+        "shares": 500000,
+        "price": 0,
+        "value_usd": 0,
+        "shares_after": 23671360,
+        "security": "Common",
+        "filed": "2026-10-09",
+        "accession": "0001197647-26-000011",
+        "filing_url": "https://www.sec.gov/Archives/edgar/data/1045810/000119764726000011/0001197647-26-000011-index.htm"
+       },
+       {
+        "insider": "Teter Timothy S.",
+        "role": "EVP, General Counsel and Sec",
+        "date": "2026-09-21",
+        "code": "S",
+        "code_meaning": "open-market sale",
+        "acquired_or_disposed": "disposed",
+        "shares": 12483,
+        "price": 222.1932,
+        "value_usd": 2773637.72,
+        "shares_after": 2705637,
+        "security": "Common Stock",
+        "filed": "2026-09-23",
+        "accession": "0001696841-26-000014",
+        "filing_url": "https://www.sec.gov/Archives/edgar/data/1045810/000169684126000014/0001696841-26-000014-index.htm"
+       }
+      ],
+      "source": "Source: SEC EDGAR (sec.gov), public filings."
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "ticker": {
+         "type": "string"
+        },
+        "cik": {
+         "type": "string"
+        },
+        "company": {
+         "type": "string"
+        },
+        "window_days": {
+         "type": "number"
+        },
+        "since": {
+         "type": "string"
+        },
+        "form4_filings": {
+         "type": "number"
+        },
+        "filings_capped": {
+         "type": "boolean"
+        },
+        "transactions": {
+         "type": "number"
+        },
+        "open_market_buys_usd": {
+         "type": "number"
+        },
+        "open_market_sales_usd": {
+         "type": "number"
+        },
+        "trades": {
+         "type": "array"
+        },
+        "source": {
+         "type": "string"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
+   }
+  },
+  "GET /api/tradfi-perps": {
+   "tool": "get_tradfi_perps",
+   "price_usd": 0.005,
+   "input": {
+    "symbol": "TSLA"
+   },
+   "inputSchema": {
+    "properties": {
+     "symbol": {
+      "description": "a HIP-3 ticker such as TSLA, GOLD, EUR, or a dex-qualified market such as xyz:TSLA",
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "output": {
+    "example": {
+     "tool": "get_tradfi_perps",
+     "data": {
+      "as_of": "2026-10-12T19:18:28.273Z",
+      "source": "Hyperliquid info API (perpDexs, metaAndAssetCtxs), HIP-3 dexes",
+      "prices_are": "each market's own HIP-3 oracle and mark price, not an exchange quote",
+      "dexes": [
+       {
+        "dex": "xyz",
+        "name": "XYZ",
+        "deployer": "0x88806a71d74ad0a510b350545c9ae490912f0888"
+       },
+       {
+        "dex": "flx",
+        "name": "Felix Exchange",
+        "deployer": "0x2fab552502a6d45920d5741a2f3ebf4c35536352"
+       },
+       {
+        "dex": "vntl",
+        "name": "Ventuals",
+        "deployer": "0x8888888192a4a0593c13532ba48449fc24c3beda"
+       }
+      ],
+      "symbol": "TSLA",
+      "count": 1,
+      "markets": [
+       {
+        "market": "xyz:TSLA",
+        "dex": "xyz",
+        "dex_name": "XYZ",
+        "ticker": "TSLA",
+        "asset_class": "stock",
+        "underlying": "Tesla",
+        "mark_px": 378.52,
+        "oracle_px": 378.38,
+        "premium_pct": 0.0239,
+        "funding_1h": 0.00000625,
+        "funding_8h_pct": 0.005,
+        "open_interest_usd": 41162681,
+        "change_24h_pct": -1.255,
+        "volume_24h_usd": 13153056,
+        "max_leverage": 20
+       }
+      ]
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "as_of": {
+         "type": "string"
+        },
+        "source": {
+         "type": "string"
+        },
+        "prices_are": {
+         "type": "string"
+        },
+        "dexes": {
+         "type": "array"
+        },
+        "symbol": {
+         "type": "string"
+        },
+        "count": {
+         "type": "number"
+        },
+        "markets": {
+         "type": "array"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
+   }
+  },
+  "GET /api/fx-rates": {
+   "tool": "get_fx_rates",
+   "price_usd": 0.002,
+   "input": {},
+   "inputSchema": {
+    "properties": {
+     "base": {
+      "description": "base currency, 3 letters, default EUR; other bases are crosses computed from the ECB rates",
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "output": {
+    "example": {
+     "tool": "get_fx_rates",
+     "data": {
+      "base": "EUR",
+      "ecb_reference_date": "2026-10-12",
+      "rates": {
+       "AUD": 1.6032,
+       "BRL": 5.5819,
+       "CAD": 1.5946,
+       "CHF": 0.9312,
+       "CNY": 7.4832,
+       "CZK": 24.391,
+       "DKK": 7.4748,
+       "GBP": 0.84478,
+       "HKD": 8.7743,
+       "HUF": 365.13,
+       "IDR": 20036.18,
+       "ILS": 3.432,
+       "INR": 107.086,
+       "ISK": 136.4,
+       "JPY": 177.33,
+       "KRW": 1490.53,
+       "MXN": 20.5081,
+       "MYR": 4.5663,
+       "NOK": 10.6955,
+       "NZD": 1.9968,
+       "PHP": 70.169,
+       "PLN": 4.385,
+       "RON": 5.337,
+       "SEK": 11.1965,
+       "SGD": 1.4314,
+       "THB": 37.585,
+       "TRY": 55.1635,
+       "USD": 1.1181,
+       "ZAR": 18.4945
+      },
+      "rates_are": "ECB euro reference rates as published",
+      "hip3_fx_and_commodity_marks": [
+       {
+        "market": "xyz:GOLD",
+        "ticker": "GOLD",
+        "asset_class": "commodity",
+        "mark_px": 4165.9,
+        "oracle_px": 4163.8,
+        "change_24h_pct": -0.845
+       },
+       {
+        "market": "xyz:BRENTOIL",
+        "ticker": "BRENTOIL",
+        "asset_class": "commodity",
+        "mark_px": 103.72,
+        "oracle_px": 104.47,
+        "change_24h_pct": 1.22
+       }
+      ],
+      "notice": "Euro foreign exchange reference rates: source European Central Bank (ECB). This data is available free of charge on the ECB's website (data.…",
+      "source": "European Central Bank (data-api.ecb.europa.eu, EXR); Hyperliquid HIP-3 (api.hyperliquid.xyz)"
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "base": {
+         "type": "string"
+        },
+        "ecb_reference_date": {
+         "type": "string"
+        },
+        "rates": {
+         "type": "object"
+        },
+        "rates_are": {
+         "type": "string"
+        },
+        "hip3_fx_and_commodity_marks": {
+         "type": "array"
+        },
+        "notice": {
+         "type": "string"
+        },
+        "source": {
+         "type": "string"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
+   }
+  },
+  "GET /api/sec-8k": {
+   "tool": "get_sec_8k",
+   "price_usd": 0.01,
+   "input": {
+    "hours": 72
+   },
+   "inputSchema": {
+    "properties": {
+     "hours": {
+      "description": "look-back window in hours, 1-72, default 24",
+      "type": "number"
+     }
+    },
+    "required": []
+   },
+   "output": {
+    "example": {
+     "tool": "get_sec_8k",
+     "data": {
+      "window_hours": 72,
+      "count": 107,
+      "window_complete": true,
+      "item_counts": {
+       "5.02": 30,
+       "7.01": 19,
+       "9.01": 79,
+       "2.02": 3,
+       "5.07": 7,
+       "8.01": 27,
+       "1.01": 28,
+       "5.03": 11,
+       "3.02": 11,
+       "3.01": 5,
+       "3.03": 3,
+       "2.03": 12,
+       "4.01": 3,
+       "2.01": 4,
+       "5.01": 2,
+       "5.08": 2,
+       "5.05": 1,
+       "5.06": 1
+      },
+      "filings": [
+       {
+        "form": "8-K",
+        "company": "AUTOZONE INC",
+        "cik": "0000866787",
+        "role": "Filer",
+        "filed_at": "2026-10-09T21:30:15.000Z",
+        "accession": "0001171843-26-006565",
+        "items": [
+         {
+          "item": "5.02",
+          "title": "Departure of Directors or Certain Officers; Election of Directors; Appointment of Certain Officers: Compensatory Arrangements of Certain Off…"
+         }
+        ],
+        "url": "https://www.sec.gov/Archives/edgar/data/866787/000117184326006565/0001171843-26-006565-index.htm"
+       },
+       {
+        "form": "8-K/A",
+        "company": "Gentherm Inc",
+        "cik": "0000903129",
+        "role": "Filer",
+        "filed_at": "2026-10-09T21:29:14.000Z",
+        "accession": "0001193125-26-419232",
+        "items": [
+         {
+          "item": "7.01",
+          "title": "Regulation FD Disclosure"
+         },
+         {
+          "item": "9.01",
+          "title": "Financial Statements and Exhibits"
+         }
+        ],
+        "url": "https://www.sec.gov/Archives/edgar/data/903129/000119312526419232/0001193125-26-419232-index.htm"
+       }
+      ],
+      "source": "Source: SEC EDGAR (sec.gov), public filings."
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "window_hours": {
+         "type": "number"
+        },
+        "count": {
+         "type": "number"
+        },
+        "window_complete": {
+         "type": "boolean"
+        },
+        "item_counts": {
+         "type": "object"
+        },
+        "filings": {
+         "type": "array"
+        },
+        "source": {
+         "type": "string"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
+   }
   }
  },
  "_schemas_regenerated_at": "2026-10-12T06:42:41.458Z",
- "_outputs_recaptured_at": "2026-10-12T08:17:49.802Z"
+ "_outputs_recaptured_at": "2026-10-12T19:27:28.176Z"
 }

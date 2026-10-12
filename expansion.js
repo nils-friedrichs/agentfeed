@@ -24,6 +24,10 @@ const MAC = require('./tools/macro');
 const TF = require('./tools/tradfi');
 const HP = require('./tools/honeypot');
 const HW = require('./tools/hlwhales');
+const WM = require('./tools/webmd');
+const SEC = require('./tools/sec');
+const H3 = require('./tools/hip3');
+const FX = require('./tools/fxrates');
 const BL = require('./tools/baselaunches');
 
 const sym = (d) => z.string().optional().describe(`USDT perp symbol e.g. SOLUSDT, BTCUSDT (default ${d})`);
@@ -278,6 +282,46 @@ const EXP = [
     schema: { coin: z.string().optional().describe('one Hyperliquid perp, e.g. BTC, ETH, SOL, HYPE: adds liquidation bands and the top positions'),
               top: z.number().optional().describe('coins (or positions with coin=) returned, 1-50, default 20') },
     run: (a) => HW.getHlWhales(a) },
+
+  // ---- R5 (2026-10-12): web and PDF to markdown, SEC EDGAR, HIP-3 tradfi perps, FX ----
+  { name: 'get_web_markdown', route: 'GET /api/web-markdown', usd: 0.005,
+    tags: ['web', 'markdown', 'scrape', 'readability', 'research', 'rag'],
+    desc: 'Use when an agent needs the readable text of a web page as markdown. Returns the main content of the one URL you pass as clean markdown (Mozilla Readability, then turndown), with title, final URL, fetch time and word count. http or https on ports 80 and 443, 5 MB, 10 s; robots.txt honoured and private addresses refused. A blocked or unreachable URL is never charged.',
+    schema: { url: z.string().describe('the page to convert: an absolute http or https URL') },
+    run: (a) => WM.getWebMarkdown(a) },
+  { name: 'get_pdf_markdown', route: 'GET /api/pdf-markdown', usd: 0.01,
+    tags: ['pdf', 'markdown', 'documents', 'research', 'rag'],
+    desc: 'Use when an agent needs the text of a PDF as markdown. Returns the text of the one PDF URL you pass, page by page as markdown, with title, page count and word count. http or https, 10 MB, 10 s; robots.txt honoured and private addresses refused. A file that is not a PDF, or an unreachable URL, is never charged.',
+    schema: { url: z.string().describe('the PDF to convert: an absolute http or https URL') },
+    run: (a) => WM.getPdfMarkdown(a) },
+  { name: 'get_sec_filings', route: 'GET /api/sec-filings', usd: 0.005,
+    tags: ['sec', 'edgar', 'filings', 'stocks', '10-k', '10-q', '8-k'],
+    desc: 'Use when an agent needs a US company\'s latest SEC filings. Returns the most recent EDGAR filings for a ticker, optionally one form type (10-K, 10-Q, 8-K, 4, S-1, 13F-HR), with filing date, report date, accession number, description, 8-K item codes and links to the document and the filing index. Source: SEC EDGAR public filings.',
+    schema: { ticker: z.string().describe('a US-listed ticker, e.g. AAPL, MSFT, BRK-B'),
+              form: z.string().optional().describe('one EDGAR form type, e.g. 10-K, 10-Q, 8-K, 4'),
+              limit: z.number().optional().describe('filings returned, 1-50, default 10') },
+    run: (a) => SEC.getSecFilings(a) },
+  { name: 'get_insider_trades', route: 'GET /api/insider-trades', usd: 0.01,
+    tags: ['sec', 'insider-trading', 'form-4', 'stocks', 'edgar'],
+    desc: 'Use when an agent needs what a company\'s insiders bought and sold. Returns one row per transaction from the company\'s recent SEC Form 4 filings: insider, role, transaction code and meaning, shares, price, value, shares owned after and date, plus open-market buy and sale totals for the window. Source: SEC EDGAR Form 4 filings.',
+    schema: { ticker: z.string().describe('a US-listed ticker, e.g. NVDA, TSLA'),
+              days: z.number().optional().describe('look-back window in days, 1-180, default 30') },
+    run: (a) => SEC.getInsiderTrades(a) },
+  { name: 'get_sec_8k', route: 'GET /api/sec-8k', usd: 0.01,
+    tags: ['sec', '8-k', 'material-events', 'stocks', 'edgar', 'news'],
+    desc: 'Use when an agent needs the material events US companies disclosed in the last hours. Returns the 8-K filings filed across the market in the window, with company, CIK, filing time, accession number, the 8-K item codes and titles (e.g. 2.02 results, 5.02 officer changes, 1.01 agreements) and a count per item. Source: SEC EDGAR current filings.',
+    schema: { hours: z.number().optional().describe('look-back window in hours, 1-72, default 24') },
+    run: (a) => SEC.getSec8k(a) },
+  { name: 'get_tradfi_perps', route: 'GET /api/tradfi-perps', usd: 0.005,
+    tags: ['stocks', 'indices', 'commodities', 'fx', 'hyperliquid', 'hip-3', '24-7'],
+    desc: 'Use when an agent needs a 24/7 price for a stock, index, commodity or currency outside market hours. Returns Hyperliquid HIP-3 perp markets: oracle and mark price, premium, hourly and 8h funding, open interest, 24h change and the dex. With symbol (TSLA, GOLD, EUR or xyz:TSLA): every live market for it. Without: the whole list. Prices are each market\'s own HIP-3 oracle and mark.',
+    schema: { symbol: z.string().optional().describe('a HIP-3 ticker such as TSLA, GOLD, EUR, or a dex-qualified market such as xyz:TSLA') },
+    run: (a) => H3.getTradfiPerps(a) },
+  { name: 'get_fx_rates', route: 'GET /api/fx-rates', usd: 0.002,
+    tags: ['fx', 'currencies', 'ecb', 'exchange-rates', 'macro'],
+    desc: 'Use when an agent needs official daily exchange rates. Returns the ECB euro foreign exchange reference rates for about 30 currencies, as published or as crosses for another base, plus Hyperliquid HIP-3 FX and commodity marks. The ECB rates are available free of charge on the ECB\'s website; they are for information only, not for transactions.',
+    schema: { base: z.string().optional().describe('base currency, 3 letters, default EUR; other bases are crosses computed from the ECB rates') },
+    run: (a) => FX.getFxRates(a) },
 
   // ---- ENTRY TIER: four routes, composed from functions above ----
   // $0.001 until 2026-10-08, now $0.005: the CDP facilitator charges $0.001 per

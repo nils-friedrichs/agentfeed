@@ -85,7 +85,7 @@ Every paid route, cheapest question last. Generated from
 [`/.well-known/x402.json`](https://x402.ochinimus.app/.well-known/x402.json),
 read 2026-10-12 — names, prices and routes are the manifest's, not a copy kept
 in sync by hand. What each one returns is under
-[66 tools](#66-tools-59-paid-http-routes--7-free--pricing), word for word as
+[73 tools](#73-tools-66-paid-http-routes--7-free--pricing), word for word as
 the service publishes it.
 
 | Tool | Price | Route |
@@ -120,11 +120,14 @@ the service publishes it.
 | `get_equity_24h` | $0.01 | `/api/equity-24h` |
 | `get_funding_cross` | $0.01 | `/api/funding-cross` |
 | `get_honeypot_check` | $0.01 | `/api/honeypot-check` |
+| `get_insider_trades` | $0.01 | `/api/insider-trades` |
 | `get_liquidation_stats` | $0.01 | `/api/liquidation-stats` |
 | `get_long_short` | $0.01 | `/api/long-short` |
 | `get_open_interest` | $0.01 | `/api/open-interest` |
 | `get_orderbook_imbalance` | $0.01 | `/api/orderbook-imbalance` |
 | `get_orderbook_walls` | $0.01 | `/api/orderbook-walls` |
+| `get_pdf_markdown` | $0.01 | `/api/pdf-markdown` |
+| `get_sec_8k` | $0.01 | `/api/sec-8k` |
 | `get_token_risk` | $0.01 | `/api/token-risk/:mint` |
 | `get_top_movers` | $0.01 | `/api/top-movers` |
 | `get_trade_context` | $0.01 | `/api/trade-context` |
@@ -143,8 +146,12 @@ the service publishes it.
 | `get_positioning` | $0.005 | `/api/positioning` |
 | `get_priority_fees` | $0.005 | `/api/priority-fees` |
 | `get_recent_liquidations` | $0.005 | `/api/liquidations` |
+| `get_sec_filings` | $0.005 | `/api/sec-filings` |
 | `get_sol_network` | $0.005 | `/api/sol-network` |
 | `get_token_metadata` | $0.005 | `/api/token-metadata/:mint` |
+| `get_tradfi_perps` | $0.005 | `/api/tradfi-perps` |
+| `get_web_markdown` | $0.005 | `/api/web-markdown` |
+| `get_fx_rates` | $0.002 | `/api/fx-rates` |
 | `get_btc_price` | $0.001 | `/api/btc-price` |
 | `get_eth_price` | $0.001 | `/api/eth-price` |
 | `get_sol_price` | $0.001 | `/api/sol-price` |
@@ -225,11 +232,11 @@ The pay-kit fix ships here as `mpp/patches/@solana+mpp+0.7.0.patch`, applied by
 dependency, not a dev one, because a `--omit=dev` install would otherwise complete silently
 *unpatched*.
 
-## 66 tools (59 paid HTTP routes + 7 free) & pricing
+## 73 tools (66 paid HTTP routes + 7 free) & pricing
 
-**59 paid + 7 free**, 66 total on the MCP rail. Every call is metered individually in USDC over
-x402 — no bundles, no minimums. Calling all 59 paid tools once costs **$0.927** — the entire
-market read for 95 cents. Counts and prices are summed from
+**66 paid + 7 free**, 73 total on the MCP rail. Every call is metered individually in USDC over
+x402 — no bundles, no minimums. Calling all 66 paid tools once costs **$0.974** — the entire
+market read for 97 cents. Counts and prices are summed from
 [the live manifest](https://x402.ochinimus.app/.well-known/x402.json), read 2026-10-12.
 
 The flagship is [`get_squeeze_score`](#the-moat--our-own-liquidation-tape) — a 0-100 short-squeeze / long-flush composite built from funding, crowding, OI build and the liq-skew of our exclusive tape. One number, one dime, answers "is this trade crowded and about to hurt someone."
@@ -339,11 +346,22 @@ Sampled every 5 minutes since 19 July 2026. Deviation is measured against the un
 | `get_honeypot_check` | $0.01 | `/api/honeypot-check` | Can this token be sold on Base, BNB Chain or Ethereum? Our own buy-then-sell simulation (an eth_call with a state override, nothing broadcast) on its deepest pool (Base: Uniswap V2/V3/V4 and Aerodrome; BNB Chain: PancakeSwap V2/V3; Ethereum: Uniswap V2/V3): verdict, measured buy and sell tax, wallet-transfer test, bytecode flags (mintable, blacklist, proxy, pausable, owner) and where the two disagree, each with its block. Simulator source: `contracts/HoneypotSim.sol`. |
 | `get_base_launches` | $0.02 | `/api/base-launches` | New Base pools from the last 24 hours (Uniswap V4, V3, V2, Aerodrome), newest first: pair, creation time, launchpad named from the V4 hook (Zora, Clanker, Doppler, Flaunch, from their own published addresses), quote-side liquidity, 24h volume and swaps, and the honeypot simulation for the busiest. Read from Base logs every minute; stale data answers 503. |
 
+### Filings, documents & web
+
+| Tool | Price | Route | What you get |
+|---|---|---|---|
+| `get_sec_filings` | $0.005 | `/api/sec-filings` | Use when an agent needs a US company's latest SEC filings. Returns the most recent EDGAR filings for a ticker, optionally one form type (10-K, 10-Q, 8-K, 4, S-1, 13F-HR), with filing date, report date, accession number, description, 8-K item codes and links to the document and the filing index. Source: SEC EDGAR public filings. |
+| `get_insider_trades` | $0.01 | `/api/insider-trades` | Use when an agent needs what a company's insiders bought and sold. Returns one row per transaction from the company's recent SEC Form 4 filings: insider, role, transaction code and meaning, shares, price, value, shares owned after and date, plus open-market buy and sale totals for the window. Source: SEC EDGAR Form 4 filings. |
+| `get_sec_8k` | $0.01 | `/api/sec-8k` | Use when an agent needs the material events US companies disclosed in the last hours. Returns the 8-K filings filed across the market in the window, with company, CIK, filing time, accession number, the 8-K item codes and titles (e.g. 2.02 results, 5.02 officer changes, 1.01 agreements) and a count per item. Source: SEC EDGAR current filings. |
+| `get_web_markdown` | $0.005 | `/api/web-markdown` | Use when an agent needs the readable text of a web page as markdown. Returns the main content of the one URL you pass as clean markdown (Mozilla Readability, then turndown), with title, final URL, fetch time and word count. http or https on ports 80 and 443, 5 MB, 10 s; robots.txt honoured and private addresses refused. A blocked or unreachable URL is never charged. |
+| `get_pdf_markdown` | $0.01 | `/api/pdf-markdown` | Use when an agent needs the text of a PDF as markdown. Returns the text of the one PDF URL you pass, page by page as markdown, with title, page count and word count. http or https, 10 MB, 10 s; robots.txt honoured and private addresses refused. A file that is not a PDF, or an unreachable URL, is never charged. |
+
 ### Macro
 
 | Tool | Price | Route | What you get |
 |---|---|---|---|
 | `get_macro_calendar` | $0.005 | `/api/macro-calendar` | FOMC, CPI, NFP and PCE calendar for traders: the next Fed rate decisions and the CPI, nonfarm payrolls and PCE release dates with UTC times converted from New York time (DST-aware), each with its official Fed, BLS or BEA source URL and the time we verified it. Read daily from the agencies' own pages and never entered by hand; data verified more than 35 days ago answers 503 and is never charged. |
+| `get_fx_rates` | $0.002 | `/api/fx-rates` | Use when an agent needs official daily exchange rates. Returns the ECB euro foreign exchange reference rates for about 30 currencies, as published or as crosses for another base, plus Hyperliquid HIP-3 FX and commodity marks. The ECB rates are available free of charge on the ECB's website; they are for information only, not for transactions. |
 
 ### TradFi perps & stocks
 
@@ -351,6 +369,7 @@ Sampled every 5 minutes since 19 July 2026. Deviation is measured against the un
 |---|---|---|---|
 | `get_tradfi_radar` | $0.02 | `/api/tradfi-radar` | Stock perps, S&P 500, Nasdaq, gold and oil perps ranked by funding rate: every stock, index, commodity and FX perp on Hyperliquid HIP-3 dexes (trade[XYZ], Paragon, Markets by Kinetiq, Entropy), Bybit, Binance and OKX, with funding at its 8h equivalent, a 30-day funding z-score on HIP-3, open interest and its 24h change, mark minus oracle basis and 24h volume. Filter by asset class or venue. Precomputed every 5 minutes; stale data answers 503. |
 | `get_equity_24h` | $0.01 | `/api/equity-24h` | Weekend price for US stocks: an indicative 24/7 price for a stock or index (TSLA, NVDA, S&P 500, Nasdaq) from stock perps on Hyperliquid, Bybit, Binance and OKX and our tokenized stocks DEX price, with the last regular-session price, its time and source, the implied gap in %, each source's liquidity and the session (open, pre, after, overnight, weekend). Indicative, never an exchange quote; 503 when no source has liquidity. |
+| `get_tradfi_perps` | $0.005 | `/api/tradfi-perps` | Use when an agent needs a 24/7 price for a stock, index, commodity or currency outside market hours. Returns Hyperliquid HIP-3 perp markets: oracle and mark price, premium, hourly and 8h funding, open interest, 24h change and the dex. With symbol (TSLA, GOLD, EUR or xyz:TSLA): every live market for it. Without: the whole list. Prices are each market's own HIP-3 oracle and mark. |
 
 ### Free tasters
 
@@ -372,7 +391,7 @@ Two more free HTTP endpoints carry no tool of their own:
 | Endpoint | What you get |
 |---|---|
 | `GET /api/sample` | Lists every paid route that has a stored sample response |
-| `GET /api/sample/<route>` | The real captured response for one of the 59 paid routes — the same example its Bazaar listing carries — with its price, input schema and paid URL. See what a route returns before paying for it. |
+| `GET /api/sample/<route>` | The real captured response for one of the 66 paid routes — the same example its Bazaar listing carries — with its price, input schema and paid URL. See what a route returns before paying for it. |
 
 A free route answers `"paid": false`, and a paid one `"paid": true`, because that field is
 per-request: it reports whether the route you called is priced. `curl`ing either of the two

@@ -80,6 +80,7 @@ const SYMBOL_FOR = {
   get_cascade_forecast: 'SOL',   // this tool takes the bare asset, not the perp
   get_spot: 'SOL',               // the spot route serves bare assets (SOL/BTC/ETH), not perps
   get_funding_rate: 'ETHUSDT',   // shows the symbol mode on a perp that is not the no-symbol pair
+  get_tradfi_perps: 'TSLA',      // a HIP-3 ticker (R5), not a perp symbol
   get_equity_24h: 'TSLA',        // a US stock ticker; the route takes no perp symbols
   get_market_state: 'SOL',       // market-state takes the bare asset
 };
@@ -98,6 +99,9 @@ const EXTRA_ARGS = {
   // about the shape of a print. 50k is inside the documented range and returns
   // real prints.
   get_whale_trades: { min_usd: 50000 },
+  // the default 24 h window can hold no 8-K at all (a US holiday, a weekend); 72 h is the
+  // documented maximum and always returns real filings
+  get_sec_8k: { hours: 72 },
 };
 
 function fixture(key, tool) {
@@ -110,6 +114,8 @@ function fixture(key, tool) {
     case 'output_mint': return USDC;
     case 'amount': return '1000000000';        // 1 SOL in raw base units
     case 'target': return 'jito';
+    case 'url': return tool === 'get_pdf_markdown' ? 'https://bitcoin.org/bitcoin.pdf' : 'https://en.wikipedia.org/wiki/Stablecoin';
+    case 'ticker': return tool === 'get_insider_trades' ? 'NVDA' : 'AAPL';
     case 'symbol': return SYMBOL_FOR[tool] || 'SOLUSDT';
     default: return undefined;                 // numeric/enum knobs stay out of the example
   }

@@ -50,9 +50,36 @@ decides the computed products from the table below.
 | Bybit (api.bybit.com, stream.bybit.com) | funding, OI, long/short, basis, top-movers, orderbook, whale trades, spread-arb, volatility, positioning, squeeze-score, market-state, tradfi-radar, equity-24h, the liquidation tape | not read (research stopped by the planning chat on 12 Oct) | — | raw and computed | unclear |
 | Deribit (www.deribit.com) | options-summary, options-gex, market-state (DVOL) | deribit.com/kb/deribit-api-terms renders client-side; not read | — | raw (index price, DVOL) and computed (IV, Greeks, GEX) | unclear |
 | Hyperliquid (api.hyperliquid.xyz, stats-data.hyperliquid.xyz) | hl-whales, funding, spread-arb, perp, tradfi-radar, equity-24h | app.hyperliquid.xyz/terms (15 Jun 2026) | the terms govern the Interface; no data, resale or redistribution restriction; §3.1.8 bans automated use beyond reasonable usage | raw positions (public account state) and computed aggregates | clean |
-| trade.xyz and other HIP-3 deployers (Paragon, Entropy, markets.xyz), read through api.hyperliquid.xyz | tradfi-radar, equity-24h (stock-perp rows, `oracle`) | not read | the deployer sets the market's oracle; the host's terms are Hyperliquid's | raw (mark, oracle, funding) | unclear |
+| trade.xyz and other HIP-3 deployers (Paragon, Entropy, markets.xyz), read through api.hyperliquid.xyz | tradfi-radar, equity-24h (stock-perp rows, `oracle`) | read in R5, see "Added in R5 Phase B": their terms cover their own sites only | the deployer sets the market's oracle; the host's terms are Hyperliquid's | raw (mark, oracle, funding) | clean when read through api.hyperliquid.xyz (R5) |
 | Pegwatch upstreams: DexScreener, Alpaca, Yahoo Finance, Stooq | peg-deviation, peg-sessions, peg-universe, equity-24h (the peg tape) | DexScreener API terms (18 Aug 2023) cl. 2; Alpaca Terms "Disclaimer" and support note (Nov 2022) "you cannot redistribute Alpaca API data"; Yahoo terms (4 Aug 2026) §2 no commercial use or redistribution; Stooq: no terms reachable (bot wall) and the keyless CSV now answers "page does not exist" | computed peg metrics; equity-24h also returns the last regular-session price | banned (DexScreener, Alpaca, Yahoo), unclear (Stooq) | unchanged in R4: computed product, decision for the planning chat |
 | Overhang upstreams: Jupiter quotes, Kamino API | exit-quote, exit-method (free) | Jupiter §3.2(d) (above); kamino.com/terms (7 Aug 2026) §3.1 informational use, §6.1 personal licence | computed exit-liquidity measurements | banned (Jupiter), unclear (Kamino) | unchanged in R4: computed product, decision for the planning chat |
+
+## Added in R5 Phase B (terms read 2026-10-12, before building)
+
+Every source below was read before its route was built. Quotes are verbatim and short; the
+page and its date are given so the next reader can re-check them.
+
+| Source | Used by | Terms read | Clause (verbatim) | Raw / computed | Verdict |
+|---|---|---|---|---|---|
+| SEC EDGAR (www.sec.gov, data.sec.gov) | sec-filings, insider-trades, sec-8k | sec.gov "Accessing EDGAR Data" (26 Jun 2024); Webmaster FAQ (23 Aug 2024); Website Dissemination policy | "All Government-created content on sec.gov and EDGAR public filing content are free to access and reuse."; "may be copied or further distributed by users of the web site without the SEC's permission. Please consider appropriate citation to the SEC as the source."; "SEC" and "EDGAR" may not be used "in a trade name, trademark, or domain name"; "no more than 10 requests per second, regardless of the number of machines" | raw (filing metadata, Form 4 fields) | clean with citation: every response carries `source`; one box-wide token bucket at 8 req/s; declared User-Agent with a contact address; no route or product is named after SEC or EDGAR |
+| Hyperliquid info API, HIP-3 dexes (api.hyperliquid.xyz) | tradfi-perps, fx-rates (HIP-3 marks) | app.hyperliquid.xyz/terms (15 Jun 2026) | the terms govern the Interface; the only HIP-3 wording is the disclaimer in 1.2 ("Markets ... created under permissionless deployment mechanisms ... are not reviewed, verified, or approved by the Company"); §3.1.8 bans automated use that would "exceed reasonable usage, bypass rate limits" | raw (mark, oracle, funding, OI of each market) | clean: one perpDexs read plus one metaAndAssetCtxs read per dex, cached 60 s (at most about 240 weight a minute against the 1,200 limit) |
+| HIP-3 deployers: xyz (trade.xyz), flx (Felix), vntl (Ventuals), hyna (HyENA), km and mkts (Kinetiq), cash (dreamcash), para (Paragon), io (Entropy), abcd (ABCDEx) | tradfi-perps, fx-rates | each deployer's own terms, dated Jan to Sep 2026 | every set covers the deployer's own website or app and bans scraping it, e.g. trade.xyz bans "data mining, robots, scraping ... from the Interface"; Kinetiq and HyENA limit their platforms to "personal, non-commercial purposes"; dreamcash also covers "any other API or interface made available by SLL" | not called: their markets are read from HyperCore through api.hyperliquid.xyz only | clean as built: we never call a deployer's site or API. Responses label prices "each market's own HIP-3 oracle and mark price, not an exchange quote", and never as S&P, Nasdaq or NYSE prices. abcd has no assets and no site: moot |
+| European Central Bank (data-api.ecb.europa.eu, EXR) | fx-rates | ecb.europa.eu "Disclaimer & copyright" (undated, Copyright 2026); FX reference rates page | "users of this website may make free use of the information ... the ECB must be cited as the source."; whoever sells it must inform buyers "both before they pay any subscription or fee and each time they access the information ... that the information may be obtained free of charge through this website."; modified information "must be stated explicitly"; "Using the rates for transaction purposes is strongly discouraged." | raw (rates as published, rounded to 6 decimals); computed crosses for other bases | clean with attribution and notice: the notice is in the route's description (shown in the 402 challenge, before payment) and in every response (`notice`); crosses are labelled in `rates_are`; the description says the rates are for information only |
+| User-supplied web pages and PDFs (any public http/https URL) | web-markdown, pdf-markdown | RFC 9309 §1 (Sep 2022); EU DSM Directive 2019/790 Art. 4(3) | robots.txt rules "are not a form of access authorization"; the EU text-and-data-mining exception applies only where use "has not been expressly reserved ... such as machine-readable means" | the publisher's content, converted to markdown on one caller's request | clean as an on-request reader: honest User-Agent with our URL, robots.txt honoured for that agent (a disallowed path is a 400, never billed), no cookies, logins or paywall bypass, nothing stored (robots.txt is cached per origin for 1 h, page content never), SSRF guard (http/https, ports 80/443, every resolved address and every redirect checked, max 3), every response says the content belongs to its publisher (`rights`) |
+| Libraries: @mozilla/readability 0.6.0, linkedom 0.18.13, turndown 7.2.4, unpdf 1.8.1, fast-xml-parser 5.11.2 | web-markdown, pdf-markdown, insider-trades | npm licence fields (read 12 Oct) | Apache-2.0, ISC, MIT, MIT, MIT | code, not data | clean; pinned exact, lockfile committed |
+| GDELT DOC 2.0 (api.gdeltproject.org) | /api/news (NOT BUILT) | gdeltproject.org/about.html "Terms of Use" (undated) | "available for unlimited and unrestricted use for any academic, commercial, or governmental use of any kind without fee"; redistribution "must include a citation to the GDELT Project and a link" | — | terms clean with citation, but the API is not usable for a paid route: 4 of 4 reads answered 429 on 12 Oct (Mac and VPS, gaps of 8 s or more), and the retry at 19:30 UTC returned an empty 200 after 17 s, then 429 after a 10 s gap. B5 is not built; a paid route that 503s most of the time would never bill and would rank badly |
+
+Routes in this section and the upstreams they reach (all clean, so none is in list A below):
+
+| route | price | venues |
+|---|---|---|
+| GET /api/web-markdown | $0.005 | the caller's URL (and its /robots.txt) |
+| GET /api/pdf-markdown | $0.01 | the caller's URL (and its /robots.txt); parsed by unpdf in a child process |
+| GET /api/sec-filings | $0.005 | www.sec.gov/files/company_tickers.json (daily), data.sec.gov/submissions |
+| GET /api/insider-trades | $0.01 | the above plus the Form 4 XML in www.sec.gov/Archives |
+| GET /api/sec-8k | $0.01 | www.sec.gov/cgi-bin/browse-edgar?action=getcurrent (Atom, type=8-K) |
+| GET /api/tradfi-perps | $0.005 | api.hyperliquid.xyz/info (perpDexs, metaAndAssetCtxs per dex) |
+| GET /api/fx-rates | $0.002 | data-api.ecb.europa.eu (EXR daily), plus the tradfi-perps cache for HIP-3 FX and commodity marks |
 
 ## Raw values by route (inventory of 12 Oct 2026, after the R4 deploy)
 
@@ -213,6 +240,8 @@ Two judgment calls shift these numbers:
 
 ## Payment infrastructure (not data sources)
 
-CDP facilitator (x402 Base, Polygon, Arbitrum, Solana), Circle Facilitator Service (Arc),
+CDP facilitator (x402 exact on Base, Polygon, Arbitrum, Solana; batch-settlement on Base, Polygon,
+Arbitrum, R5), Circle Facilitator Service (Arc), Circle Gateway (nanopayments on Base, Polygon,
+Arbitrum, Arc, R5), GoPlausible (Algorand, R5),
 Tempo RPC (MPP tempo/charge), Helius (MPP solana/charge verification). Their terms govern
 settlement, not data resale, and are out of scope here.
