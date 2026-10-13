@@ -1,0 +1,18 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- AgentFeed mark (icon.png redrawn as vectors for a dark background): "402" with the 0 split green / blue -->
+  <rect width="120" height="120" rx="12" fill="#0E1420"/>
+  <defs>
+    <clipPath id="af-left"><rect x="0" y="0" width="64" height="120"/></clipPath>
+    <clipPath id="af-right"><rect x="64" y="0" width="56" height="120"/></clipPath>
+  </defs>
+  <g stroke-width="6.5" stroke-linejoin="miter" stroke-linecap="butt" fill="none">
+    <!-- 4 -->
+    <path d="M23 41 V66 H47" stroke="#EDE8E0"/>
+    <path d="M41 41 V79" stroke="#EDE8E0"/>
+    <!-- 0, left half green, right half blue -->
+    <rect x="57.25" y="44.25" width="13.5" height="31.5" rx="6.75" stroke="#3DDC97" clip-path="url(#af-left)"/>
+    <rect x="57.25" y="44.25" width="13.5" height="31.5" rx="6.75" stroke="#2F7BFF" clip-path="url(#af-right)"/>
+    <!-- 2 -->
+    <path d="M81 44.25 H97.75 V56 L83.25 75.75 H99" stroke="#EDE8E0"/>
+  </g>
+</svg>

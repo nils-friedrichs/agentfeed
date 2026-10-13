@@ -1,0 +1,112 @@
+id: agentfeed
+name: AgentFeed
+short_description: "Hyperliquid perp signals, liquidation tape and whale positioning for trading bots"
+short_description_zh: "Hyperliquid 永续合约信号、爆仓数据与巨鲸持仓，专为交易机器人设计"
+full_description: "AgentFeed's market structure for trading loops: one call returns every Hyperliquid perp ranked by open interest, with funding, 1h and 24h OI and price change, liquidations against each coin's own 7-day baseline, the top 250 Hyperliquid accounts' net position, and flags with published rules. Built only from data AgentFeed records itself: a 5-minute Hyperliquid OI sampler, its own liquidation tape and a whale snapshot refreshed every 5 minutes. A stale source answers 503 and is never billed."
+full_description_zh: "为交易循环设计的市场结构数据：一次调用返回按持仓量排序的全部 Hyperliquid 永续合约，包括资金费率、1 小时与 24 小时持仓量和价格变化、相对每个币种自身 7 天基线的爆仓强度、Hyperliquid 前 250 大账户的净持仓，以及规则公开的信号标记。数据全部来自 AgentFeed 自有采集：每 5 分钟的 Hyperliquid 持仓量采样、自有爆仓数据库、每 5 分钟刷新的巨鲸快照。数据源过期时返回 503，不收费。"
+website: https://x402.ochinimus.app
+logo_url: /providers/agentfeed.svg
+category: crypto
+tags: [crypto, derivatives, perps, hyperliquid, liquidations, funding, open-interest, whales, signals, trading-bots]
+featured: false
+
+upstream_base_url: https://x402.ochinimus.app
+upstream_type: api_key
+upstream_auth_env: AGENTFEED_API_KEY
+upstream_auth_header: X-AgentFeed-Key
+
+# upstream_cost is AgentFeed's prepaid-key price per call (half the route's x402 price, minimum $0.0005).
+# user_price is set equal to it; claw402 sets its own margin. A 4xx or 5xx is never charged to the key.
+routes:
+  # ── Trading-loop routes ──
+  - gateway_path: /api/v1/agentfeed/signal-board
+    upstream_path: /api/signal-board
+    category: Signals
+    user_price: "0.005"
+    upstream_cost: "0.005"
+    description: "Hyperliquid 全市场信号表：按持仓量排序，含资金费率、持仓量与价格变化、爆仓 z 值、巨鲸净持仓和信号标记（建议每 1-5 分钟轮询）"
+    description_en: "Hyperliquid perp universe in one table, ranked by OI: funding, OI and price change 1h/24h, liquidation z-score, whale net position and flags (poll every 1-5 min)"
+    allowed_params: [n, coins]
+    mime_type: application/json
+
+  - gateway_path: /api/v1/agentfeed/coin-signal
+    upstream_path: /api/coin-signal
+    category: Signals
+    user_price: "0.002"
+    upstream_cost: "0.002"
+    description: "单个币种信号：信号表字段加 15 分钟爆仓级联概率、价格上下最近的爆仓密集区和前 3 大巨鲸仓位（coin=BTC）"
+    description_en: "One coin's signal row plus the 15-minute cascade probability, nearest liquidation clusters above and below price and the top 3 whale positions (coin=BTC)"
+    allowed_params: [coin]
+    mime_type: application/json
+
+  # ── Liquidations ──
+  - gateway_path: /api/v1/agentfeed/liq-heatmap
+    upstream_path: /api/liq-heatmap
+    category: Liquidations
+    user_price: "0.01"
+    upstream_cost: "0.01"
+    description: "按价格区间的爆仓热力图（最近 N 小时，多空拆分，标出最热区间）"
+    description_en: "Liquidation heatmap by price level over the last N hours, long/short split, hottest zone flagged"
+    allowed_params: [symbol, hours, buckets]
+    mime_type: application/json
+
+  - gateway_path: /api/v1/agentfeed/liquidation-stats
+    upstream_path: /api/liquidation-stats
+    category: Liquidations
+    user_price: "0.005"
+    upstream_cost: "0.005"
+    description: "SOL、BTC、ETH、XRP、DOGE 的 1 小时与 24 小时爆仓统计（多空拆分、分交易所）"
+    description_en: "1h and 24h liquidation totals for SOL, BTC, ETH, XRP and DOGE: long/short split and per-exchange breakdown"
+    mime_type: application/json
+
+  - gateway_path: /api/v1/agentfeed/cascade-forecast
+    upstream_path: /api/cascade-forecast
+    category: Liquidations
+    user_price: "0.01"
+    upstream_cost: "0.01"
+    description: "爆仓级联预测：下一个 15 分钟爆仓量超过该币种自身 90 分位的概率（证据不足时拒绝回答）"
+    description_en: "Forward-looking: probability that the next 15 minutes liquidate more than the symbol's own 90th percentile; declines when evidence is thin"
+    allowed_params: [symbol, symbols]
+    mime_type: application/json
+
+  # ── Positioning ──
+  - gateway_path: /api/v1/agentfeed/hl-whales
+    upstream_path: /api/hl-whales
+    category: Positioning
+    user_price: "0.01"
+    upstream_cost: "0.01"
+    description: "Hyperliquid 最大账户的永续合约持仓：每币净多空、强平距离、强平价格分布（coin= 时含最大仓位）"
+    description_en: "Open perp positions of the largest Hyperliquid accounts per coin: net long/short, liquidation distance, liquidation bands; with coin= the largest positions"
+    allowed_params: [coin, top]
+    mime_type: application/json
+
+  - gateway_path: /api/v1/agentfeed/squeeze-score
+    upstream_path: /api/squeeze-score
+    category: Positioning
+    user_price: "0.05"
+    upstream_cost: "0.05"
+    description: "逼空与多头踩踏评分 0-100：资金费率、巨鲸拥挤度、24 小时持仓量增长与爆仓偏向的综合"
+    description_en: "Short-squeeze and long-flush scores 0-100 from funding, whale crowding, 24h OI build and liquidation skew"
+    allowed_params: [symbol]
+    mime_type: application/json
+
+  # ── Funding and market state ──
+  - gateway_path: /api/v1/agentfeed/funding-radar
+    upstream_path: /api/funding-radar
+    category: Funding
+    user_price: "0.01"
+    upstream_cost: "0.01"
+    description: "全部 Hyperliquid 永续（含 HIP-3）资金费率雷达：8 小时等效费率、30 天 z 值、极端值标记"
+    description_en: "Funding radar over every Hyperliquid perp incl. HIP-3: 8h-equivalent funding, 30-day z-score, extremes flagged"
+    allowed_params: [top, min_oi_usd]
+    mime_type: application/json
+
+  - gateway_path: /api/v1/agentfeed/market-state
+    upstream_path: /api/market-state
+    category: Market
+    user_price: "0.01"
+    upstream_cost: "0.01"
+    description: "BTC、ETH、SOL 或 HYPE 一次调用的市场状态：基差、已实现波动率、资金费率 z 值、持仓量、巨鲸多头占比、爆仓、下一个 FOMC/CPI"
+    description_en: "Market state for BTC, ETH, SOL or HYPE in one call: basis, realized vol, funding z-score, OI, whale net-long share, liquidations, next FOMC/CPI"
+    allowed_params: [symbol]
+    mime_type: application/json
