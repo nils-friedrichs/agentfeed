@@ -222,6 +222,23 @@ test('flow: transaction reads that mostly fail are a 503 (RPC refusing), not a 4
   const flaky = async (m, p) => { if (m === 'getTransaction') throw Object.assign(new Error('solana rpc http 500'), { status: 503 }); return c.rpc(m, p); };
   await assert.rejects(T.tokenFlow({ mint: MINT, swaps: 20 }, { rpc: flaky, solPrice: SOLP, ttl: 0 }), (e) => e.status === 503 && /rate limiting/.test(e.message));
 });
+test('flow: a signature whose err is not null never reaches getTransaction', async () => {
+  const p1 = v4Pool(1); const c = chain({ pools: [p1] }); c.accounts.set(p1.vb, tokAcct(5000n * 10n ** 6n)); c.accounts.set(p1.vq, tokAcct(50n * 10n ** 9n)); c.owners.set(p1.vb, POOL_AUTH); c.owners.set(p1.vq, POOL_AUTH);
+  const t = 1760000000;
+  // 30 history entries: every third one failed on chain (err set), the rest are swaps
+  const sigs = Array.from({ length: 30 }, (_, i) => ({ signature: `e${i}`, err: i % 3 === 0 ? { InstructionError: [0, 'Custom'] } : null, slot: i, blockTime: t }));
+  c.sigs.set(p1.vb, sigs);
+  for (const s of sigs) c.txs.set(s.signature, swapTx(s.signature, 1, t, WALLET[Number(s.signature.slice(1)) % 3], 1, 0.1, POOL_AUTH));
+  const requested = [];
+  const spy = async (m, params) => { if (m === 'getTransaction') requested.push(params[0]); return c.rpc(m, params); };
+  const r = await T.tokenFlow({ mint: MINT, swaps: 20 }, { rpc: spy, solPrice: SOLP, ttl: 0 });
+  const failed = sigs.filter((x) => x.err).map((x) => x.signature);
+  assert.equal(failed.length, 10);
+  assert.ok(requested.length > 0 && requested.every((sg) => !failed.includes(sg)), 'no failed signature was fetched');
+  assert.equal(requested.filter((sg) => failed.includes(sg)).length, 0);
+  assert.equal(r.swaps_analyzed, 20);
+  assert.ok(requested.length <= 20 + 0, `only the successful signatures needed to reach 20 swaps were read (${requested.length})`);
+});
 test('heavy routes: at most two flow or cluster requests run at once; the third is a 503 with Retry-After, and the slot is freed after', async () => {
   let release; const gate = new Promise((r) => { release = r; });
   const a = T.heavy(() => gate); const b = T.heavy(() => gate);

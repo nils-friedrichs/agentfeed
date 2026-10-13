@@ -121,3 +121,5 @@ jito-tips.log
 data/sanctions-ofac.json
 data/disposable-domains.txt
 data/openalex-searches.json
+data/gemini-usage.jsonl
+data/gemini-spend.json
