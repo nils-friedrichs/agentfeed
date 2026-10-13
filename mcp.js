@@ -33,7 +33,7 @@ const TOOL_DEFS = [
     schema: {}, run: () => getPrice('SOL') },
   { name: 'get_btc_price', usd: 0.001, desc: 'Live BTC/USD spot price read on-chain: the median of three Uniswap V3 reads on Base and Ethereum (cbBTC/USDC, cbBTC and WBTC through WETH/USDC). confidence is null: a pool publishes none.',
     schema: {}, run: () => getPrice('BTC') },
-  { name: 'get_funding_rate', usd: 0.005, desc: 'Funding rate for any USDT perp on Bybit and Hyperliquid, each at its own interval: raw rate, interval hours, 8h equivalent, annualised rate, next funding time and mark price per venue. Without a symbol, SOL and BTC from Hyperliquid with open interest.',
+  { name: 'get_funding_rate', usd: 0.005, desc: 'Funding rate for any Hyperliquid perp: raw rate, interval hours, 8h equivalent, annualised rate, next funding time and mark price. Without a symbol, SOL and BTC from Hyperliquid with open interest.',
     schema: { symbol: z.string().optional().describe('USDT perp symbol e.g. ETHUSDT, ONDOUSDT (omit for SOL and BTC from Hyperliquid)') },
     run: (a) => getFundingRate(a) },
   { name: 'get_fear_greed', usd: 0, desc: 'Crypto Fear & Greed index (0-100) with classification.',
@@ -83,9 +83,9 @@ const TOOL_DEFS = [
     schema: {}, run: () => getLiquidationStats() },
   { name: 'get_last_liquidation', usd: 0, desc: 'FREE taster: last liquidation for SOL, BTC, ETH, XRP and DOGE (15-min delayed). Real-time via get_recent_liquidations.',
     schema: {}, run: () => getLastLiquidation() },
-  { name: 'get_positioning', usd: 0.005, desc: 'SOL+BTC positioning: long/short account ratio (retail crowding) + open interest with 1h/24h change (Bybit).',
+  { name: 'get_positioning', usd: 0.005, desc: 'SOL+BTC positioning on Hyperliquid: open interest with 1h/24h change and the top 250 accounts\' net-long share (whale crowding).',
     schema: {}, run: () => getPositioning() },
-  { name: 'get_trade_context', usd: 0.01, desc: 'Full market state in one call: SOL+BTC prices, funding, Fear & Greed, long/short positioning, open interest, and liquidation stats. The complete pre-trade picture.',
+  { name: 'get_trade_context', usd: 0.01, desc: 'Full market state in one call: SOL+BTC prices, funding, Fear & Greed, positioning (open interest and whale net-long share), and liquidation stats. The complete pre-trade picture.',
     schema: {}, run: () => getTradeContext() },
   { name: 'get_token_risk', usd: 0.01, desc: 'SPL token rug-risk signals: mint/freeze authority status (revoked = safer), top-1/top-10 holder concentration, and risk flags. Not a honeypot/LP-lock checker.',
     schema: { mint: z.string().describe('SPL token mint address (base58)') },
@@ -108,7 +108,7 @@ const { TOOL_TITLES } = require('./tools/titles');
 const DISPLAY_FIRST = [
   'get_liq_pulse', 'get_perp', 'get_funding_pulse', 'get_liquidation_leaders',
   'get_cascade_scan', 'get_liq_heatmap', 'get_squeeze_score', 'get_cascade_forecast_free',
-  'get_forecast_record', 'get_cascade_forecast', 'get_open_interest', 'get_funding_cross',
+  'get_forecast_record', 'get_cascade_forecast', 'get_open_interest', 'get_funding_rate',
 ];
 
 // Shown by a client before any tool call. Kept short on purpose.
@@ -155,7 +155,7 @@ const METfByTool = new Map(Object.values(BAZAAR_META).map((m) => [m.tool, m]));
 // A tool with two answer shapes names both, so the envelope's `data` says which
 // one comes back. The envelope itself already admits either.
 const OUTPUT_SHAPES = {
-  get_funding_rate: 'without symbol: {sol, btc} from Hyperliquid; with symbol: {symbol, venues: {bybit, hyperliquid}}',
+  get_funding_rate: 'without symbol: {sol, btc} from Hyperliquid; with symbol: {symbol, venues: {hyperliquid}}',
 };
 function outputSchemaFor(def) {
   const shape = OUTPUT_SHAPES[def.name] ? ` (${OUTPUT_SHAPES[def.name]})` : '';
@@ -240,7 +240,7 @@ async function initMcp(app) {
       name: 'agentfeed',
       title: 'AgentFeed',
       version: SERVER_VERSION,
-      description: 'Live crypto market data, a complete Bybit/OKX/Binance liquidation tape, Deribit options IV and dealer gamma, stock and index perps, a macro calendar, tokenized-equity peg data and Solana on-chain reads. Paid per call in USDC over x402, no API key.',
+      description: 'Live crypto market data, a complete Bybit/OKX/Binance liquidation tape, a funding radar over every Hyperliquid perp, stock and index perps, a macro calendar, tokenized-equity peg data and Solana on-chain reads. Paid per call in USDC over x402, no API key.',
       websiteUrl: 'https://x402.ochinimus.app',
       icons: [{ src: ICON_URL, mimeType: 'image/png' }],
     }, { instructions: INSTRUCTIONS });

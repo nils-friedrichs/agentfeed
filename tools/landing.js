@@ -25,7 +25,7 @@ function renderLanding(PRICES, network, coverage) {
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AgentFeed — crypto trading data for AI agents, paid in USDC via x402</title>
-<meta name="description" content="Real-time liquidations across ${perpsPhrase} on Bybit, OKX and Binance — including Bybit's complete unthrottled tape — plus full-universe cascade detection, long/short positioning, open interest, funding and prices. Pay per call in USDC via x402 on Solana or Base. No API keys.">
+<meta name="description" content="Real-time liquidations across ${perpsPhrase} on Bybit, OKX and Binance — including Bybit's complete unthrottled tape — plus full-universe cascade detection, open interest and funding across every Hyperliquid perp, and prices. Pay per call in USDC via x402 on Solana or Base. No API keys.">
 <style>
   :root{--bg:#0a0e14;--card:#111722;--txt:#d7dde7;--dim:#7d8899;--gold:#ffd84d;--line:#1e2635}
   *{box-sizing:border-box;margin:0;padding:0}

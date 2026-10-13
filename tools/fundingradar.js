@@ -1,34 +1,34 @@
-// tools/fundingradar.js — get_funding_radar ($0.02): every perp's funding on
-// Bybit and Hyperliquid next to its own 30-day history. (OKX was the third venue until
-// R6 D2, 13 Oct 2026: its API Agreement §9.4 forbids redistributing its market data. It is
-// no longer read; the OKX rows still in fundingradar.db are not used.)
+// tools/fundingradar.js — get_funding_radar ($0.02): every Hyperliquid perp's funding next to its own
+// 30-day history, the main dex and the HIP-3 dexes (stocks, indices, commodities, FX) in one table.
+//
+// R7 (13 Oct 2026): Hyperliquid is the only venue. Two centralised exchanges were read beside it until R6 D2 and R7:
+// their API terms forbid reselling the data (docs/SOURCES.md), so the cross-venue spread is gone and the radar
+// covers every Hyperliquid perp instead of the pairs the venues shared. Their rows still in fundingradar.db
+// are not used.
 //
 // A funding rate on its own says little: 0.01% per 8h is ordinary on BTC and a
-// screaming outlier on a coin that has sat at -0.002% for a month. So per venue
-// this returns the current rate at its 8h equivalent, where that rate sits
-// against the venue's own settled history for the symbol (a 30-day z-score),
-// and the spread between the venues, sorted by how extreme the reading is.
+// screaming outlier on a coin that has sat at -0.002% for a month. So per perp
+// this returns the current rate at its 8h equivalent and where that rate sits
+// against the perp's own settled history (a 30-day z-score), sorted by how
+// extreme the reading is.
 //
 // TWO HALVES, ON PURPOSE.
 //   collect()          run by cron (bin/funding-radar-collect.js) every 5 min.
-//                      The only code here that talks to a venue. It stores
+//                      The only code here that talks to Hyperliquid. It stores
 //                      settled funding history in fundingradar.db and writes a
 //                      precomputed snapshot to funding-radar.json.
 //   getFundingRadar()  the paid route. Reads the snapshot and nothing else, so a
-//                      paid request never waits on, or fails because of, two
-//                      exchanges' rate limits. A snapshot older than
-//                      STALE_AFTER_S says so in the answer (stale: true + age).
+//                      paid request never waits on, or fails because of, a rate
+//                      limit. A snapshot older than STALE_AFTER_S, or in an older
+//                      format, answers 503 and is never billed.
 //
-// Never fabricated. A venue that does not list a symbol is null, not zero. A
-// rate whose interval cannot be read gets no 8h figure and no z-score. A
-// venue with fewer than MIN_SAMPLES settlements in the window gets no z-score,
-// and every z-score carries the samples and the window it was actually computed
-// over -- 30 days is the target, a younger listing returns what it has.
+// Never fabricated. A rate whose interval cannot be read gets no 8h figure and no
+// z-score. A perp with fewer than MIN_SAMPLES settlements in the window gets no
+// z-score, and every z-score carries the samples and the window it was actually
+// computed over -- 30 days is the target, a younger listing returns what it has.
 //
-// Intervals follow tools/derivs.js (see the funding-intervals block there):
-// a venue quotes funding for its own interval, and a settled rate's interval
-// is the spacing to the settlement before it, because Bybit moves symbols
-// between intervals.
+// HIP-3 perps ride the same run: tools/tradfi.js collects their history and the
+// rows are merged in below, with their dex and asset class.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -36,24 +36,21 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const DB_PATH = () => process.env.FUNDING_RADAR_DB || path.join(ROOT, 'fundingradar.db');
 const SNAP_PATH = () => process.env.FUNDING_RADAR_SNAPSHOT || path.join(ROOT, 'funding-radar.json');
-const BYBIT = () => process.env.BYBIT_REST || 'https://api.bybit.com';
 const HL = () => process.env.HL_API || 'https://api.hyperliquid.xyz/info';
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
 const WINDOW_DAYS = 30;
-// The tracked universe: listed on both venues (Bybit and Hyperliquid), with this
-// much combined open interest. Measured 2026-10-08 on three venues: 184 symbols at $5M,
-// 368 at $1M; the two-venue count is lower (the report of R6 gives it). The floor bounds the collector's history calls, so min_oi_usd below it
-// cannot return symbols that were never tracked -- it is clamped and says so.
-const UNIVERSE_MIN_OI_USD = 5_000_000;
-const MIN_VENUES = 2;
+const SNAPSHOT_VERSION = 2; // 1 = the two-venue radar of R5/R6; a v1 file answers 503 until the collector has rewritten it
+// The tracked universe: every Hyperliquid main-dex perp with a funding rate. No open-interest floor: the floor only
+// ever bounded the collector's history calls, and a run's call budget already does that (largest first).
+const UNIVERSE_MIN_OI_USD = 0;
 const Z_FLAG = 2;
 const MIN_SAMPLES = 10;
 const STALE_AFTER_S = 15 * 60;
 const DEFAULT_TOP = 20;
 const DEFAULT_MIN_OI_USD = 10_000_000;
-const VENUES = ['bybit', 'hyperliquid'];
+const VENUES = ['hyperliquid'];
 
 const num = (v) => (v == null || v === '' ? null : Number(v));
 const finite = (v) => (Number.isFinite(v) ? v : null);
@@ -103,52 +100,40 @@ function zScore(current8h, st) {
   return { z: (current8h - st.mean_8h) / st.std_8h };
 }
 
-/** One symbol's radar row from its venue readings. Pure. */
+/** One perp's radar row from its venue reading. Pure. */
 function radarRow(symbol, venues, oi) {
   const out = { symbol, oi_usd: oi, venues: {} };
-  const rated = [];
   let maxAbsZ = null, extremeVenue = null;
   const flagged = [];
   for (const v of VENUES) {
     const r = venues[v];
     out.venues[v] = r || null;
     if (!r) continue;
-    if (r.funding_rate_8h != null) rated.push([v, r.funding_rate_8h]);
     if (r.z_30d != null) {
       const a = Math.abs(r.z_30d);
       if (maxAbsZ == null || a > maxAbsZ) { maxAbsZ = a; extremeVenue = v; }
       if (a >= Z_FLAG) flagged.push(v);
     }
   }
-  if (rated.length > 1) {
-    rated.sort((a, b) => b[1] - a[1]);
-    out.spread_8h = round(rated[0][1] - rated[rated.length - 1][1], 8);
-    out.spread_high_venue = rated[0][0];
-    out.spread_low_venue = rated[rated.length - 1][0];
-  } else {
-    out.spread_8h = null;
-  }
   out.max_abs_z = round(maxAbsZ, 2);
-  out.extreme_venue = extremeVenue;
   out.flag = flagged.length > 0;
-  out.flagged_venues = flagged;
   return out;
 }
 
-/** Most extreme first: largest |z| on any venue, then the widest spread. Rows with no z go last. */
+const rate8h = (r) => Math.abs((r.venues && r.venues.hyperliquid && r.venues.hyperliquid.funding_rate_8h) || 0);
+/** Most extreme first: largest |z|, then the largest |funding|. Rows with no z go last. */
 function byExtremity(a, b) {
   const za = a.max_abs_z, zb = b.max_abs_z;
   if (za == null && zb != null) return 1;
   if (zb == null && za != null) return -1;
   if (za != null && zb != null && zb !== za) return zb - za;
-  return Math.abs(b.spread_8h || 0) - Math.abs(a.spread_8h || 0);
+  return rate8h(b) - rate8h(a);
 }
 
 // ---- venue access (collector only) -----------------------------------------
 
-// Spacing between calls per venue, well inside each published limit and shared
-// with every other reader on this box: Hyperliquid info is 1200 weight a minute and
-// fundingHistory weighs 20+.
+// Spacing between calls, well inside Hyperliquid's published limit (info is 1200 weight a minute and
+// fundingHistory weighs 20+) and shared with every other reader on this box.
 function pacer(gapMs) {
   let next = 0;
   return async () => {
@@ -167,13 +152,12 @@ function pacer(gapMs) {
 // 5 minutes silently swallows the next one. With the crypto radar (30) and the
 // HIP-3 markets (32) both at their Hyperliquid budgets, 62 calls x 3.5 s = 217 s;
 // `deadline` is the hard backstop on top: past it a client starts no new call, so
-// a slow venue can never stretch a run past ~270 s. Measured 2026-10-08: 45 + 40
-// calls at 4 s would have been ~340 s at the top of each hour during backfill.
-function venueClient({ fetchImpl = fetch, budget = { bybit: 150, hyperliquid: 30 }, gaps = { bybit: 150, hyperliquid: 3500 }, sharedPace = null, deadline = Infinity } = {}) {
-  // sharedPace: a second client with its own budget but the SAME pacers, so two
-  // budgets never add up to a faster request rate against one venue.
+// a slow venue can never stretch a run past ~270 s.
+function venueClient({ fetchImpl = fetch, budget = { hyperliquid: 30 }, gaps = { hyperliquid: 3500 }, sharedPace = null, deadline = Infinity } = {}) {
+  // sharedPace: a second client with its own budget but the SAME pacer, so two
+  // budgets never add up to a faster request rate.
   const pace = sharedPace || Object.fromEntries(VENUES.map((v) => [v, pacer(gaps[v])]));
-  const used = { bybit: 0, hyperliquid: 0 };
+  const used = { hyperliquid: 0 };
   const left = (v) => (Date.now() >= deadline ? 0 : budget[v] - used[v]);
   async function get(v, url, opts) {
     if (left(v) <= 0) { const e = new Error(`${v}: call budget for this run spent`); e.budget = true; throw e; }
@@ -183,39 +167,23 @@ function venueClient({ fetchImpl = fetch, budget = { bybit: 150, hyperliquid: 30
     if (!r.ok) throw new Error(`${v} HTTP ${r.status}`);
     return r.json();
   }
-  const bybit = async (p) => { const j = await get('bybit', BYBIT() + p); if (j.retCode !== 0) throw new Error(`bybit: ${j.retMsg}`); return j.result; };
   const hl = (body) => get('hyperliquid', HL(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  return { bybit, hl, used, left, pace };
+  return { hl, used, left, pace };
 }
 
 const coinOf = (sym) => sym.replace(/USDT$/, '');
 
-/** Current funding, interval and OI on both venues: a few bulk calls. */
+/** Current funding, interval and OI of every main-dex perp: one bulk call. Keyed COIN + 'USDT' (the key the history store has always used). */
 async function readCurrent(c) {
-  const byIv = {};
-  for (const status of ['Trading', 'PreLaunch', 'Delivering']) {
-    let cursor = '';
-    for (let page = 0; page < 10; page++) {
-      const r = await c.bybit(`/v5/market/instruments-info?category=linear&status=${status}&limit=1000${cursor ? `&cursor=${cursor}` : ''}`);
-      for (const i of r.list) if (Number(i.fundingInterval) > 0) byIv[i.symbol] = Number(i.fundingInterval) / 60;
-      cursor = r.nextPageCursor;
-      if (!cursor) break;
-    }
-  }
-  const bybit = {};
-  for (const t of (await c.bybit('/v5/market/tickers?category=linear')).list) {
-    if (!/USDT$/.test(t.symbol) || t.fundingRate === '') continue;
-    const raw = num(t.fundingRate), ih = byIv[t.symbol] ?? null;
-    bybit[t.symbol] = { raw, ih, next: num(t.nextFundingTime), oi: num(t.openInterestValue) || 0 };
-  }
   const hyperliquid = {};
   const [meta, ctxs] = await c.hl({ type: 'metaAndAssetCtxs' });
   meta.universe.forEach((u, i) => {
     if (u.isDelisted) return;
     const x = ctxs[i];
+    if (!x) return;
     hyperliquid[u.name + 'USDT'] = { raw: num(x.funding), ih: 1, next: null, oi: (num(x.openInterest) || 0) * (num(x.markPx) || 0) };
   });
-  return { bybit, hyperliquid };
+  return { hyperliquid };
 }
 
 // ---- history store ---------------------------------------------------------
@@ -232,51 +200,50 @@ function openDb() {
   return db;
 }
 
-/** Settled rows newer than `since` for one venue series, ascending, from the venue. */
+/** Settled rows newer than `since` for one series, ascending, from Hyperliquid (hourly settlements, 500 a page). */
 async function fetchHistory(c, venue, symbol, since) {
   const rows = [];
-  if (venue === 'bybit') {
-    let end = Date.now();
-    for (let page = 0; page < 6; page++) {
-      const r = await c.bybit(`/v5/market/funding/history?category=linear&symbol=${symbol}&startTime=${since}&endTime=${end}&limit=200`);
-      for (const x of r.list) rows.push({ ts: num(x.fundingRateTimestamp), rate: num(x.fundingRate) });
-      if (r.list.length < 200) break;
-      end = Math.min(...r.list.map((x) => num(x.fundingRateTimestamp))) - 1;
-    }
-  } else {
-    let start = since + 1;
-    for (let page = 0; page < 4; page++) {
-      const d = await c.hl({ type: 'fundingHistory', coin: coinOf(symbol), startTime: start });
-      for (const x of d) rows.push({ ts: num(x.time), rate: num(x.fundingRate) });
-      if (d.length < 500) break;
-      start = num(d[d.length - 1].time) + 1;
-    }
+  let start = since + 1;
+  for (let page = 0; page < 4; page++) {
+    const d = await c.hl({ type: 'fundingHistory', coin: coinOf(symbol), startTime: start });
+    for (const x of d) rows.push({ ts: num(x.time), rate: num(x.fundingRate) });
+    if (d.length < 500) break;
+    start = num(d[d.length - 1].time) + 1;
   }
   return rows.filter((r) => Number.isFinite(r.ts) && Number.isFinite(r.rate));
 }
 
 // ---- collector ---------------------------------------------------------------
 
+/** A HIP-3 market (tools/tradfi.js section row) as a radar row: the same shape, with its dex and asset class. */
+function hip3Row(m) {
+  const row = radarRow(m.market, {
+    hyperliquid: {
+      funding_rate_8h: m.funding_rate_8h, funding_rate_raw: m.funding_rate_1h, funding_interval_hours: 1,
+      z_30d: m.z_30d, ...(m.z_note ? { z_note: m.z_note } : {}), mean_8h_30d: m.mean_8h_30d ?? null, std_8h_30d: m.std_8h_30d ?? null,
+      samples: m.samples, window_days: m.window_days,
+    },
+  }, m.oi_usd);
+  return { ...row, coin: m.market, dex: m.dex, asset_class: m.asset_class, underlying: m.underlying ?? null };
+}
+
 /**
- * One collector run: read current funding, pick the universe, bring as many
+ * One collector run: read current funding, take every main-dex perp as the universe, bring as many
  * history series up to date as this run's call budget allows (largest open
  * interest first, updates before backfill), then write the snapshot from
- * whatever history is stored. Returns a summary for the cron log.
+ * whatever history is stored, with the HIP-3 markets merged in. Returns a summary for the cron log.
  */
 async function collect({ now = Date.now(), client = null, log = () => {} } = {}) {
   const t0 = Date.now();
   client = client || venueClient({ deadline: t0 + 200_000 });
   const db = openDb();
   const cur = await readCurrent(client);
-  const symbols = new Set([...Object.keys(cur.bybit), ...Object.keys(cur.hyperliquid)]);
   const universe = [];
-  for (const s of symbols) {
-    const listed = VENUES.filter((v) => cur[v][s]);
-    const oi = Object.fromEntries(VENUES.map((v) => [v, cur[v][s] ? Math.round(cur[v][s].oi) : null]));
-    const total = VENUES.reduce((t, v) => t + (oi[v] || 0), 0);
-    if (listed.length >= MIN_VENUES && total >= UNIVERSE_MIN_OI_USD) universe.push({ symbol: s, listed, oi: { ...oi, total } });
+  for (const s of Object.keys(cur.hyperliquid)) {
+    const oi = Math.round(cur.hyperliquid[s].oi);
+    if (oi >= UNIVERSE_MIN_OI_USD && cur.hyperliquid[s].raw != null) universe.push({ symbol: s, listed: ['hyperliquid'], oi });
   }
-  universe.sort((a, b) => b.oi.total - a.oi.total);
+  universe.sort((a, b) => b.oi - a.oi);
 
   const since30 = now - WINDOW_DAYS * DAY;
   const keepFrom = now - (WINDOW_DAYS + 2) * DAY;
@@ -288,36 +255,31 @@ async function collect({ now = Date.now(), client = null, log = () => {} } = {})
   // updates (series already backfilled, a settlement due) first, then backfill
   const due = [];
   for (const u of universe) {
-    for (const v of u.listed) {
-      const st = getSeries.get(v, u.symbol) || { backfilled: 0, checked_at: 0 };
-      const last = latest.get(v, u.symbol).t;
-      const ih = cur[v][u.symbol].ih || 8;
-      if (!st.backfilled) due.push({ v, s: u.symbol, since: keepFrom, backfill: true, prio: 1 });
-      else if (now - (last || 0) > ih * HOUR + 5 * 60_000 && now - st.checked_at > 10 * 60_000) due.push({ v, s: u.symbol, since: last || keepFrom, backfill: false, prio: 0 });
-    }
+    const v = 'hyperliquid';
+    const st = getSeries.get(v, u.symbol) || { backfilled: 0, checked_at: 0 };
+    const last = latest.get(v, u.symbol).t;
+    const ih = cur[v][u.symbol].ih || 1;
+    if (!st.backfilled) due.push({ v, s: u.symbol, since: keepFrom, backfill: true, prio: 1 });
+    else if (now - (last || 0) > ih * HOUR + 5 * 60_000 && now - st.checked_at > 10 * 60_000) due.push({ v, s: u.symbol, since: last || keepFrom, backfill: false, prio: 0 });
   }
   due.sort((a, b) => a.prio - b.prio);
   let fetched = 0, failed = 0, skipped = 0;
-  // One loop per venue, run side by side: each is paced by its own limit, so
-  // running them in sequence would only add the three waits together.
-  await Promise.all(VENUES.map(async (venue) => {
-    for (const d of due.filter((x) => x.v === venue)) {
-      if (client.left(d.v) <= 0) { skipped++; continue; }
-      try {
-        const rows = await fetchHistory(client, d.v, d.s, d.since);
-        db.transaction(() => {
-          for (const r of rows) ins.run(d.v, d.s, r.ts, r.rate);
-          putSeries.run(d.v, d.s, d.backfill ? 1 : 0, now);
-        })();
-        fetched++;
-      } catch (e) {
-        if (e.budget) { skipped++; continue; }
-        failed++;
-        log(`history ${d.v} ${d.s}: ${e.message}`);
-      }
+  for (const d of due) {
+    if (client.left(d.v) <= 0) { skipped++; continue; }
+    try {
+      const rows = await fetchHistory(client, d.v, d.s, d.since);
+      db.transaction(() => {
+        for (const r of rows) ins.run(d.v, d.s, r.ts, r.rate);
+        putSeries.run(d.v, d.s, d.backfill ? 1 : 0, now);
+      })();
+      fetched++;
+    } catch (e) {
+      if (e.budget) { skipped++; continue; }
+      failed++;
+      log(`history ${d.v} ${d.s}: ${e.message}`);
     }
-  }));
-  db.prepare('DELETE FROM funding WHERE ts < ?').run(keepFrom);
+  }
+  db.prepare("DELETE FROM funding WHERE venue = 'hyperliquid' AND ts < ?").run(keepFrom);
 
   // snapshot from stored history
   const hist = db.prepare('SELECT ts, rate FROM funding WHERE venue = ? AND symbol = ? AND ts >= ? ORDER BY ts');
@@ -330,20 +292,19 @@ async function collect({ now = Date.now(), client = null, log = () => {} } = {})
       const c = cur[v][u.symbol];
       const current8h = c.ih ? (c.raw * 8) / c.ih : null;
       const stored = hist.all(v, u.symbol, keepFrom);
-      const series = to8hSeries(stored, { fixedIntervalH: v === 'hyperliquid' ? 1 : null, fallbackIntervalH: c.ih });
+      const series = to8hSeries(stored, { fixedIntervalH: 1 });
       const st = windowStats(series, since30, now);
       if (st.samples) seriesWithHistory++;
       if (st.window_days >= WINDOW_DAYS - 0.5) seriesFull++;
       const pending = !(getSeries.get(v, u.symbol) || {}).backfilled;
       let { z, z_note } = zScore(current8h, st);
-      // "only 0 settled rates" would read as a fact about the venue when it is
+      // "only 0 settled rates" would read as a fact about the perp when it is
       // a fact about our collector: this series has not been fetched yet.
-      if (pending && z == null) z_note = 'history for this venue has not been collected yet (new to the radar); it fills within the hour';
+      if (pending && z == null) z_note = 'history for this perp has not been collected yet (new to the radar); it fills within a few hours';
       venues[v] = {
         funding_rate_8h: round(finite(current8h), 8),
         funding_rate_raw: c.raw,
         funding_interval_hours: c.ih,
-        ...(c.next ? { next_funding_time: c.next } : {}),
         z_30d: round(z, 2),
         ...(z_note ? { z_note } : {}),
         mean_8h_30d: round(st.mean_8h, 8),
@@ -352,35 +313,39 @@ async function collect({ now = Date.now(), client = null, log = () => {} } = {})
         window_days: st.window_days,
       };
     }
-    rows.push(radarRow(u.symbol, venues, u.oi));
+    rows.push({ ...radarRow(u.symbol, venues, u.oi), coin: coinOf(u.symbol), dex: null });
   }
-  rows.sort(byExtremity);
   // Stock, index, commodity and FX perps (HIP-3) ride the same run, budget and
   // snapshot; a failure there never costs the crypto radar its snapshot.
   let tradfi = null, tradfiSummary = null;
   try {
-    // its own call budget, the crypto client's pacers: the crypto radar's hourly
+    // its own call budget, the crypto client's pacer: the crypto radar's hourly
     // Hyperliquid updates can no longer starve the HIP-3 markets of calls
-    const tradfiClient = venueClient({ budget: { bybit: 0, hyperliquid: 32 }, sharedPace: client.pace, deadline: t0 + 235_000 });
+    const tradfiClient = venueClient({ budget: { hyperliquid: 32 }, sharedPace: client.pace, deadline: t0 + 235_000 });
     const t = await require('./tradfi').collectTradfi({ client: tradfiClient, db, now, log, fr: module.exports });
     tradfi = t.section; tradfiSummary = t.summary;
   } catch (e) { log(`tradfi: ${e.message}`); }
+  const hip3 = tradfi ? [...tradfi.markets.filter((m) => m.venue === 'hyperliquid'), ...(tradfi.untracked || [])].map(hip3Row) : [];
+  const all = rows.concat(hip3);
+  all.sort(byExtremity);
+  const byDex = { main: rows.length };
+  for (const r of hip3) byDex[r.dex] = (byDex[r.dex] || 0) + 1;
   const snapshot = {
-    version: 1,
+    version: SNAPSHOT_VERSION,
     as_of: new Date(now).toISOString(),
     as_of_ms: now,
     universe_floor_oi_usd: UNIVERSE_MIN_OI_USD,
-    min_venues: MIN_VENUES,
     window_target_days: WINDOW_DAYS,
     coverage: { series_total: seriesTotal, series_with_history: seriesWithHistory, series_full_window: seriesFull },
-    symbols: rows,
+    perps: { total: all.length, by_dex: byDex },
+    symbols: all,
     ...(tradfi ? { tradfi } : {}),
   };
   const tmp = SNAP_PATH() + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(snapshot));
   fs.renameSync(tmp, SNAP_PATH());
   db.close();
-  return { universe: universe.length, due: due.length, fetched, failed, skipped, calls: { ...client.used }, coverage: snapshot.coverage, tradfi: tradfiSummary, ms: Date.now() - t0 };
+  return { universe: universe.length, hip3: hip3.length, due: due.length, fetched, failed, skipped, calls: { ...client.used }, coverage: snapshot.coverage, tradfi: tradfiSummary, ms: Date.now() - t0 };
 }
 
 // ---- the paid route ------------------------------------------------------------
@@ -391,8 +356,10 @@ function readSnapshot() {
   let st;
   try { st = fs.statSync(p); } catch { return null; }
   if (st.mtimeMs !== snapCache.mtimeMs) snapCache = { mtimeMs: st.mtimeMs, data: JSON.parse(fs.readFileSync(p, 'utf8')) };
-  return snapCache.data;
+  // a file in the old two-venue format is not served: it is "not built yet" until the collector rewrites it
+  return snapCache.data && snapCache.data.version === SNAPSHOT_VERSION ? snapCache.data : null;
 }
+function unavailable(msg) { const e = new Error(msg); e.status = 503; return e; }
 
 function clampInt(v, lo, hi, d) {
   const x = parseInt(v, 10);
@@ -401,7 +368,7 @@ function clampInt(v, lo, hi, d) {
 
 function getFundingRadar(p = {}, { now = Date.now() } = {}) {
   const snap = readSnapshot();
-  if (!snap) throw new Error('funding radar cache has not been built yet; the collector writes it every 5 minutes');
+  if (!snap) throw unavailable('funding radar cache has not been built yet; the collector writes it every 5 minutes. Not charged.');
   const top = clampInt(p.top ?? p.limit, 1, 100, DEFAULT_TOP);
   const asked = p.min_oi_usd == null || p.min_oi_usd === '' ? DEFAULT_MIN_OI_USD : Number(p.min_oi_usd);
   if (!Number.isFinite(asked) || asked < 0) {
@@ -409,26 +376,24 @@ function getFundingRadar(p = {}, { now = Date.now() } = {}) {
     e.kind = 'bad_request';
     throw e;
   }
-  const minOi = Math.max(asked, snap.universe_floor_oi_usd);
-  const matched = snap.symbols.filter((r) => r.oi_usd.total >= minOi);
+  const matched = snap.symbols.filter((r) => (r.oi_usd || 0) >= asked);
   const age = Math.max(0, Math.round((now - snap.as_of_ms) / 1000));
-  const stale = age > STALE_AFTER_S;
+  // a snapshot past the staleness bound is not a reading of "now": 503, never billed (R7 R4; it used to be a stale flag inside a 200)
+  if (age > STALE_AFTER_S) throw unavailable(`funding radar snapshot is ${age}s old (limit ${STALE_AFTER_S}s); the collector has stopped or is late. Not charged.`);
   return {
     as_of: snap.as_of,
     age_s: age,
-    stale,
-    ...(stale ? { stale_note: `the precomputed radar is ${age}s old (fresh means under ${STALE_AFTER_S}s); the readings are as of as_of, not now` } : {}),
     venues: VENUES,
     window_target_days: snap.window_target_days,
     z_flag_abs: Z_FLAG,
-    min_oi_usd: minOi,
-    ...(asked < snap.universe_floor_oi_usd ? { min_oi_note: `the radar tracks symbols with at least $${snap.universe_floor_oi_usd.toLocaleString('en-US')} combined open interest on at least ${snap.min_venues} venues; lower values return that floor` } : {}),
+    min_oi_usd: asked,
+    universe: snap.perps,
     universe_size: snap.symbols.length,
     matched: matched.length,
     returned: Math.min(top, matched.length),
     coverage: snap.coverage,
     symbols: matched.slice(0, top),
-    method: 'funding_rate_8h is each venue\'s current rate at its own interval scaled to 8h. z_30d compares it with that venue\'s settled 8h-equivalent rates for the symbol over the last 30 days (samples and window_days are what was actually used; under 10 settlements there is no z). spread_8h is the widest gap between venues. Sorted by the largest |z| on any venue. Venue absent = not listed there.',
+    method: 'funding_rate_8h is the perp\'s current rate at its own interval scaled to 8h (Hyperliquid settles hourly). z_30d compares it with that perp\'s settled 8h-equivalent rates over the last 30 days (samples and window_days are what was actually used; under 10 settled rates gives no z-score, with the reason in z_note). Rows are every Hyperliquid perp on the main dex plus the HIP-3 dexes (dex, asset_class), most extreme |z| first; flag is true when |z| is 2 or more. A perp new to the radar has no z-score until its history is collected.',
   };
 }
 
@@ -443,7 +408,7 @@ function getRadarRow(symbol, { now = Date.now() } = {}) {
 
 module.exports = {
   collect, getFundingRadar, getRadarRow,
-  _to8hSeries: to8hSeries, _windowStats: windowStats, _zScore: zScore, _radarRow: radarRow, _byExtremity: byExtremity,
+  _to8hSeries: to8hSeries, _windowStats: windowStats, _zScore: zScore, _radarRow: radarRow, _byExtremity: byExtremity, _hip3Row: hip3Row,
   _venueClient: venueClient, _readCurrent: readCurrent, _fetchHistory: fetchHistory,
-  STALE_AFTER_S, UNIVERSE_MIN_OI_USD, DEFAULT_MIN_OI_USD, DEFAULT_TOP,
+  STALE_AFTER_S, UNIVERSE_MIN_OI_USD, DEFAULT_MIN_OI_USD, DEFAULT_TOP, SNAPSHOT_VERSION,
 };

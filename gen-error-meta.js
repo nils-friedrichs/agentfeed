@@ -45,7 +45,7 @@ const m402v1 = must('lib/x402v1.js', /x402Version: 1,\s*error: pr\.error \|\| 'P
 const m405json = must('lib/compat.js', /res\.set\('Allow', 'GET'\)\.status\(405\)\.json\(\{ error: `\$\{req\.method\} is not supported on \$\{req\.path\}: paid routes are GET/, '405 JSON emitter (non-GET on a paid route)');
 const m410 = must('lib/compat.js', /res\.status\(410\)\.json\(\{\s*error: 'gone',/, '410 emitter');
 const m410w = must('lib/compat.js', /res\.status\(410\)\.json\(\{ error: 'gone', status: 'withdrawn',/, '410 emitter (withdrawn routes)');
-const m503 = must('lib/tool.js', /res\.status\(503\)\.json\(\{\s*tool:\s*name,\s*error:\s*e\.message,\s*retry_after:\s*60\s*\}\)/, '503 emitter');
+const m503 = must('lib/tool.js', /res\.status\(503\)\.json\(\{\s*tool:\s*name,\s*error:\s*e\.message,\s*retry_after:\s*ra,\s*\.\.\.\(e\.warming \? \{ warming: e\.warming \} : \{\}\)\s*\}\)/, '503 emitter');
 const mLimit = must('server.js', /const LIMIT = (\d+);/, 'GET rate limit');
 const mOther = must('server.js', /const OTHER_LIMIT = (\d+);/, 'other-method rate limit');
 const mWindow = must('server.js', /const WINDOW_MS = ([\d_]+);/, 'rate limit window');
@@ -69,7 +69,7 @@ const SHARED = [
   {
     status: 400,
     name: 'Bad Request',
-    when: 'The handler threw: a missing or malformed caller parameter, an unsupported symbol, or an upstream data source failed. Never charged: a status of 400 or more cancels the x402 settlement.',
+    when: 'The handler threw: a missing or malformed caller parameter, or a symbol the route does not serve. Never charged: a status of 400 or more cancels the x402 settlement.',
     body: { tool: '<tool name>', error: '<human-readable reason>', supported: ['<only when the symbol is unsupported: the symbols this route serves>'] },
   },
   {
@@ -82,9 +82,9 @@ const SHARED = [
   {
     status: 503,
     name: 'Service Unavailable',
-    when: 'The route answers from a precomputed snapshot and that snapshot is past its staleness limit, or no source has data to answer with. Never charged: a status of 400 or more cancels the x402 settlement.',
-    body: { tool: '<tool name>', error: '<reason, including the snapshot age>', retry_after: 60 },
-    note: 'Retry-After is also set as a response header.',
+    when: 'Our source failed or is stale: Hyperliquid could not be asked, a precomputed snapshot or our liquidation tape is past its staleness limit, or a history we record is not deep enough yet (open-interest spikes and the squeeze score need 24 hours of it). Never charged: a status of 400 or more cancels the x402 settlement.',
+    body: { tool: '<tool name>', error: '<reason, including the snapshot age>', retry_after: 60, warming: '<only while a history is still building: warm_at, needs_hours>' },
+    note: 'Retry-After is also set as a response header: 60 seconds by default, and for a history that is still building the time until it is ready, up to one hour.',
   },
   {
     status: 405,
@@ -95,8 +95,8 @@ const SHARED = [
   {
     status: 410,
     name: 'Gone',
-    when: 'The route was retired. Routes withdrawn on 2026-10-12 because an upstream does not allow reselling its data answer the body below, with a pointer to /pricing; /api/sharp-move (retired Aug 19) names the closest live routes and their prices instead. Never charged.',
-    body: { error: 'gone', status: 'withdrawn', route: '/api/<withdrawn route>', withdrawn: '2026-10-12', pricing: 'https://x402.ochinimus.app/pricing' },
+    when: 'The route was retired. Routes withdrawn on 2026-10-12 and 2026-10-13 because an upstream does not allow reselling its data (or, for two cross-venue products, because one clean venue is left) answer the body below, with a pointer to /pricing and, from 2026-10-13, the live routes that come closest; /api/sharp-move (retired Aug 19) names the closest live routes and their prices instead. Never charged.',
+    body: { error: 'gone', status: 'withdrawn', route: '/api/<withdrawn route>', withdrawn: '2026-10-13', closest_live: ['/api/<live route>'], pricing: 'https://x402.ochinimus.app/pricing' },
   },
 ];
 

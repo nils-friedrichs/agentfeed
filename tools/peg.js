@@ -124,7 +124,8 @@ function getPegDeviation(args = {}) {
   }
 
   const rows = tape(symbol, since, 'dev_bps, session, ts');
-  if (!rows.length) return { symbol, status: 'no_data', window_hours: hours };
+  // no sample in the window for a symbol we track is our collector's gap, not an answer: 503, never billed (R7 R4)
+  if (!rows.length) throw unavailable(`no peg samples for ${symbol} in the last ${hours} hours (our collector writes every 5 minutes). Not charged.`);
 
   // the latest token price is only ever our own chain read; none fresh is an outage, not billed
   const latest = OC.latest(symbol);
@@ -174,7 +175,7 @@ function getPegSessions(args = {}) {
   }
 
   const rows = tape(symbol, since, 'session, dev_bps, liq_usd');
-  if (!rows.length) return { symbol, status: 'no_data', window_days: days };
+  if (!rows.length) throw unavailable(`no peg samples for ${symbol} in the last ${days} days (our collector writes every 5 minutes). Not charged.`);
 
   const order = ['open', 'premarket', 'afterhours', 'overnight', 'weekend'];
   const sessions = {};

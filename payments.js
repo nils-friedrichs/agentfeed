@@ -24,7 +24,7 @@ const { ExactAvmScheme } = require('@x402/avm/exact/server');
 const PRICES = {
   'GET /api/sol-price':                { usd: 0.001, tool: 'get_sol_price',       desc: 'SOL price / Solana spot price in USD, live, read on-chain: the median of the two deepest SOL/USDC pools on Solana (Orca Whirlpool, Raydium CLMM), computed from chain state. Returns the price, the read time and the pools that answered.' },
   'GET /api/btc-price':                { usd: 0.001, tool: 'get_btc_price',       desc: 'BTC price / Bitcoin spot price in USD, live, read on-chain: the median of three Uniswap V3 reads on Base and Ethereum (cbBTC/USDC, and cbBTC and WBTC through WETH/USDC), computed from chain state. Returns the price, the read time and the pools that answered.' },
-  'GET /api/funding-rate':             { usd: 0.005, tool: 'get_funding_rate',    desc: 'Funding rate for any USDT perp on Bybit and Hyperliquid: per venue the raw rate, its interval in hours, the 8h equivalent, the annualised rate, next funding time and mark price. Without a symbol: funding rates for the SOL and BTC perps on Hyperliquid, with open interest. Cross-venue spread and crowding: /api/funding-cross.' },
+  'GET /api/funding-rate':             { usd: 0.005, tool: 'get_funding_rate',    desc: 'Funding rate for any Hyperliquid perp: the raw rate, its interval in hours, the 8h equivalent, the annualised rate, next funding time and mark price. Without a symbol: funding rates for the SOL and BTC perps on Hyperliquid, with open interest. The whole table with 30-day z-scores: /api/funding-radar.' },
   'GET /api/market-snapshot':          { usd: 0.005, tool: 'get_market_snapshot', desc: 'Crypto market snapshot in one call: SOL and BTC spot prices read on-chain from DEX pools, both Hyperliquid perp funding rates with mark price and open interest, and the Fear & Greed index with its classification. Five reads, one payment.' },
   'GET /api/wallet-holdings/:wallet':  { usd: 0.008, tool: 'get_wallet_holdings', desc: 'Solana wallet holdings for any address: native SOL with its USD value at AgentFeed\'s own on-chain SOL price, every SPL token with mint, symbol and amount (no token prices), and an NFT count. Balances and on-chain metadata via Helius DAS getAssetsByOwner, up to 100 assets.' },
   'GET /api/token-metadata/:mint':     { usd: 0.005, tool: 'get_token_metadata',  desc: 'SPL token metadata for any Solana mint: name, symbol, URI, decimals, total supply, mint and freeze authority, token program, and whether the metadata is still mutable. Read from the mint account and its metadata account.' },
@@ -33,8 +33,8 @@ const PRICES = {
   'GET /api/cascade-scan':             { usd: 0.05,  tool: 'get_cascade_scan',       desc: 'Liquidation cascade scan across EVERY USDT perp we record on Bybit, OKX and Binance at once, not just the majors: symbol, side liquidated, USD total, prints, duration, severity. Bybit is the only complete unthrottled liquidation tape in crypto.' },
   'GET /api/liquidation-leaders':      { usd: 0.02,  tool: 'get_liquidation_leaders', desc: 'Liquidation leaderboard: top symbols by liquidation USD right now across every USDT perp we record on Bybit, OKX and Binance, with long/short split, biggest single print and venue count. What is blowing up, ranked.' },
   'GET /api/liquidation-stats':        { usd: 0.01,  tool: 'get_liquidation_stats',   desc: 'Liquidation stats, 1h and 24h totals for SOL, BTC, ETH, XRP and DOGE: long vs short USD split, biggest single print, and a per-exchange breakdown across Bybit, OKX and Binance.' },
-  'GET /api/positioning':              { usd: 0.005, tool: 'get_positioning',        desc: 'Open interest and long/short ratio for SOL and BTC perps: the retail long/short account ratio plus Bybit open interest with 1h and 24h change, and Hyperliquid open interest. For any other USDT perp use /api/open-interest and /api/long-short.' },
-  'GET /api/trade-context':            { usd: 0.01,  tool: 'get_trade_context',      desc: 'Crypto trading context in one call: SOL and BTC prices read on-chain from DEX pools, perp funding rates, Fear & Greed, long/short positioning, open interest and 1h/24h liquidation stats. The whole pre-trade picture, one payment.' },
+  'GET /api/positioning':              { usd: 0.005, tool: 'get_positioning',        desc: 'Positioning for SOL and BTC perps on Hyperliquid: open interest with its 1h and 24h change, and the net-long share of the top 250 Hyperliquid accounts. For any other Hyperliquid perp use /api/open-interest.' },
+  'GET /api/trade-context':            { usd: 0.01,  tool: 'get_trade_context',      desc: 'Crypto trading context in one call: SOL and BTC prices read on-chain from DEX pools, perp funding rates, Fear & Greed, positioning (open interest and the top Hyperliquid accounts\' net-long share) and 1h/24h liquidation stats. The whole pre-trade picture, one payment.' },
   'GET /api/token-risk/:mint':         { usd: 0.01,  tool: 'get_token_risk',         desc: 'Solana token rug check / risk signals for any SPL mint: mint and freeze authority status (revoked is safer), top-1 and top-10 holder concentration, supply, and a list of risk flags. Not a honeypot or LP-lock checker.' },
 };
 
@@ -170,7 +170,7 @@ function challengeDesc(desc) {
 const TAGS = {
   get_sol_price:            ['crypto','price','solana','spot'],
   get_btc_price:            ['crypto','price','bitcoin','spot'],
-  get_funding_rate:         ['funding','perps','crypto','trading'],
+  get_funding_rate:         ['funding','perps','hyperliquid','crypto','trading'],
   get_market_snapshot:      ['market-data','crypto','trading','snapshot'],
   get_wallet_holdings:      ['solana','wallet','tokens','onchain'],
   get_token_metadata:       ['solana','tokens','metadata','onchain'],
@@ -179,7 +179,7 @@ const TAGS = {
   get_cascade_scan:         ['liquidations','cascade','alerts','trading','realtime','perps','bybit','okx','binance','sharp-money'],
   get_liquidation_leaders:  ['liquidations','trading','crypto','perps','leaderboard','realtime'],
   get_liquidation_stats:    ['liquidations','crypto','trading','stats'],
-  get_positioning:          ['positioning','open-interest','long-short','crypto'],
+  get_positioning:          ['positioning','open-interest','whales','hyperliquid','crypto'],
   get_trade_context:        ['market-data','trading','liquidations','positioning','crypto'],
   get_token_risk:           ['solana','tokens','risk','rug-check','security'],
 };

@@ -1,64 +1,34 @@
-// Positioning data: long/short account ratio + open interest (Bybit v5 public REST)
-const BASE = 'https://api.bybit.com';
-const SYMBOLS = { SOL: 'SOLUSDT', BTC: 'BTCUSDT' };
+// Positioning for SOL and BTC perps, on Hyperliquid alone (R7, 13 Oct 2026):
+//   open interest   Hyperliquid's current value, with its 1h and 24h change from our own sampler (lib/hl-oi.js)
+//   crowding        the top-250 Hyperliquid accounts' net-long share (tools/hlwhales.js)
+// A retail long/short account ratio and a second venue's open interest were served here until R6/R7; that venue's
+// API terms forbid resale (docs/SOURCES.md) and no clean venue publishes a retail account ratio, so that field is gone.
+// A failed read is a 503 with Retry-After and is never billed.
+'use strict';
+const D = require('./derivs');
+const HW = require('./hlwhales');
 
-async function bybit(path) {
-  const res = await fetch(BASE + path);
-  if (!res.ok) throw new Error(`bybit ${res.status}`);
-  const j = await res.json();
-  if (j.retCode !== 0) {
-    const e = new Error(`bybit: ${j.retMsg}`);
-    // retCode 10001 = Bybit rejected the PARAMETERS on an HTTP 200, i.e. the
-    // caller named something Bybit does not list -> 400, not 502. Every other
-    // retCode and every transport failure stays 502. Full rationale in
-    // tools/derivs.js, which carries the measured retMsg variants.
-    // getPositioning() takes no caller symbol today (it is pinned to SOL and
-    // BTC), so this cannot fire from user input yet; it is tagged so the three
-    // Bybit helpers classify identically if it ever does.
-    if (j.retCode === 10001) e.upstreamParamError = true;
-    throw e;
-  }
-  return j.result;
-}
+const PAIRS = { sol: { sym: 'SOLUSDT', coin: 'SOL' }, btc: { sym: 'BTCUSDT', coin: 'BTC' } };
 
-function pct(now, then) {
-  if (!then) return null;
-  return Math.round(((now - then) / then) * 10000) / 100;
-}
-
-async function onePair(sym) {
-  const [ratio, oi, tick] = await Promise.all([
-    bybit(`/v5/market/account-ratio?category=linear&symbol=${sym}&period=1h&limit=2`),
-    bybit(`/v5/market/open-interest?category=linear&symbol=${sym}&intervalTime=1h&limit=25`),
-    bybit(`/v5/market/tickers?category=linear&symbol=${sym}`),
-  ]);
-
-  const r0 = ratio.list[0], r1 = ratio.list[1];
-  const o = oi.list.map(x => parseFloat(x.openInterest));
-  const t = tick.list[0];
-
+async function onePair({ sym, coin }) {
+  const [oi, w] = await Promise.all([D.getOpenInterest({ symbol: sym }), HW.whaleShare(coin)]);
   return {
-    long_short_ratio: {
-      long_pct: Math.round(parseFloat(r0.buyRatio) * 10000) / 100,
-      short_pct: Math.round(parseFloat(r0.sellRatio) * 10000) / 100,
-      long_pct_prev_hour: r1 ? Math.round(parseFloat(r1.buyRatio) * 10000) / 100 : null,
-      ts: parseInt(r0.timestamp),
-    },
-    open_interest: {
-      base: o[0],
-      usd: Math.round(parseFloat(t.openInterestValue)),
-      change_1h_pct: pct(o[0], o[1]),
-      change_24h_pct: pct(o[0], o[24]),
+    open_interest: { base: oi.oi_base, usd: oi.oi_usd, change_1h_pct: oi.change_1h_pct, change_24h_pct: oi.change_24h_pct, mark_price: oi.mark_price },
+    whale_positioning: {
+      net_long_share_pct: w.net_long_share_pct, long_usd: w.long_usd, short_usd: w.short_usd, long_accounts: w.long_accounts, short_accounts: w.short_accounts,
+      covers: `the top ${w.whale_list_size} Hyperliquid accounts by account value (${w.accounts_with_positions} of them hold perp positions); whale crowding, not the whole market's`,
+      as_of: w.as_of,
     },
   };
 }
 
-// R5 C6: Hyperliquid open interest beside Bybit's (Hyperliquid publishes no long/short account ratio)
-const HLP = require('./hlperp');
 async function getPositioning() {
-  const [sol, btc, hs, hb] = await Promise.all([onePair(SYMBOLS.SOL), onePair(SYMBOLS.BTC),
-    HLP.block(SYMBOLS.SOL, async (c, x) => ({ oi_base: x.oi_base, oi_usd: x.oi_usd })), HLP.block(SYMBOLS.BTC, async (c, x) => ({ oi_base: x.oi_base, oi_usd: x.oi_usd }))]);
-  return { source: 'bybit_v5_public', period: '1h', sol: { ...sol, hyperliquid_open_interest: hs }, btc: { ...btc, hyperliquid_open_interest: hb } };
+  const [sol, btc] = await Promise.all([onePair(PAIRS.sol), onePair(PAIRS.btc)]);
+  return {
+    source: 'Hyperliquid info API (open interest, our 5-minute sampler for its changes) and the top-250 Hyperliquid accounts (net-long share)',
+    ...(sol.open_interest.change_24h_pct == null || btc.open_interest.change_24h_pct == null ? { history_note: D.HISTORY_NOTE } : {}),
+    sol, btc,
+  };
 }
 
 module.exports = { getPositioning };

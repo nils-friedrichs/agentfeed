@@ -42,6 +42,11 @@ function detectCascades(database, { windowSec = 90, minEvents = 4, minUsd = 5000
   }));
 }
 function getCascadeAlert(req) {
+  // R7 R4: "no cascade running" from a dead recording is not an answer. A tape older than 30 minutes (the bound
+  // tools/liquidations.js and entry.js use) is a 503 with Retry-After and is never billed.
+  const newest = (getDb().prepare('SELECT MAX(ts) AS t FROM liquidations').get() || {}).t;
+  const age = newest ? Math.round((Date.now() - newest) / 1000) : null;
+  if (age == null || age > 30 * 60) throw Object.assign(new Error(age == null ? 'the liquidation tape is empty. Not charged.' : `the liquidation tape is ${age}s old, past the 1800s freshness bound. Not charged.`), { status: 503 });
   const q = (req && req.query) || {};
   const all = isAll(q);
   const params = {

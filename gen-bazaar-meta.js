@@ -11,6 +11,10 @@
 //   or:   node --env-file=.env gen-bazaar-meta.js --recapture=get_a,get_b
 //         a fresh output example for the named tools only; every other byte of
 //         the file is kept, for the same reason.
+//   or:   node gen-bazaar-meta.js --prune
+//         remove the stored entries of routes that are no longer in the route table (a withdrawn route).
+//   or:   node gen-bazaar-meta.js --drop-output=get_a,get_b
+//         remove the stored output example of the named tools (a route that cannot capture a real answer yet).
 //
 // Nothing here is hand-written per route. Three existing tables are the source:
 //
@@ -36,8 +40,10 @@ const { z } = require('zod');
 
 const OUT_FILE = path.join(__dirname, 'bazaar-examples.json');
 // A tool whose real answer cannot be captured inside one short-lived process
-// leaves its response here instead; see warm-oi-example.js. The file is a real
-// captured response, written by a real call, not a hand-written fixture.
+// leaves its response here instead. The file is a real captured response, written
+// by a real call, not a hand-written fixture. (R7: oi-spike-scan's own warm-up moved
+// into the sampler's record, so it no longer needs a capture file; until that record
+// is 24 hours deep the route answers 503 and has no example: --drop-output.)
 const CAPTURE_DIR = path.join(__dirname, 'captures');
 
 // TARGET bytes of JSON for one output example. The declaration rides in the
@@ -94,11 +100,6 @@ const EXTRA_ARGS = {
   // documented maximum and surfaces the live cascade shape rather than an empty array
   get_cascade_alert: { window: 300 },
   get_cascade_scan: { window: 300 },
-  // the default 100k threshold matched nothing on the live tape at capture time,
-  // so the example published an empty trades array and taught a caller nothing
-  // about the shape of a print. 50k is inside the documented range and returns
-  // real prints.
-  get_whale_trades: { min_usd: 50000 },
   // the default 24 h window can hold no 8-K at all (a US holiday, a weekend); 72 h is the
   // documented maximum and always returns real filings
   get_sec_8k: { hours: 72 },
@@ -162,9 +163,9 @@ function trim(v, p, depth = 0) {
   // Breadth is reduced instead, and hollowPaths() below fails the route loudly
   // if anything still comes out empty.
   // A short list of plain values -- the venues a route reads, the exchanges a
-  // tape covers -- is kept whole. Cutting it to p.arr published
-  // "venues":["bybit"] for a three-venue radar and "exchanges":["bybit"] for a
-  // three-exchange tape: a few bytes saved for a false statement about coverage.
+  // tape covers -- is kept whole. Cutting it to p.arr published one venue for a
+  // three-venue radar and one exchange for a three-exchange tape: a few bytes
+  // saved for a false statement about coverage.
   if (Array.isArray(v) && v.length <= SCALAR_LIST_MAX && v.every((x) => x === null || typeof x !== 'object')) {
     return v.map((x) => trim(x, p, depth + 1));
   }
@@ -484,7 +485,40 @@ async function recapture(tools) {
   console.log(`recapture: ${next.length} route outputs replaced, the other ${Object.keys(prev.routes).length - next.length} untouched`);
 }
 
+/**
+ * --drop-output=get_a,get_b: remove the stored output example of the named tools and nothing else. For a route that
+ * cannot capture a real answer yet (R7: oi-spike-scan and squeeze-score answer 503 until the sampler is 24 hours deep):
+ * an old example of a different shape must not stay in its 402 challenge. Recapture it with --recapture when it can.
+ */
+function dropOutput(tools) {
+  const prev = JSON.parse(fs.readFileSync(OUT_FILE, 'utf8'));
+  let n = 0;
+  for (const [pattern, e] of Object.entries(prev.routes)) {
+    if (!tools.includes(e.tool)) continue;
+    if (e.output) { delete e.output; delete e.redacted; n++; console.log(`  dropped output: ${pattern}`); }
+  }
+  const missing = tools.filter((t) => !Object.values(prev.routes).some((e) => e.tool === t));
+  if (missing.length) { console.error(`FATAL: no stored route for ${missing.join(', ')}`); process.exit(1); }
+  prev._outputs_dropped_at = new Date().toISOString();
+  fs.writeFileSync(OUT_FILE, JSON.stringify(prev, null, 1) + '\n');
+  console.log(`drop-output: ${n} stored examples removed`);
+}
+
+/** --prune: remove stored entries of routes that are no longer in the route table (a withdrawn route) */
+function prune() {
+  const live = new Set(buildRoutes().map((r) => r.pattern));
+  const prev = JSON.parse(fs.readFileSync(OUT_FILE, 'utf8'));
+  let n = 0;
+  for (const pattern of Object.keys(prev.routes)) if (!live.has(pattern)) { delete prev.routes[pattern]; n++; console.log(`  pruned: ${pattern}`); }
+  prev._pruned_at = new Date().toISOString();
+  fs.writeFileSync(OUT_FILE, JSON.stringify(prev, null, 1) + '\n');
+  console.log(`prune: ${n} entries removed, ${Object.keys(prev.routes).length} left`);
+}
+
 async function main() {
+  if (process.argv.includes('--prune')) return prune();
+  const drop = process.argv.find((a) => a.startsWith('--drop-output='));
+  if (drop) return dropOutput(drop.slice('--drop-output='.length).split(',').filter(Boolean));
   if (process.argv.includes('--schemas-only')) return schemasOnly();
   if (process.argv.includes('--redact-only')) return redactOnly();
   const only = process.argv.find((a) => a.startsWith('--recapture='));

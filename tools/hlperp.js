@@ -1,11 +1,14 @@
-// tools/hlperp.js — Hyperliquid perp reads that give CEX-only products a second venue (R5 C6).
+// tools/hlperp.js — Hyperliquid perp reads, the venue every perp route stands on (R5 C6; since R7 the only one).
 //
 // Hyperliquid's info API is public chain state and its terms carry no data or redistribution
-// restriction (docs/SOURCES.md, clean). Every product that read only Bybit (and OKX) now adds a
-// `hyperliquid` block built from these reads. A failure here never fails the route: the block
-// says it is unavailable and the Bybit part is served as before.
+// restriction (docs/SOURCES.md, clean). The centralised exchanges were read beside it until R6/R7; their
+// terms forbid resale, so every perp route now answers from Hyperliquid alone.
 //
-// Symbols: a Bybit USDT perp SOLUSDT is Hyperliquid coin SOL; a multiplied perp 1000PEPEUSDT is
+// Two ways in. block() never throws (a note inside a 200): only for a part of a larger answer.
+// only() is for a route whose whole answer IS the Hyperliquid read: a symbol it does not list is a
+// 400 and a failed read is a 503 with Retry-After, so neither is ever billed (R4 / R7).
+//
+// Symbols: a USDT-style perp name SOLUSDT is Hyperliquid coin SOL; a multiplied perp 1000PEPEUSDT is
 // kPEPE (Hyperliquid lists 1000x bundles with a k prefix: kPEPE, kSHIB, kBONK ... read from its
 // universe on 12 Oct 2026). A coin Hyperliquid does not list gets { listed: false }.
 'use strict';
@@ -45,8 +48,32 @@ async function coinFor(sym) {
 }
 
 const SRC = 'Hyperliquid info API (public chain state)';
+const { CORE } = require('../universe');
+const badSymbol = (sym) => Object.assign(new Error(`unsupported symbol "${String(sym).slice(0, 40)}": Hyperliquid lists no perp for it. Any Hyperliquid perp works, e.g. ${CORE.join(', ')}; a 1000x bundle is named 1000PEPEUSDT.`), { kind: 'bad_request' });
+const sourceDown = (e) => Object.assign(new Error(`Hyperliquid read failed (${String(e && e.message || e).slice(0, 120)}). Not charged.`), { status: 503 });
 const NOT_LISTED = (sym) => ({ listed: false, reason: `Hyperliquid lists no perp for ${sym}`, source: SRC });
 const unavailable = (e) => ({ available: false, reason: `Hyperliquid read failed: ${String(e && e.message || e).slice(0, 120)}`, source: SRC });
+
+/** strict: { coin, ctx } for a USDT-style symbol. Throws 400 (Hyperliquid lists no such perp) or 503 (it could not be asked). */
+async function resolve(sym) {
+  let ctx;
+  try { ctx = await contexts(); } catch (e) { throw sourceDown(e); }
+  const base = String(sym).replace(/USDT$/, '');
+  let coin = ctx.has(base) ? base : null;
+  const m = /^10{3,}([A-Z0-9]+)$/.exec(base);
+  if (!coin && m && ctx.has('k' + m[1])) coin = 'k' + m[1];
+  if (!coin) throw badSymbol(sym);
+  return { coin, ctx: ctx.get(coin) };
+}
+
+/** strict block(): fn(coin, ctx) IS the answer, so its failure is a 503, never a note inside a 200 */
+async function only(sym, fn) {
+  const { coin, ctx } = await resolve(sym);
+  try { return { coin, ...(await fn(coin, ctx)), source: SRC }; } catch (e) {
+    if (e && (e.kind === 'bad_request' || e.status === 503)) throw e;
+    throw sourceDown(e);
+  }
+}
 
 /** run fn(coin, ctx) for a USDT perp symbol; never throws */
 async function block(sym, fn) {
@@ -77,4 +104,4 @@ async function universe({ minVolumeUsd = 0 } = {}) {
   }));
 }
 
-module.exports = { contexts, coinFor, block, l2Book, candles, fundingHistory, universe, SRC };
+module.exports = { contexts, coinFor, block, resolve, only, l2Book, candles, fundingHistory, universe, sourceDown, badSymbol, SRC };

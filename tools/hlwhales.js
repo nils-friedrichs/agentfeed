@@ -168,6 +168,24 @@ function clusters(ps, mark) {
   return out;
 }
 
+/**
+ * One coin's crowding read from the same snapshot /api/hl-whales serves: the share of the top accounts' gross
+ * notional that is long. Covers the TOP_N (250) largest accounts by account value, which hold open perp positions
+ * only for a part of them: it is whale crowding, not the whole market's. Used by squeeze-score and positioning.
+ * -> null net_long_share_pct when no scanned account holds the coin. Throws 503 when the snapshot is unavailable.
+ */
+async function whaleShare(coin, { fetchImpl = fetch } = {}) {
+  const s = await current(fetchImpl);
+  const ps = s.positions.filter((x) => x.coin === coin);
+  const L = side(ps, 'long'); const S = side(ps, 'short');
+  const gross = (L.notional_usd || 0) + (S.notional_usd || 0);
+  return {
+    coin, as_of: new Date(s.at).toISOString(), whale_list_size: TOP_N, accounts_scanned: s.scanned, accounts_with_positions: s.withPositions,
+    long_usd: L.notional_usd, short_usd: S.notional_usd, long_accounts: L.accounts, short_accounts: S.accounts,
+    net_long_share_pct: gross > 0 ? r2((L.notional_usd / gross) * 100) : null,
+  };
+}
+
 async function getHlWhales(p = {}, { fetchImpl = fetch } = {}) {
   const coinArg = p.coin == null || p.coin === '' ? null : String(p.coin).trim().toUpperCase().replace(/(USDT|-PERP|PERP)$/, '');
   if (coinArg && !/^[A-Z0-9:]{1,20}$/.test(coinArg)) throw bad('coin must be a Hyperliquid perp name such as BTC, ETH, SOL or HYPE');
@@ -207,4 +225,4 @@ async function refreshToFile(fetchImpl = fetch) {
   return s;
 }
 
-module.exports = { getHlWhales, refreshToFile, _readLeaderboard: readLeaderboard, _clusters: clusters, _side: side, _reset: () => { whaleList = null; snap = null; inflight = null; } };
+module.exports = { getHlWhales, whaleShare, TOP_N, refreshToFile, _readLeaderboard: readLeaderboard, _clusters: clusters, _side: side, _reset: () => { whaleList = null; snap = null; inflight = null; } };

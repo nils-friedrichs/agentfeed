@@ -11,9 +11,9 @@
 // calls: one cache entry serves every concurrent caller (lib/cache.js collapses
 // identical in-flight requests into one).
 //
-// DECLINES, NEVER FAKES. A route that cannot serve a request returns HTTP 200
-// with a `decline` field naming the reason and what it can serve instead, the
-// same shape get_squeeze_score uses. It never returns zeros dressed as data.
+// NEVER FAKES, NEVER BILLS A NON-ANSWER. A route whose source failed or is stale answers 503 with
+// Retry-After (R7 R4): the settlement is cancelled, so nothing is charged, and it never returns zeros
+// dressed as data. A decline inside a 200 is kept only where the decline is itself the product (squeeze).
 //
 // R6 D1 (13 Oct 2026): ONE EXCEPTION, THE CALLER'S SYMBOL. A symbol the route does
 // not serve (price: not SOL, BTC or ETH; perp: listed nowhere and never in our tape)
@@ -24,7 +24,9 @@
 const Database = require('better-sqlite3');
 const { cached } = require('../lib/cache');
 const { CORE } = require('../universe');
-const { _normSym: normSym, getFundingCross, getOpenInterest, getLongShort, getFundingExtremes } = require('./derivs');
+const { _normSym: normSym, getOpenInterest, getFundingExtremes } = require('./derivs');
+const HLP = require('./hlperp');
+const { getFundingRate } = require('./funding');
 const { getPrice, SYMBOLS } = require('./prices');
 
 const DB_PATH = process.env.LIQ_DB || '/opt/agentfeed/liquidations.db';
@@ -71,40 +73,42 @@ function liq24h(sym) {
 }
 
 // ---- a. GET /api/perp?symbol= -------------------------------------------
+// Hyperliquid funding and open interest plus our own tape's 24h liquidations. Hyperliquid is the one venue read
+// (the centralised venues forbid resale, docs/SOURCES.md): asked and down is a 503; a symbol it does not list but our tape has
+// recorded is answered from the tape alone, with funding and open interest null and the reason named.
 async function getPerp(p = {}) {
   const sym = normSym(p.symbol || 'SOLUSDT');
   return cached(`entry:perp:${sym}`, TTL, async () => {
-    // Every part is optional except the tape: a venue that refuses is reported
-    // as null with its reason, never silently dropped or zero-filled.
-    const [funding, oi, ls] = await Promise.all([
-      getFundingCross({ symbol: sym }).catch((e) => ({ _error: e.message })),
-      getOpenInterest({ symbol: sym }).catch((e) => ({ _error: e.message })),
-      getLongShort({ symbol: sym }).catch((e) => ({ _error: e.message })),
-    ]);
+    let listed = true;
+    try { await HLP.resolve(sym); } catch (e) {
+      if (e.status === 503) throw e; // the only venue could not be asked: ours to fail, never billed
+      listed = false;
+    }
     const age = tapeAge();
     const liq = liq24h(sym);
-    const missing = [];
-    if (funding._error) missing.push(`funding (${funding._error})`);
-    if (oi._error) missing.push(`open_interest (${oi._error})`);
-    if (ls._error) missing.push(`long_short (${ls._error})`);
-    if (funding._error && oi._error && ls._error && liq.prints === 0) {
-      // No venue served it. A symbol that has never appeared in our tape either is the caller's
-      // mistake (400, unbilled); one we have recorded before is ours to decline (200).
+    if (!listed) {
+      // listed nowhere: a symbol our tape has never recorded either is the caller's mistake (400, unbilled)
       const seen = tape().prepare('SELECT 1 AS hit FROM liquidations WHERE symbol = ? LIMIT 1').get(sym);
-      if (!seen) {
-        throw Object.assign(new Error(`unsupported symbol "${sym}": no venue (Bybit, Hyperliquid) lists it and it has never appeared in our liquidation tape. Any USDT perp listed on Bybit or Hyperliquid works, e.g. ${CORE.join(', ')}.`), { kind: 'bad_request', supported: [...CORE] });
-      }
-      return { symbol: sym, decline: `no venue served ${sym} and our tape has no liquidation for it in 24h`, tried: ['bybit', 'hyperliquid'], tape_age_sec: age.age_sec };
+      if (!seen) throw Object.assign(new Error(`unsupported symbol "${sym}": Hyperliquid lists no perp for it and it has never appeared in our liquidation tape. Any Hyperliquid perp works, e.g. ${CORE.join(', ')}.`), { kind: 'bad_request' });
+    }
+    let funding = null, openInterest = null;
+    const missing = [];
+    if (listed) {
+      const [f, oi] = await Promise.all([getFundingRate({ symbol: sym }), getOpenInterest({ symbol: sym })]);
+      const h = f.venues.hyperliquid;
+      funding = { venues: f.venues, crowding: h.funding_rate_raw > 0 ? 'longs_pay' : h.funding_rate_raw < 0 ? 'shorts_pay' : 'flat' };
+      openInterest = { hyperliquid: { oi_base: oi.oi_base, oi_usd: oi.oi_usd, change_1h_pct: oi.change_1h_pct, change_24h_pct: oi.change_24h_pct }, mark_price: oi.mark_price };
+    } else {
+      missing.push(`funding (Hyperliquid lists no perp for ${sym})`, `open_interest (Hyperliquid lists no perp for ${sym})`);
     }
     return {
       symbol: sym,
-      funding: funding._error ? null : { venues: funding.venues, spread_8h: funding.spread_8h, crowding: funding.crowding },
-      open_interest: oi._error ? null : { bybit: oi.bybit, hyperliquid: oi.hyperliquid, mark_price: oi.mark_price },
-      long_short: ls._error ? null : { long_pct: ls.long_pct, short_pct: ls.short_pct, long_pct_1h_ago: ls.long_pct_1h_ago, long_pct_24h_ago: ls.long_pct_24h_ago, source: ls.source },
+      funding,
+      open_interest: openInterest,
       liquidations_24h: liq,
       tape_age_sec: age.age_sec,
       partial: missing.length ? missing : null,
-      source: 'bybit+hyperliquid venues, liquidations from our own tape',
+      source: 'hyperliquid funding and open interest, liquidations from our own tape',
     };
   });
 }
@@ -116,10 +120,9 @@ async function getLiqPulse() {
     // Prove the tape is live BEFORE answering. A collector that died would
     // otherwise make a quiet hour and a dead feed look identical.
     if (age.newest == null || age.age_sec > STALE_SEC) {
-      return { stale: true, tape_age_sec: age.age_sec, newest_row_ts: age.newest,
-        decline: age.newest == null
-          ? 'the liquidation tape is empty; totals withheld rather than reported as zero'
-          : `the liquidation tape is ${age.age_sec}s old, past the ${STALE_SEC}s freshness bound; totals withheld rather than reported as zero` };
+      throw Object.assign(new Error(age.newest == null
+        ? 'the liquidation tape is empty; totals withheld rather than reported as zero. Not charged.'
+        : `the liquidation tape is ${age.age_sec}s old, past the ${STALE_SEC}s freshness bound; totals withheld rather than reported as zero. Not charged.`), { status: 503 });
     }
     const since = Date.now() - 3_600_000;
     const t = tape().prepare(`
@@ -145,7 +148,7 @@ async function getLiqPulse() {
       symbols: t.symbols,
       venues: t.venues,
       top_symbols: top.map((r) => ({ ...r, dominant_side: r.longs_usd >= r.shorts_usd ? 'longs' : 'shorts' })),
-      source: 'our own bybit+okx+binance liquidation tape',
+      source: 'our own liquidation tape (Bybit, OKX and Binance streams)',
     };
   });
 }
@@ -153,26 +156,20 @@ async function getLiqPulse() {
 // ---- c. GET /api/funding-pulse ------------------------------------------
 async function getFundingPulse() {
   return cached('entry:fundingpulse', TTL, async () => {
-    // Scope is the Bybit USDT perp universe, which is the only venue this
-    // service screens in full. Named honestly rather than implying a
-    // cross-venue scan it does not run.
+    // Every Hyperliquid perp above the liquidity floor, the one venue this service screens (R7). An empty or failed
+    // screen is a 503: the route is not billed for a table we could not build.
     const x = await getFundingExtremes({ limit: 5 });
     const rows = [...(x.most_positive || []), ...(x.most_negative || [])]
-      .map((r) => ({ symbol: r.symbol, venue: 'bybit', funding_rate_8h: r.funding_rate_8h, funding_rate_raw: r.funding_rate_raw, funding_interval_hours: r.funding_interval_hours, annualized_pct: r.annualized_pct, oi_usd: r.oi_usd, price_24h_pct: r.price_24h_pct }))
+      .map((r) => ({ coin: r.coin, venue: 'hyperliquid', funding_rate_8h: r.funding_rate_8h, funding_rate_raw: r.funding_rate_raw, funding_interval_hours: 1, annualized_pct: r.annualized_pct, oi_usd: r.oi_usd, price_24h_pct: r.change_24h_pct }))
       .sort((a, b) => Math.abs(b.annualized_pct) - Math.abs(a.annualized_pct))
       .slice(0, 5);
-    if (!rows.length) return { decline: 'the funding screener returned no rows for the Bybit USDT perp universe', universe_size: x.universe_size ?? null };
-    const h = x.hyperliquid && x.hyperliquid.most_positive ? [...x.hyperliquid.most_positive, ...x.hyperliquid.most_negative]
-      .map((r) => ({ coin: r.coin, venue: 'hyperliquid', funding_rate_8h: r.funding_rate_8h, funding_rate_raw: r.funding_rate_raw, funding_interval_hours: 1, annualized_pct: r.annualized_pct, oi_usd: r.oi_usd, price_24h_pct: r.change_24h_pct }))
-      .sort((a, b) => Math.abs(b.annualized_pct) - Math.abs(a.annualized_pct)).slice(0, 5) : null;
+    if (!rows.length) throw HLP.sourceDown(new Error(`the funding screener returned no rows for the Hyperliquid perps above $${x.min_volume_24h_usd} of 24h volume`));
     return {
       extremes: rows,
-      hyperliquid_extremes: h || { available: false, reason: 'Hyperliquid read failed' },
       universe_size: x.universe_size,
-      min_turnover_usd: x.min_turnover_usd,
-      venue_scope: ['bybit', 'hyperliquid'],
-      note: 'Ranked by absolute annualised funding across every Bybit USDT perp above the liquidity floor, and separately across every Hyperliquid perp with that much 24h volume. For one symbol across Bybit, OKX and Hyperliquid use /api/funding-cross.',
-      ...(x.unranked_interval_unknown ? { unranked_interval_unknown: x.unranked_interval_unknown } : {}),
+      min_volume_24h_usd: x.min_volume_24h_usd,
+      venue_scope: ['hyperliquid'],
+      note: 'Ranked by absolute annualised funding across every Hyperliquid perp above the liquidity floor. For the whole table with each coin\'s 30-day z-score use /api/funding-radar.',
       source: x.source,
     };
   });

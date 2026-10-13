@@ -44,7 +44,7 @@ async function rpc(method, params) {
     const e = new Error(`helius rpc: ${j.error.message}`);
     // A mint whose holder set is too large to enumerate is the CALLER naming
     // something the upstream cannot answer for, not a fault here. Same class as
-    // bybit retCode 10001 in derivs/micro/positioning, and tagged at the shared
+    // an exchange's parameter error on an HTTP 200 (once handled in derivs/micro/positioning), and tagged at the shared
     // helper for the same reason those are. Without this the three most obvious
     // mints anyone would try - SOL, USDC, BONK - return 502 from
     // /telegraph/api/token-holders, and telegraph's validator FAILS an endpoint

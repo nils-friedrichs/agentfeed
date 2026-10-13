@@ -67,14 +67,13 @@ function normalise(sym) {
 }
 
 /**
- * A failure to load the model is OUR failure and is reported as unmeasured for
- * every requested symbol, never as an exception and never as a probability.
+ * A failure to load the model is OUR failure. It used to be reported as unmeasured for every requested symbol
+ * inside a 200; since R7 (R4) it is a 503 with Retry-After, so the settlement is cancelled and nothing is billed.
+ * Never a probability. (A symbol the model has too little evidence for is a different thing: that stays an
+ * 'unmeasured' answer, because the refusal to guess is the product.)
  */
-function unmeasuredAll(symbols, reason) {
-  return {
-    model: null,
-    answers: symbols.map((symbol) => ({ symbol, evidence: 'unmeasured', p: null, reason })),
-  };
+function modelUnavailable(symbols, reason) {
+  throw Object.assign(new Error(`cascade forecast ${reason}. Not charged.`), { status: 503, retryAfter: 300 });
 }
 
 async function getCascadeForecast({ query = {} } = {}) {
@@ -89,7 +88,7 @@ async function getCascadeForecast({ query = {} } = {}) {
     answerFn = l.answerMany;
     m = loadModel(l.fromJSON);
   } catch (err) {
-    return unmeasuredAll(requested, `model unavailable: ${err.message}`);
+    return modelUnavailable(requested, `model unavailable: ${err.message}`);
   }
 
   const now = Date.now();

@@ -1,5 +1,6 @@
 // tools/tradfi.js — stock, index, commodity and FX perps (Hyperliquid HIP-3), and an
-// indicative 24/7 price for US stocks.
+// indicative 24/7 price for US stocks. Hyperliquid is the only venue (R7): the centralised exchanges' stock-perp
+// rows were dropped with the rest of their data, whose terms forbid resale (docs/SOURCES.md).
 //
 // collectTradfi() runs inside the funding-radar collector (bin/funding-radar-collect.js:
 // same cron, same flock, same snapshot, same history DB), so a paid request never
@@ -24,38 +25,6 @@ try { CLASSES = require('../data/tradfi-classes.json').markets || {}; } catch { 
 
 const num = (v) => (v == null || v === '' ? null : Number(v));
 const round = (v, d) => (v == null || !Number.isFinite(v) ? null : Number(v.toFixed(d)));
-
-// ---- exchanges with TradFi perps (current values; no z-score history yet) ---------------
-// Only symbols the venue's own metadata marks as TradFi are taken, so tokenized gold
-// (PAXG, XAUT) and look-alike crypto tickers (SPX = SPX6900) never get in:
-//   Bybit    instruments-info symbolType: stock | ETF | commodity | forex
-// Binance and OKX were read here until R6 D2 (13 Oct 2026) and are not any more: Binance's
-// Terms cl. 27 allow its data for "non-commercial personal or internal business use" and OKX's
-// API Agreement §9.4 forbids redistributing its market data (docs/SOURCES.md).
-async function getJson(url) {
-  const r = await fetch(url, { signal: AbortSignal.timeout(20000), headers: { 'user-agent': 'agentfeed-tradfi/1.0 (+https://x402.ochinimus.app)' } });
-  if (!r.ok) throw new Error(`${new URL(url).host} HTTP ${r.status}`);
-  return r.json();
-}
-const pause = (ms) => new Promise((r) => setTimeout(r, ms));
-async function readCex(log) {
-  const out = [], errors = [];
-  try { // Bybit
-    const inst = [];
-    let cursor = '';
-    for (let i = 0; i < 5; i++) { const j = await getJson(`https://api.bybit.com/v5/market/instruments-info?category=linear&status=Trading&limit=1000${cursor ? `&cursor=${cursor}` : ''}`); inst.push(...j.result.list); cursor = j.result.nextPageCursor; if (!cursor) break; await pause(200); }
-    const typ = new Map(inst.filter((x) => ['stock', 'ETF', 'commodity', 'forex'].includes(x.symbolType)).map((x) => [x.symbol, x]));
-    const tk = (await getJson('https://api.bybit.com/v5/market/tickers?category=linear')).result.list;
-    for (const t of tk) {
-      const m = typ.get(t.symbol); if (!m) continue;
-      const ih = Number(m.fundingInterval) / 60 || null;
-      out.push({ venue: 'bybit', symbol: t.symbol, ticker: t.symbol.replace(/USDT$/, ''), asset_class: { stock: 'stock', ETF: 'index', commodity: 'commodity', forex: 'fx' }[m.symbolType], class_evidence: `Bybit symbolType ${m.symbolType}`, mark: num(t.markPrice), funding_rate_raw: num(t.fundingRate), funding_interval_hours: ih, oi_usd: Math.round(num(t.openInterestValue) || 0), volume_24h_usd: Math.round(num(t.turnover24h) || 0) });
-    }
-  } catch (e) { errors.push(`bybit: ${e.message}`); }
-  for (const r of out) r.funding_rate_8h = r.funding_rate_raw != null && r.funding_interval_hours ? round((r.funding_rate_raw * 8) / r.funding_interval_hours, 8) : null;
-  if (errors.length) log(`tradfi cex: ${errors.join(' | ')}`);
-  return { rows: out, errors };
-}
 
 // ---- collector part (called by tools/fundingradar.js collect) -------------------------
 async function collectTradfi({ client, db, now, log = () => {}, fr }) {
@@ -123,22 +92,33 @@ async function collectTradfi({ client, db, now, log = () => {}, fr }) {
     out.push({
       market: m.market, dex: m.dex, ticker: m.market.split(':').pop(), asset_class: cls.asset_class, underlying: cls.underlying, class_evidence: cls.evidence,
       funding_rate_1h: m.funding1h, funding_rate_8h: round(f8, 8), funding_interval_hours: 1,
-      z_30d: round(z, 2), ...(z_note ? { z_note } : {}), samples: st.samples, window_days: st.window_days,
+      z_30d: round(z, 2), ...(z_note ? { z_note } : {}), mean_8h_30d: round(st.mean_8h, 8), std_8h_30d: round(st.std_8h, 8), samples: st.samples, window_days: st.window_days,
       oi_usd: Math.round(m.oiUsd), oi_change_24h_pct: then && then.oi_usd > 0 ? round(((m.oiUsd - then.oi_usd) / then.oi_usd) * 100, 2) : null,
       ...(then ? {} : { oi_change_note: 'our OI samples for this market do not reach 24h back yet' }),
       mark: m.mark, oracle: m.oracle, basis_bps: m.mark && m.oracle ? round(((m.mark - m.oracle) / m.oracle) * 1e4, 1) : null,
       volume_24h_usd: Math.round(m.vol),
     });
   }
-  const cex = await readCex(log);
   const hl = out.map((m) => ({ venue: 'hyperliquid', ...m }));
+  // Markets under the tracking floor keep no funding history, but the funding radar lists every Hyperliquid perp (R7 R2),
+  // so they ride in the snapshot as rows with a current rate and no z-score. The tradfi routes do not serve them.
+  const trackedSet = new Set(tracked.map((m) => m.market));
+  const untracked = markets.filter((m) => !trackedSet.has(m.market)).map((m) => {
+    const cls = CLASSES[m.market] || { asset_class: 'unclassified', underlying: null };
+    return {
+      venue: 'hyperliquid', market: m.market, dex: m.dex, ticker: m.market.split(':').pop(), asset_class: cls.asset_class, underlying: cls.underlying,
+      funding_rate_1h: m.funding1h, funding_rate_8h: m.funding1h != null ? round(m.funding1h * 8, 8) : null, funding_interval_hours: 1,
+      z_30d: null, z_note: `not tracked: under $${MIN_TRACK_USD.toLocaleString('en-US')} of open interest and of 24h volume, so no funding history is kept`,
+      mean_8h_30d: null, std_8h_30d: null, samples: 0, window_days: 0, oi_usd: Math.round(m.oiUsd), volume_24h_usd: Math.round(m.vol),
+    };
+  });
   return {
-    summary: { dexes: dexes.length, markets: markets.length, tracked: tracked.length, history_fetched: fetched, history_skipped: skipped, history_failed: failed, cex_rows: cex.rows.length, cex_errors: cex.errors.length },
+    summary: { dexes: dexes.length, markets: markets.length, tracked: tracked.length, untracked: untracked.length, history_fetched: fetched, history_skipped: skipped, history_failed: failed },
     section: {
       as_of: new Date(now).toISOString(), as_of_ms: now, min_track_usd: MIN_TRACK_USD,
       dexes: dexes.map((d) => ({ dex: d.name, full_name: d.fullName, deployer: d.deployer, oracle_updater: d.oracleUpdater || null, live_markets: markets.filter((m) => m.dex === d.name).length })),
-      markets: hl.concat(cex.rows.map((r) => ({ ...r, z_30d: null, z_note: '30-day z-scores are kept for Hyperliquid HIP-3 markets only so far' }))),
-      cex_errors: cex.errors,
+      markets: hl,
+      untracked,
     },
   };
 }
@@ -166,17 +146,14 @@ function getTradfiRadar(p = {}, { now = Date.now() } = {}) {
   if (cls && cls.some((c) => !CLASS_NAMES.includes(c))) { const e = new Error(`class must be one of ${CLASS_NAMES.join(', ')}`); e.kind = 'bad_request'; throw e; }
   const top = Math.min(Math.max(parseInt(p.top, 10) || 25, 1), 200);
   const minOi = Math.max(Number(p.min_oi_usd) || 0, 0);
-  const venues = p.venue ? String(p.venue).toLowerCase().split(',').map((x) => x.trim()) : null;
-  // a venue that publishes no OI is kept unless a minimum OI is asked for
-  const rows = s.markets.filter((m) => (!cls || cls.includes(m.asset_class)) && (!venues || venues.includes(m.venue)) && (minOi === 0 || (m.oi_usd ?? 0) >= minOi))
+  const rows = s.markets.filter((m) => m.venue === 'hyperliquid' && (!cls || cls.includes(m.asset_class)) && (minOi === 0 || (m.oi_usd ?? 0) >= minOi))
     .sort((a, b) => (Math.abs(b.funding_rate_8h || 0) - Math.abs(a.funding_rate_8h || 0)) || ((b.oi_usd || 0) - (a.oi_usd || 0)));
-  const counts = {}; for (const m of s.markets) counts[m.asset_class] = (counts[m.asset_class] || 0) + 1;
+  const counts = {}; for (const m of s.markets) if (m.venue === 'hyperliquid') counts[m.asset_class] = (counts[m.asset_class] || 0) + 1;
   return {
-    as_of: s.as_of, age_s: age, venues: ['hyperliquid (HIP-3 dexes)', 'bybit'],
+    as_of: s.as_of, age_s: age, venues: ['hyperliquid (HIP-3 dexes)'],
     classes: counts, matched: rows.length, returned: Math.min(top, rows.length), markets: rows.slice(0, top),
     dexes: s.dexes,
-    ...(s.cex_errors && s.cex_errors.length ? { venue_errors: s.cex_errors } : {}),
-    method: `Ranked by |funding| at its 8h equivalent (each venue's own interval: Hyperliquid HIP-3 hourly, Bybit 4h or 8h), then by OI. z_30d (Hyperliquid HIP-3 only so far) compares funding with that market's own 30 days. basis_bps = (mark - oracle) / oracle. oi_change_24h_pct compares with our own OI sample from 24h ago. Markets need $${s.min_track_usd.toLocaleString('en-US')} of OI or 24h volume to be tracked. Each deployer sets its own oracle; see class_evidence and the dex list.`,
+    method: `Ranked by |funding| at its 8h equivalent (Hyperliquid HIP-3 settles hourly), then by OI. z_30d compares funding with that market's own 30 days. basis_bps = (mark - oracle) / oracle. oi_change_24h_pct compares with our own OI sample from 24h ago. Markets need $${s.min_track_usd.toLocaleString('en-US')} of OI or 24h volume to be tracked. Each deployer sets its own oracle; see class_evidence and the dex list.`,
   };
 }
 
@@ -229,8 +206,8 @@ async function equity24h(p = {}, { now = Date.now(), fetchImpl = fetch } = {}) {
   const sym = String(p.symbol || '').toUpperCase().replace(/X$/, '').trim();
   if (!/^[A-Z0-9.]{1,12}$/.test(sym)) { const e = new Error('symbol required: a US stock or index ticker, e.g. TSLA, NVDA, SP500'); e.kind = 'bad_request'; throw e; }
   const { s, age } = fresh(now);
-  const perps = s.markets.filter((m) => m.ticker === sym && m.asset_class !== 'crypto_index').map((m) => ({
-    source: m.venue === 'hyperliquid' ? `Hyperliquid HIP-3 ${m.market} perp mark` : `${m.venue} ${m.symbol} perp mark`,
+  const perps = s.markets.filter((m) => m.venue === 'hyperliquid' && m.ticker === sym && m.asset_class !== 'crypto_index').map((m) => ({
+    source: `Hyperliquid HIP-3 ${m.market} perp mark`,
     price: m.mark, ...(m.oracle != null ? { oracle: m.oracle } : {}), funding_rate_8h: m.funding_rate_8h,
     liquidity: { open_interest_usd: m.oi_usd, volume_24h_usd: m.volume_24h_usd, ...(m.oi_note ? { note: m.oi_note } : {}) }, as_of: s.as_of,
   }));

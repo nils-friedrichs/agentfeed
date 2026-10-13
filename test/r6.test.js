@@ -1,9 +1,9 @@
 // test/r6.test.js — R6 (13 Oct 2026): D1 unsupported symbol is a 400, D2 no OKX/Binance reads,
-// D3 the peg reference is not returned, D4 wallet-holdings carries no Helius prices.
+// D3 the peg reference is not returned. (D1 for /api/perp and /api/squeeze-score and D4, wallet-holdings,
+// moved to test/r7.test.js when Hyperliquid became the one perp venue and wallet-holdings left Helius DAS.)
 //
-// Everything is offline: the venues are a local stub that answers 404 to every request, the
-// liquidation tape is a scratch SQLite file, Solana RPC points at a closed port, and the
-// wallet test stubs fetch for the one Helius call and injects the SOL price.
+// Everything is offline: Hyperliquid is a local stub that answers 404 to every request, the
+// liquidation tape is a scratch SQLite file and Solana RPC points at a closed port.
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -15,7 +15,7 @@ const express = require('express');
 const Database = require('better-sqlite3');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'af-r6-'));
-let server, EN, L, P, OCH, PR;
+let server, EN, P, OCH, PR;
 
 const tapeRow = (db, symbol, ts) => db.prepare('INSERT INTO liquidations (ts, symbol, side, size, price, usd, exchange) VALUES (?,?,?,?,?,?,?)').run(ts, symbol, 'Buy', 1, 100, 100, 'bybit');
 
@@ -24,7 +24,6 @@ test.before(async () => {
   server = http.createServer((req, res) => { res.writeHead(404, { 'content-type': 'application/json' }); res.end('{"error":"stub"}'); });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
-  process.env.BYBIT_REST = `${base}/bybit`;
   process.env.HL_API = `${base}/hl/info`;
   process.env.SOLANA_RPC_URL = 'http://127.0.0.1:9'; // closed port: the SOL pools fail at once
   const db = new Database(path.join(tmp, 'liq.db'));
@@ -45,7 +44,6 @@ test.before(async () => {
   process.env.PEG_ONCHAIN_DB = path.join(tmp, 'peg-onchain.db');
 
   EN = require('../tools/entry');
-  L = require('../tools/liqdb');
   P = require('../tools/peg');
   OCH = require('../tools/pegonchain');
   PR = require('../tools/prices');
@@ -99,37 +97,6 @@ test('D1 /api/price: a supported symbol is never rejected as unsupported (negati
   }
 });
 
-// ---- D1: /api/perp -------------------------------------------------------------------
-test('D1 /api/perp: a symbol no venue lists and the tape never recorded is a 400 with examples', async () => {
-  await assert.rejects(EN.getPerp({ symbol: 'ZQQ9USDT' }), (e) => {
-    assert.equal(e.kind, 'bad_request');
-    assert.deepEqual(e.supported, ['SOLUSDT', 'BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'DOGEUSDT']);
-    assert.match(e.message, /unsupported symbol "ZQQ9USDT"/);
-    return true;
-  });
-});
-
-test('D1 /api/perp: a symbol the tape recorded before still declines with 200 when no venue answers (the decline is the product)', async () => {
-  const r = await EN.getPerp({ symbol: 'ZQQ8USDT' });
-  assert.equal(r.symbol, 'ZQQ8USDT');
-  assert.match(r.decline, /no venue served ZQQ8USDT/);
-  assert.deepEqual(r.tried, ['bybit', 'hyperliquid'], 'two venues, no OKX');
-});
-
-// ---- D1: /api/squeeze-score ----------------------------------------------------------
-test('D1 /api/squeeze-score: an unknown symbol is a 400; a known one whose inputs did not resolve declines with 200', async () => {
-  await assert.rejects(L.getSqueezeScore({ symbol: 'ZQQ9USDT' }), (e) => {
-    assert.equal(e.kind, 'bad_request');
-    assert.deepEqual(e.supported, ['SOLUSDT', 'BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'DOGEUSDT']);
-    assert.match(e.message, /nothing to score/);
-    return true;
-  });
-  const r = await L.getSqueezeScore({ symbol: 'ZQQ8USDT' });
-  assert.equal(r.decline, 'insufficient_inputs');
-  assert.equal(r.recorded_in_tape, true);
-  assert.deepEqual(r.missing_inputs, ['funding_rate_8h', 'oi_change_24h_pct', 'long_account_pct']);
-});
-
 // ---- D2: no module reads OKX or Binance market data -----------------------------------
 test('D2 guard: nothing under tools/ or bin/ calls an OKX or Binance endpoint', () => {
   const root = path.join(__dirname, '..');
@@ -154,33 +121,4 @@ test('D3 peg-deviation: latest.reference is null and the reference price appears
   assert.equal(r.latest.onchain, 100.4);
   assert.ok(!JSON.stringify(r).includes('99.5'), 'negative control: the stubbed reference value 99.5 does not leak anywhere');
   assert.match(r.note, /reference price itself is not returned/);
-});
-
-// ---- D4: wallet-holdings --------------------------------------------------------------
-test('D4 wallet-holdings: no Helius prices; native SOL valued at OUR price and labelled', async () => {
-  const { getWalletHoldings } = require('../tools/onchain');
-  const realFetch = global.fetch;
-  global.fetch = async () => ({ ok: true, json: async () => ({ result: {
-    total: 3,
-    nativeBalance: { lamports: 2_500_000_000, price_per_sol: 777, total_price: 1942.5 },
-    items: [
-      { id: 'MINT1', interface: 'FungibleToken', token_info: { symbol: 'AAA', balance: 5_000_000, decimals: 6, price_info: { price_per_token: 1234.5, total_price: 6172.5 } } },
-      { id: 'NFT1', interface: 'V1_NFT' },
-    ] } }) });
-  try {
-    const r = await getWalletHoldings('4a8o45skRPcyjAdyR8yES215Swvh8uTpZD6KLarhxCJ7', { priceFn: async (s) => { assert.equal(s, 'SOL'); return { price: 100, source: 'on-chain DEX mid, test pools' }; } });
-    assert.equal(r.native_sol, 2.5);
-    assert.equal(r.native_sol_usd, 250, 'our price x balance, not the 1942.5 Helius sent');
-    assert.match(r.native_sol_usd_source, /AgentFeed's own price: on-chain DEX mid, test pools/);
-    assert.deepEqual(r.fungible_tokens, [{ mint: 'MINT1', symbol: 'AAA', amount: 5 }], 'balances and metadata only');
-    assert.equal(r.nft_count, 1);
-    const s = JSON.stringify(r);
-    for (const leaked of ['1234.5', '6172.5', '1942.5', '777', 'price_usd', 'value_usd']) assert.ok(!s.includes(leaked), `no Helius price field or value: ${leaked}`);
-    // the SOL price cannot be read: balances still come back, the value is null with the reason
-    const down = await getWalletHoldings('4a8o45skRPcyjAdyR8yES215Swvh8uTpZD6KLarhxCJ7', { priceFn: async () => { throw new Error('boom'); } });
-    assert.equal(down.native_sol, 2.5);
-    assert.equal(down.native_sol_usd, null);
-    assert.match(down.native_sol_usd_source, /unavailable/);
-    assert.equal(down.fungible_tokens.length, 1);
-  } finally { global.fetch = realFetch; }
 });

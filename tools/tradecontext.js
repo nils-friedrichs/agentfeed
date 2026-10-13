@@ -88,7 +88,6 @@ async function getTradeContext(req) {
     // noise the scorer has to read past. The venue metadata is kept.
     positioning: {
       source: positioning.source,
-      period: positioning.period,
       ...(positioning[key] || {}),
     },
     liquidations: {

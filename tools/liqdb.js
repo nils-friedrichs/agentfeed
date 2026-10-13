@@ -1,12 +1,15 @@
 // tools/liqdb.js — expansion: the MOAT (5 tools). Queries against our own
 // collected liquidation tape (/opt/agentfeed/liquidations.db). Bybit is the
 // only complete unthrottled liq tape in crypto and no exchange publishes
-// history — this data exists nowhere else.
+// history — this data exists nowhere else. (The tape's terms risk is recorded in docs/SOURCES.md.)
 // side convention (liqcollector v3): 'Buy' = LONG liquidated, 'Sell' = SHORT liquidated.
 'use strict';
 const Database = require('better-sqlite3');
 const { cached } = require('../lib/cache');
-const { _normSym: normSym, getOpenInterest, getLongShort, getFundingCross } = require('./derivs');
+const { _normSym: normSym, _oiChange: oiChange, warming } = require('./derivs');
+const HLP = require('./hlperp');
+const HW = require('./hlwhales');
+const OI = require('../lib/hl-oi');
 const { CORE } = require('../universe');
 
 const DB_PATH = process.env.LIQ_DB || '/opt/agentfeed/liquidations.db';
@@ -114,78 +117,65 @@ function getCascadeHistory(p = {}) {
   };
 }
 
-// ---- get_squeeze_score ($0.10) — flagship composite: funding + OI + liq skew + crowding
+// ---- get_squeeze_score ($0.10) — flagship composite: funding + OI build + liq skew + crowding
+// R7: every input is Hyperliquid's or ours. funding: Hyperliquid's hourly rate x 8. OI build: the 24h change in
+// Hyperliquid open interest from our sampler (lib/hl-oi.js), so the route answers 503 until that record is 24h deep.
+// crowding: the net-long share of the top 250 Hyperliquid accounts' positions in the coin (whale crowding; it
+// replaced a retail account ratio that no clean venue publishes). liquidation skew: our own tape.
 async function getSqueezeScore(p = {}) {
   const sym = normSym(p.symbol);
   return cached(`squeeze:${sym}`, 60_000, async () => {
+    let hl = null;
+    try { hl = await HLP.resolve(sym); } catch (e) { if (e.status === 503) throw e; /* Hyperliquid answered: it lists no such perp */ }
+    const seen = getDb().prepare('SELECT 1 AS hit FROM liquidations WHERE symbol = ? LIMIT 1').get(sym);
+    // R6 D1: a symbol no venue lists and the tape never recorded is the CALLER's mistake, not an answer: 400 with
+    // the symbols that work, thrown before anything settles, so it is never billed.
+    if (!hl && !seen) {
+      throw Object.assign(new Error(`unsupported symbol "${sym}": Hyperliquid lists no perp for it and it has never appeared in the liquidation tape, so there is nothing to score. Any Hyperliquid perp works, e.g. ${CORE.join(', ')}.`), { kind: 'bad_request' });
+    }
+    const nowS = Math.floor(Date.now() / 1000);
+    const w = OI.warm(86_400, OI.reader(), nowS);
+    if (!w.warm) throw warming(w, 'squeeze-score'); // the OI term needs its 24h record; a half score is worse than none
+
     const since = Date.now() - 24 * 3600_000;
     const liq = getDb().prepare(`
       SELECT ROUND(SUM(CASE WHEN side='Buy' THEN usd ELSE 0 END)) longs_usd,
              ROUND(SUM(CASE WHEN side='Sell' THEN usd ELSE 0 END)) shorts_usd
       FROM liquidations WHERE symbol = ? AND ts >= ?`).get(sym, since);
-    const [oi, ls, f] = await Promise.all([
-      getOpenInterest({ symbol: sym }).catch(() => null),
-      getLongShort({ symbol: sym }).catch(() => null),
-      getFundingCross({ symbol: sym }).catch(() => null),
-    ]);
-    const funding = f?.venues?.bybit?.funding_rate_8h ?? null;
-    const oiChg = oi?.bybit?.change_24h_pct ?? null;
-    const longPct = ls?.long_pct ?? null;
+    const funding = hl && hl.ctx.funding_1h != null ? hl.ctx.funding_1h * 8 : null;
+    const oiChg = hl ? oiChange(OI.reader(), hl.coin, hl.ctx.oi_base, 86_400, nowS) : null;
+    const whale = hl ? await HW.whaleShare(hl.coin) : null; // 503 when the whale snapshot is unavailable
+    const longPct = whale ? whale.net_long_share_pct : null;
 
-    // A SCORE COMPOSED FROM INPUTS THAT DID NOT RESOLVE IS WORSE THAN A
-    // REFUSAL, because it looks healthy and is wrong. Measured 2026-08-22:
-    // ZZZZUSDT, a symbol that does not exist, returned short_squeeze_score 4
-    // and later 0. Each venue input is .catch(() => null) and each weight is
-    // then guarded by `if (x != null)`, so an unresolved input does not
-    // contribute zero — it silently drops its weight out of the composite,
-    // while the published note still advertises "funding 35 / crowding 25 /
-    // OI 20 / liq-skew 20". The number that came back was built from as
-    // little as none of those hundred points.
-    //
-    // So the three venue inputs (80 of the 100 points) are now required, and
-    // the split follows tools/cascade-forecast.js: a decline is an ANSWER,
-    // returned 200 with its reason named, never an error and never a score.
-    // The liq-skew 20 is deliberately NOT required — a listed symbol with no
-    // liquidations in 24h is a true measurement of a quiet tape, which is the
-    // difference between "recorded and quiet" and "never recorded at all".
+    // A SCORE COMPOSED FROM INPUTS THAT DID NOT RESOLVE IS WORSE THAN A REFUSAL, because it looks healthy and is
+    // wrong (measured 2026-08-22: a symbol that does not exist scored 4). The three venue inputs (80 of the 100
+    // points) are required: a decline is an ANSWER, returned 200 with its reason named, never an error and never a
+    // score. The liq-skew 20 is deliberately NOT required - a listed symbol with no liquidations in 24h is a true
+    // measurement of a quiet tape, the difference between "recorded and quiet" and "never recorded at all".
     const missing = [];
     if (funding == null) missing.push('funding_rate_8h');
     if (oiChg == null) missing.push('oi_change_24h_pct');
-    if (longPct == null) missing.push('long_account_pct');
+    if (longPct == null) missing.push('whale_net_long_share_pct');
     if (missing.length) {
-      const seen = getDb()
-        .prepare('SELECT 1 AS hit FROM liquidations WHERE symbol = ? LIMIT 1')
-        .get(sym);
-      const unknown = missing.length === 3 && !seen;
-      // R6 D1: a symbol no venue quotes and the tape never recorded is the CALLER's mistake, not an
-      // answer: 400 with the symbols that work, thrown before anything settles, so it is never billed.
-      // A listed symbol whose inputs did not resolve (below) still declines with 200: that is the product.
-      if (unknown) {
-        throw Object.assign(new Error(`unsupported symbol "${sym}": no venue (Bybit, Hyperliquid) quotes it and it has never appeared in the liquidation tape, so there is nothing to score. Any listed USDT perp works, e.g. ${CORE.join(', ')}.`), { kind: 'bad_request', supported: [...CORE] });
-      }
       return {
         symbol: sym,
         decline: 'insufficient_inputs',
-        reason: `${missing.join(', ')} did not resolve for ${sym}, and this composite is not reported on partial inputs`,
+        reason: `${missing.join(', ')} did not resolve for ${sym}, and this composite is not reported on partial inputs${hl ? '' : ' (Hyperliquid lists no perp for it)'}`,
         missing_inputs: missing,
-        // A Bybit rate whose interval could not be read has no 8h figure, and
-        // that is named rather than left looking like a missing rate.
-        ...(f?.venues?.bybit?.funding_interval_note ? { funding_interval_note: f.venues.bybit.funding_interval_note } : {}),
         recorded_in_tape: !!seen,
-        note: 'a decline is an answer, not an error: a score built from inputs that did not resolve would look healthy and be wrong',
-        source: 'agentfeed_liq_tape',
+        note: 'a decline is an answer, not an error: a score built from inputs that did not resolve would look healthy and be wrong. Crowding needs at least one of the top 250 Hyperliquid accounts to hold the coin; the OI term needs a listing at least 24 hours old.',
+        source: 'Hyperliquid info API, our OI sampler and the top-250 Hyperliquid accounts, with the liquidation tape',
       };
     }
 
-    // Reaching here means all three venue inputs resolved, so a zero liq row
-    // is a real reading of a quiet 24h and not an absent one.
+    // Reaching here means all three inputs resolved, so a zero liq row is a real reading of a quiet 24h and not an absent one.
     const longsUsd = liq?.longs_usd || 0, shortsUsd = liq?.shorts_usd || 0;
     const cap = (x, m) => Math.max(-1, Math.min(1, x / m));
-    // SHORT-squeeze fuel: shorts crowded (negative funding, low long%), OI building, shorts not yet flushed
+    // SHORT-squeeze fuel: shorts crowded (negative funding, low whale long share), OI building, shorts not yet flushed
     let shortSq = 0, longSq = 0;
-    if (funding != null) { shortSq += cap(-funding, 0.0005) * 35; longSq += cap(funding, 0.0005) * 35; }
-    if (longPct != null) { shortSq += cap(50 - longPct, 15) * 25; longSq += cap(longPct - 50, 15) * 25; }
-    if (oiChg != null) { shortSq += cap(oiChg, 10) * 20; longSq += cap(oiChg, 10) * 20; }
+    shortSq += cap(-funding, 0.0005) * 35; longSq += cap(funding, 0.0005) * 35;
+    shortSq += cap(50 - longPct, 15) * 25; longSq += cap(longPct - 50, 15) * 25;
+    shortSq += cap(oiChg, 10) * 20; longSq += cap(oiChg, 10) * 20;
     const totalLiq = longsUsd + shortsUsd;
     if (totalLiq > 0) {
       const shortFlushed = shortsUsd / totalLiq; // already-flushed shorts = less fuel
@@ -198,13 +188,15 @@ async function getSqueezeScore(p = {}) {
       short_squeeze_score: score(shortSq),
       long_flush_score: score(longSq),
       inputs: {
-        funding_rate_8h: funding, funding_rate_raw: f.venues.bybit.funding_rate_raw, funding_interval_hours: f.venues.bybit.funding_interval_hours,
-        oi_change_24h_pct: oiChg, long_account_pct: longPct,
+        funding_rate_8h: funding, funding_rate_raw: hl.ctx.funding_1h, funding_interval_hours: 1,
+        oi_change_24h_pct: oiChg,
+        whale_net_long_share_pct: longPct,
+        whale_list: `the top ${whale.whale_list_size} Hyperliquid accounts by account value (${whale.long_accounts} long and ${whale.short_accounts} short in ${hl.coin}); whale crowding, not retail`,
         liq_24h: { longs_usd: longsUsd, shorts_usd: shortsUsd },
       },
       read: score(shortSq) >= 65 ? 'crowded shorts + building OI — short-squeeze conditions' :
             score(longSq) >= 65 ? 'crowded longs + building OI — long-flush risk' : 'no extreme setup',
-      note: 'heuristic composite 0-100 (funding 35 / crowding 25 / OI 20 / liq-skew 20). Context, not financial advice.',
+      note: 'heuristic composite 0-100 (funding 35 / whale crowding 25 / OI build 20 / liq-skew 20). Context, not financial advice.',
     };
   });
 }

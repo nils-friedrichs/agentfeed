@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-12T21:49:22.102Z",
+  "generatedAt": "2026-10-13T04:50:11.920Z",
   "limits": {
     "get": 240,
     "other": 2400,
@@ -22,7 +22,7 @@
     {
       "status": 400,
       "name": "Bad Request",
-      "when": "The handler threw: a missing or malformed caller parameter, an unsupported symbol, or an upstream data source failed. Never charged: a status of 400 or more cancels the x402 settlement.",
+      "when": "The handler threw: a missing or malformed caller parameter, or a symbol the route does not serve. Never charged: a status of 400 or more cancels the x402 settlement.",
       "body": {
         "tool": "<tool name>",
         "error": "<human-readable reason>",
@@ -44,13 +44,14 @@
     {
       "status": 503,
       "name": "Service Unavailable",
-      "when": "The route answers from a precomputed snapshot and that snapshot is past its staleness limit, or no source has data to answer with. Never charged: a status of 400 or more cancels the x402 settlement.",
+      "when": "Our source failed or is stale: Hyperliquid could not be asked, a precomputed snapshot or our liquidation tape is past its staleness limit, or a history we record is not deep enough yet (open-interest spikes and the squeeze score need 24 hours of it). Never charged: a status of 400 or more cancels the x402 settlement.",
       "body": {
         "tool": "<tool name>",
         "error": "<reason, including the snapshot age>",
-        "retry_after": 60
+        "retry_after": 60,
+        "warming": "<only while a history is still building: warm_at, needs_hours>"
       },
-      "note": "Retry-After is also set as a response header."
+      "note": "Retry-After is also set as a response header: 60 seconds by default, and for a history that is still building the time until it is ready, up to one hour."
     },
     {
       "status": 405,
@@ -64,12 +65,15 @@
     {
       "status": 410,
       "name": "Gone",
-      "when": "The route was retired. Routes withdrawn on 2026-10-12 because an upstream does not allow reselling its data answer the body below, with a pointer to /pricing; /api/sharp-move (retired Aug 19) names the closest live routes and their prices instead. Never charged.",
+      "when": "The route was retired. Routes withdrawn on 2026-10-12 and 2026-10-13 because an upstream does not allow reselling its data (or, for two cross-venue products, because one clean venue is left) answer the body below, with a pointer to /pricing and, from 2026-10-13, the live routes that come closest; /api/sharp-move (retired Aug 19) names the closest live routes and their prices instead. Never charged.",
       "body": {
         "error": "gone",
         "status": "withdrawn",
         "route": "/api/<withdrawn route>",
-        "withdrawn": "2026-10-12",
+        "withdrawn": "2026-10-13",
+        "closest_live": [
+          "/api/<live route>"
+        ],
         "pricing": "https://x402.ochinimus.app/pricing"
       }
     }
@@ -235,30 +239,11 @@
         }
       }
     },
-    "GET /api/funding-cross": {
-      "requiredInputs": [],
-      "callerError": {
-        "status": 400,
-        "violated": "optional query param symbol = not-a-symbol",
-        "body": {
-          "tool": "get_funding_cross",
-          "error": "invalid symbol: not-a-symbol"
-        }
-      }
-    },
     "GET /api/funding-extremes": {
       "requiredInputs": [],
       "callerError": null
     },
     "GET /api/funding-radar": {
-      "requiredInputs": [],
-      "callerError": null
-    },
-    "GET /api/options-summary": {
-      "requiredInputs": [],
-      "callerError": null
-    },
-    "GET /api/options-gex": {
       "requiredInputs": [],
       "callerError": null
     },
@@ -308,17 +293,6 @@
     "GET /api/oi-spike-scan": {
       "requiredInputs": [],
       "callerError": null
-    },
-    "GET /api/long-short": {
-      "requiredInputs": [],
-      "callerError": {
-        "status": 400,
-        "violated": "optional query param symbol = not-a-symbol",
-        "body": {
-          "tool": "get_long_short",
-          "error": "invalid symbol: not-a-symbol"
-        }
-      }
     },
     "GET /api/basis": {
       "requiredInputs": [],
@@ -375,28 +349,6 @@
         "violated": "optional query param symbol = not-a-symbol",
         "body": {
           "tool": "get_orderbook_walls",
-          "error": "invalid symbol: not-a-symbol"
-        }
-      }
-    },
-    "GET /api/whale-trades": {
-      "requiredInputs": [],
-      "callerError": {
-        "status": 400,
-        "violated": "optional query param symbol = not-a-symbol",
-        "body": {
-          "tool": "get_whale_trades",
-          "error": "invalid symbol: not-a-symbol"
-        }
-      }
-    },
-    "GET /api/spread-arb": {
-      "requiredInputs": [],
-      "callerError": {
-        "status": 400,
-        "violated": "optional query param symbol = not-a-symbol",
-        "body": {
-          "tool": "get_spread_arb",
           "error": "invalid symbol: not-a-symbol"
         }
       }

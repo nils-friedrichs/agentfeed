@@ -129,13 +129,14 @@ test('base-launches: fresh snapshot filters and limits; stale is 503; bad number
 });
 
 // ---- R4: withdrawn routes ----
-test('withdrawn routes answer a neutral 410 on any method, with a pointer to /pricing', async (t) => {
+test('the five routes withdrawn on 12 Oct answer a neutral 410 on any method, with a pointer to /pricing (the R7 withdrawals are in r7.test.js)', async (t) => {
   const compat = require('../lib/compat');
   const app = express();
+  const FIVE = ['/api/tvl', '/api/stablecoin-flows', '/api/launch-odds', '/api/rwa-yields', '/api/dex-quote'];
   for (const p of compat.WITHDRAWN) app.all(p, compat.makeWithdrawn({ ORIGIN: 'https://x' }));
   const srv = app.listen(0); t.after(() => srv.close()); const u = `http://127.0.0.1:${srv.address().port}`;
-  assert.deepStrictEqual(compat.WITHDRAWN, ['/api/tvl', '/api/stablecoin-flows', '/api/launch-odds', '/api/rwa-yields', '/api/dex-quote']);
-  for (const p of compat.WITHDRAWN) {
+  assert.deepStrictEqual(compat.WITHDRAWN.slice(0, 5), FIVE);
+  for (const p of FIVE) {
     for (const method of ['GET', 'POST']) {
       const r = await fetch(u + p, { method });
       assert.equal(r.status, 410, `${method} ${p}`);

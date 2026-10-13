@@ -15,6 +15,8 @@ const Database = require('better-sqlite3');
 // against a throwaway copy: the live tape has never contained such a row. readonly and
 // fileMustExist apply regardless of where it points, so an override cannot grant writes.
 const DB_PATH = process.env.OVERHANG_DB_PATH || '/opt/overhang/overhang.db';
+// No answer from our own tape is a 503, never a 200 saying so: the settlement is cancelled, so nothing is charged (R7 R4)
+const noAnswer = (msg, retryAfter) => Object.assign(new Error(`${msg} Not charged.`), { status: 503, retryAfter });
 const db = new Database(DB_PATH, { readonly: true, fileMustExist: true });
 
 // GATE. Rows before this timestamp came from a window where the collector read the mark
@@ -165,11 +167,7 @@ function getExitQuote(req) {
 
   const current = latestRow.get(symbol);
   if (!current) {
-    return {
-      symbol, source: 'overhang', gated_from_ts: GATE_TS,
-      answer_available: false,
-      reason: `no measurement for ${symbol} inside the valid window (ts >= ${GATE_TS}).`,
-    };
+    throw noAnswer(`no measurement for ${symbol} inside the valid window (ts >= ${GATE_TS}).`, 300);
   }
 
   // RESPONSE POLICY. max_exitable_usd is never returned as a bare null.
@@ -194,13 +192,8 @@ function getExitQuote(req) {
         why_withheld: 'The current sweep saw a terminal-looking floor sample that the symbol\'s own recent tape contradicts. A single sample is never sufficient for a terminal verdict, so the verdict is withheld rather than published. The figures below are the last measurement that WAS corroborated.',
       };
     } else {
-      return {
-        symbol, source: 'overhang', gated_from_ts: GATE_TS,
-        answer_available: false,
-        confidence: 'none',
-        current_sample: { as_of: current.ts, status: current.status },
-        reason: `${symbol} has no corroborated measurement inside the valid window. The most recent sample is ${current.status}, whose verdict is withheld pending corroboration, and there is no earlier corroborated row to fall back to. This is stated explicitly rather than returned as null.`,
-      };
+      // the sample is withheld pending corroboration and there is nothing earlier to fall back to: no answer yet (503)
+      throw noAnswer(`${symbol} has no corroborated measurement inside the valid window. The most recent sample is ${current.status}, whose verdict is withheld pending corroboration, and there is no earlier corroborated row to fall back to.`, 300);
     }
   }
 

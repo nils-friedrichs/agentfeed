@@ -1,9 +1,12 @@
 // tools/marketstate.js — get_market_state ($0.02): one pre-trade picture per
 // symbol, assembled ONLY from data this service already holds: the funding-radar
-// and options snapshots, the macro calendar, our own liquidation tape, and the
-// cached reads the existing routes make (derivs.js, prices.js, feargreed.js).
+// snapshot, the macro calendar, our own liquidation tape, and the cached reads
+// the existing routes make (derivs.js, prices.js, feargreed.js, hlwhales.js).
 // No new upstream. Every part carries its source and as_of; a part we cannot
-// answer for this symbol is { value: null, reason }, never a guess.
+// answer for this symbol is { value: null, reason }, never a guess. When no part
+// of the market picture itself (spot, perp, volatility, open interest) could be
+// built, the whole route is a 503 and is never billed.
+// R7: implied volatility (an options-venue index) is gone with the options routes, whose source forbids derived data.
 'use strict';
 const D = require('./derivs');
 const L = require('./liqdb');
@@ -11,7 +14,8 @@ const { getPrice } = require('./prices');
 const { getFearGreed } = require('./feargreed');
 const { getHlCtx } = require('./funding');
 const FR = require('./fundingradar');
-const OPT = require('./options');
+const HW = require('./hlwhales');
+const HLP = require('./hlperp');
 const MACRO = require('./macro');
 
 const SYMBOLS = ['BTC', 'ETH', 'SOL', 'HYPE'];
@@ -20,8 +24,6 @@ const T = {
   liq_spike_multiple: 3,
   liq_spike_window_h: 168,
   event_within_h: 24,
-  iv_rich_vol_pts: 10,
-  iv_cheap_vol_pts: -5,
 };
 const iso = (ms) => new Date(ms).toISOString();
 const missing = (reason) => ({ value: null, reason });
@@ -36,7 +38,7 @@ async function getMarketState(p = {}, { now = Date.now() } = {}) {
   if (!SYMBOLS.includes(base)) { const e = new Error(`market-state covers ${SYMBOLS.join(', ')}; got ${base}`); e.kind = 'bad_request'; throw e; }
   const sym = `${base}USDT`;
 
-  const [spot, vol, oi, ls, basis, fg, radar, options, liq] = await Promise.all([
+  const [spot, vol, oi, whales, basis, fg, radar, liq] = await Promise.all([
     part(async () => {
       // HYPE has no deep USDC pool we read; Hyperliquid's own oracle price for it is public chain state (R5 C1)
       if (base === 'HYPE') { const c = await getHlCtx('HYPE'); return { value: Number(c.oraclePx), source: 'Hyperliquid HYPE oracle price (validator-published)', as_of: iso(now) }; }
@@ -44,26 +46,18 @@ async function getMarketState(p = {}, { now = Date.now() } = {}) {
       return { value: q.price, source: q.source || q.venue || 'multi-source spot', as_of: q.publish_time ? iso(q.publish_time * 1000) : iso(now) };
     }),
     part(async () => { const v = await D.getVolatility({ symbol: sym }); return { rv_7d_ann_pct: v.realized_vol_7d_ann_pct, rv_30d_ann_pct: v.realized_vol_30d_ann_pct, today_range_pct: v.today_range_pct, source: v.source, as_of: iso(now) }; }),
-    part(async () => { const o = await D.getOpenInterest({ symbol: sym }); return { bybit_usd: o.bybit && o.bybit.oi_usd, bybit_change_24h_pct: o.bybit && o.bybit.change_24h_pct, hyperliquid_usd: (o.hyperliquid && o.hyperliquid.oi_usd) ?? null, mark_price: o.mark_price, source: 'Bybit + Hyperliquid open interest', as_of: iso(now) }; }),
-    part(async () => { const l = await D.getLongShort({ symbol: sym }); return { long_pct: l.long_pct, short_pct: l.short_pct, long_pct_24h_ago: l.long_pct_24h_ago, period: l.period, source: l.source, as_of: l.ts ? iso(l.ts) : iso(now) }; }),
+    part(async () => { const o = await D.getOpenInterest({ symbol: sym }); return { hyperliquid_usd: o.oi_usd, change_1h_pct: o.change_1h_pct, change_24h_pct: o.change_24h_pct, mark_price: o.mark_price, source: 'Hyperliquid open interest (changes from our 5-minute sampler)', as_of: iso(now) }; }),
+    part(async () => { const w = await HW.whaleShare(base === 'HYPE' ? 'HYPE' : base); return { net_long_share_pct: w.net_long_share_pct, long_usd: w.long_usd, short_usd: w.short_usd, long_accounts: w.long_accounts, short_accounts: w.short_accounts, covers: `the top ${w.whale_list_size} Hyperliquid accounts by account value; whale crowding, not the whole market's`, source: 'Hyperliquid account positions (hl-whales snapshot)', as_of: w.as_of }; }),
     part(async () => { const b = await D.getBasis({ symbol: sym }); return { mark_price: b.mark_price, price_24h_note: null, ...b }; }),
     part(async () => { const f = await getFearGreed(); return { value: f.value, classification: f.classification, source: f.source || 'alternative.me', as_of: f.timestamp ? iso(Number(f.timestamp) * 1000) : iso(now) }; }),
     part(async () => {
       const r = FR.getRadarRow(sym, { now });
       if (!r) return missing('funding radar snapshot not built yet');
+      if (r.stale) return missing(`funding radar snapshot is ${r.age_s}s old (limit ${FR.STALE_AFTER_S}s)`);
       const row = r.row;
-      if (!row) return missing(`${sym} is not in the funding radar's universe (listed on at least two venues with $5M+ combined OI)`);
+      if (!row) return missing(`${sym} is not in the funding radar's snapshot`);
       const venues = Object.fromEntries(Object.entries(row.venues).filter(([, v]) => v).map(([k, v]) => [k, { funding_rate_8h: v.funding_rate_8h, z_30d: v.z_30d, samples: v.samples }]));
-      return { venues, spread_8h: row.spread_8h, max_abs_z: row.max_abs_z, source: 'AgentFeed funding radar snapshot', as_of: r.as_of, stale: r.stale };
-    }),
-    part(async () => {
-      const s = OPT.readSnapshot();
-      if (!s) return missing('options snapshot not built yet');
-      const u = s.underlyings.find((x) => x.underlying === base);
-      if (!u) return missing(`no listed options for ${base} on Deribit with enough open interest`);
-      const ageS = Math.round((now - s.as_of_ms) / 1000);
-      if (ageS > OPT.STALE_AFTER_S) return missing(`options snapshot is ${ageS}s old (limit ${OPT.STALE_AFTER_S}s)`);
-      return { iv_30d: u.volatility_index.value, kind: u.volatility_index.kind, iv_source: u.volatility_index.source, put_call_ratio_oi: u.summary.put_call_ratio.by_open_interest, rr25_nearest_30d: (u.summary.term_structure.find((t) => t.days >= 25) || {}).rr25 ?? null, net_gex_usd_per_1pct: u.gex.net_gex_usd_per_1pct, source: 'AgentFeed options snapshot (Deribit)', as_of: s.as_of };
+      return { venues, max_abs_z: row.max_abs_z, source: 'AgentFeed funding radar snapshot', as_of: r.as_of };
     }),
     part(async () => {
       // liqdb buckets are { bucket: start ms, usd_total, longs_usd, shorts_usd, ... },
@@ -91,27 +85,23 @@ async function getMarketState(p = {}, { now = Date.now() } = {}) {
     }),
   ]);
 
+  // nothing of the market picture itself could be built: our source is down, so 503 and not billed (R7 R4)
+  if ([spot, basis, vol, oi].every((x) => x && x.value === null)) throw HLP.sourceDown(new Error('spot, perp, volatility and open interest all failed'));
+
   const event = MACRO.nextEvent(now);
-  const iv = options && options.value !== null ? options.iv_30d : null;
-  const rv = vol && vol.value !== null ? vol.rv_30d_ann_pct : null;
-  const ivMinusRv = iv != null && rv != null ? Number((iv - rv).toFixed(2)) : null;
 
   const flags = [];
   if (radar && radar.max_abs_z != null && radar.max_abs_z >= T.funding_extreme_abs_z) flags.push('funding_extreme');
   if (liq && liq.last_1h && liq.hourly_median_usd > 0 && liq.last_1h.total_usd >= T.liq_spike_multiple * liq.hourly_median_usd) flags.push('liq_spike_1h');
   if (event && event.hours_to_go != null && event.hours_to_go <= T.event_within_h) flags.push('event_within_24h');
-  if (ivMinusRv != null && ivMinusRv >= T.iv_rich_vol_pts) flags.push('iv_rich');
-  if (ivMinusRv != null && ivMinusRv <= T.iv_cheap_vol_pts) flags.push('iv_cheap');
 
   return {
     symbol: base, as_of: iso(now),
-    spot, perp: basis && basis.value !== null ? { mark_price: basis.mark_price, basis_pct: basis.basis_pct, basis_state: basis.state, source: 'Bybit perp mark vs spot', as_of: iso(now) } : basis,
+    spot, perp: basis && basis.value !== null ? { mark_price: basis.mark_price, basis_pct: basis.basis_pct, basis_state: basis.state, source: 'Hyperliquid perp mark vs oracle', as_of: iso(now) } : basis,
     realized_vol: vol,
-    implied_vol: options,
-    iv_minus_rv_30d_vol_pts: ivMinusRv,
     funding: radar,
     open_interest: oi,
-    long_short: ls,
+    whale_positioning: whales,
     liquidations: liq,
     fear_greed: fg,
     next_macro_event: event || missing('macro calendar unavailable or no upcoming event'),
@@ -120,8 +110,6 @@ async function getMarketState(p = {}, { now = Date.now() } = {}) {
       funding_extreme: `|z_30d| >= ${T.funding_extreme_abs_z} on any venue in the funding radar`,
       liq_spike_1h: `last 60 minutes of liquidations >= ${T.liq_spike_multiple}x the median hourly total over the previous ${T.liq_spike_window_h - 1} hours of our tape (quiet hours count as 0)`,
       event_within_24h: `the next FOMC decision or CPI, NFP or PCE release is within ${T.event_within_h} hours`,
-      iv_rich: `30-day implied vol minus 30-day realized vol >= +${T.iv_rich_vol_pts} vol points`,
-      iv_cheap: `30-day implied vol minus 30-day realized vol <= ${T.iv_cheap_vol_pts} vol points`,
     },
   };
 }

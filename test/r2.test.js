@@ -17,20 +17,20 @@ async function call(t, app, p) {
 function echoApp() {
   const app = express();
   app.use(compat.stripNetworkSuffix);
-  app.get('/api/options-summary', (req, res) => res.json({ url: req.url, originalUrl: req.originalUrl, orig: req.x402OriginalPath || null, q: req.query }));
+  app.get('/api/open-interest', (req, res) => res.json({ url: req.url, originalUrl: req.originalUrl, orig: req.x402OriginalPath || null, q: req.query }));
   return app;
 }
 
 test('route|network suffix: raw, %7C and %7c, eip155 and solana, query kept, original remembered', async (t) => {
-  for (const p of ['/api/options-summary|eip155:42161', '/api/options-summary%7Ceip155:8453', '/api/options-summary%7csolana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp']) {
+  for (const p of ['/api/open-interest|eip155:42161', '/api/open-interest%7Ceip155:8453', '/api/open-interest%7csolana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp']) {
     const { r, body } = await call(t, echoApp(), p + '?currency=ETH');
     assert.equal(r.status, 200, p);
-    assert.equal(body.url, '/api/options-summary?currency=ETH');
-    assert.equal(body.originalUrl, '/api/options-summary?currency=ETH', 'the challenge resource URL is the clean one');
+    assert.equal(body.url, '/api/open-interest?currency=ETH');
+    assert.equal(body.originalUrl, '/api/open-interest?currency=ETH', 'the challenge resource URL is the clean one');
     assert.equal(body.q.currency, 'ETH');
-    assert.ok(body.orig && body.orig.startsWith('/api/options-summary'), 'original kept for the rows');
+    assert.ok(body.orig && body.orig.startsWith('/api/open-interest'), 'original kept for the rows');
   }
-  const { r } = await call(t, echoApp(), '/api/options-summary%7Cfoo:1');
+  const { r } = await call(t, echoApp(), '/api/open-interest%7Cfoo:1');
   assert.equal(r.status, 404, 'an unknown suffix is not stripped');
   const { r: r2 } = await call(t, echoApp(), '/other/x%7Ceip155:1');
   assert.equal(r2.status, 404, 'only /api/ paths');

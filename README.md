@@ -83,9 +83,9 @@ Notional uses `filled_qty × avg_fill_price` — what actually executed — not 
 
 Every paid route, cheapest question last. Generated from
 [`/.well-known/x402.json`](https://x402.ochinimus.app/.well-known/x402.json),
-read 2026-10-12 — names, prices and routes are the manifest's, not a copy kept
+read 2026-10-13 — names, prices and routes are the manifest's, not a copy kept
 in sync by hand. What each one returns is under
-[73 tools](#73-tools-66-paid-http-routes--7-free--pricing), word for word as
+[67 tools](#67-tools-60-paid-http-routes--7-free--pricing), word for word as
 the service publishes it.
 
 | Tool | Price | Route |
@@ -95,7 +95,6 @@ the service publishes it.
 | `get_liq_history` | $0.05 | `/api/liq-history` |
 | `get_peg_universe` | $0.05 | `/api/peg-universe` |
 | `get_cascade_history` | $0.03 | `/api/cascade-history` |
-| `get_options_gex` | $0.03 | `/api/options-gex` |
 | `get_peg_sessions` | $0.03 | `/api/peg-sessions` |
 | `get_base_launches` | $0.02 | `/api/base-launches` |
 | `get_cascade_forecast` | $0.02 | `/api/cascade-forecast` |
@@ -107,22 +106,17 @@ the service publishes it.
 | `get_liquidation_leaders` | $0.02 | `/api/liquidation-leaders` |
 | `get_market_state` | $0.02 | `/api/market-state` |
 | `get_oi_spike_scan` | $0.02 | `/api/oi-spike-scan` |
-| `get_options_summary` | $0.02 | `/api/options-summary` |
 | `get_peg_deviation` | $0.02 | `/api/peg-deviation` |
-| `get_spread_arb` | $0.02 | `/api/spread-arb` |
 | `get_token_holders` | $0.02 | `/api/token-holders/:mint` |
 | `get_tradfi_radar` | $0.02 | `/api/tradfi-radar` |
 | `get_venue_liq_share` | $0.02 | `/api/venue-liq-share` |
 | `get_wallet_activity` | $0.02 | `/api/wallet-activity/:wallet` |
-| `get_whale_trades` | $0.02 | `/api/whale-trades` |
 | `get_basis` | $0.01 | `/api/basis` |
 | `get_cascade_alert` | $0.01 | `/api/cascade` |
 | `get_equity_24h` | $0.01 | `/api/equity-24h` |
-| `get_funding_cross` | $0.01 | `/api/funding-cross` |
 | `get_honeypot_check` | $0.01 | `/api/honeypot-check` |
 | `get_insider_trades` | $0.01 | `/api/insider-trades` |
 | `get_liquidation_stats` | $0.01 | `/api/liquidation-stats` |
-| `get_long_short` | $0.01 | `/api/long-short` |
 | `get_open_interest` | $0.01 | `/api/open-interest` |
 | `get_orderbook_imbalance` | $0.01 | `/api/orderbook-imbalance` |
 | `get_orderbook_walls` | $0.01 | `/api/orderbook-walls` |
@@ -232,12 +226,12 @@ The pay-kit fix ships here as `mpp/patches/@solana+mpp+0.7.0.patch`, applied by
 dependency, not a dev one, because a `--omit=dev` install would otherwise complete silently
 *unpatched*.
 
-## 73 tools (66 paid HTTP routes + 7 free) & pricing
+## 67 tools (60 paid HTTP routes + 7 free) & pricing
 
-**66 paid + 7 free**, 73 total on the MCP rail. Every call is metered individually in USDC over
-x402 — no bundles, no minimums. Calling all 66 paid tools once costs **$0.974** — the entire
-market read for 97 cents. Counts and prices are summed from
-[the live manifest](https://x402.ochinimus.app/.well-known/x402.json), read 2026-10-12.
+**60 paid + 7 free**, 67 total on the MCP rail. Every call is metered individually in USDC over
+x402 — no bundles, no minimums. Calling all 60 paid tools once costs **$0.864** — the entire
+market read for 86 cents. Counts and prices are summed from
+[the live manifest](https://x402.ochinimus.app/.well-known/x402.json), read 2026-10-13.
 
 The flagship is [`get_squeeze_score`](#the-moat--our-own-liquidation-tape) — a 0-100 short-squeeze / long-flush composite built from funding, crowding, OI build and the liq-skew of our exclusive tape. One number, one dime, answers "is this trade crowded and about to hurt someone."
 
@@ -245,7 +239,7 @@ The flagship is [`get_squeeze_score`](#the-moat--our-own-liquidation-tape) — a
 
 | Tool | Price | Route | What you get |
 |---|---|---|---|
-| `get_squeeze_score` | $0.1 | `/api/squeeze-score` | Short squeeze score and long flush score, 0-100, for any USDT perp. Composite of the funding rate, long/short crowding, 24h open-interest build, and liquidation skew from our own tape. One number for whether a trade is crowded and about to hurt someone. A symbol no venue lists answers 400 with the supported list and is never billed; a listed symbol whose inputs did not resolve returns 200 with a decline naming them. |
+| `get_squeeze_score` | $0.1 | `/api/squeeze-score` | Short squeeze score and long flush score, 0-100, for any Hyperliquid perp. Composite of Hyperliquid funding (35), whale crowding (25: the net-long share of the top 250 Hyperliquid accounts in the coin, not retail), the 24h open-interest build from our own 5-minute sampler (20) and liquidation skew from our own tape (20). One number for whether a trade is crowded and about to hurt someone. A symbol nothing lists answers 400; while the open-interest record is under 24 hours deep, or Hyperliquid or the whale snapshot is unavailable, it answers 503; both are never billed. A listed coin none of the top 250 accounts holds returns 200 with a decline naming the missing input. |
 | `get_liq_history` | $0.05 | `/api/liq-history` | Liquidation history, time-bucketed: total, long and short USD, prints and biggest print per bucket, for any USDT perp or the whole recorded universe, up to 7 days back. Bybit is the only complete liq tape in crypto and no exchange publishes history of it. |
 | `get_liq_heatmap` | $0.02 | `/api/liq-heatmap` | Liquidation heatmap by PRICE LEVEL: where leverage actually got flushed in the last N hours — USD, prints and long/short split per price zone, with the hottest zone flagged. Built from real liquidation prints, not entry-price estimates. BTC, ETH, SOL, HYPE or any other USDT perp on our Bybit, OKX and Binance tape. |
 | `get_cascade_history` | $0.03 | `/api/cascade-history` | Liquidation cascade history: past clustered same-side flush events reconstructed from our own tape, with start and end, prints, USD total and peak print, up to 72h back. /api/cascade tells you what is happening NOW; this tells you what already happened. |
@@ -278,36 +272,30 @@ Sampled every 5 minutes since 19 July 2026. Deviation is measured against the un
 | `get_cascade_scan` | $0.05 | `/api/cascade-scan` | Liquidation cascade scan across EVERY USDT perp we record on Bybit, OKX and Binance at once, not just the majors: symbol, side liquidated, USD total, prints, duration, severity. Bybit is the only complete unthrottled liquidation tape in crypto. |
 | `get_liquidation_leaders` | $0.02 | `/api/liquidation-leaders` | Liquidation leaderboard: top symbols by liquidation USD right now across every USDT perp we record on Bybit, OKX and Binance, with long/short split, biggest single print and venue count. What is blowing up, ranked. |
 | `get_liquidation_stats` | $0.01 | `/api/liquidation-stats` | Liquidation stats, 1h and 24h totals for SOL, BTC, ETH, XRP and DOGE: long vs short USD split, biggest single print, and a per-exchange breakdown across Bybit, OKX and Binance. |
-| `get_liq_pulse` | $0.005 | `/api/liq-pulse` | Use when an agent needs to know what is being liquidated right now. Returns the last 60 minutes across every USDT perp we record: total USD, long/short split, prints and the top 5 symbols. Declines with the tape age if our recording is stale. |
+| `get_liq_pulse` | $0.005 | `/api/liq-pulse` | Use when an agent needs to know what is being liquidated right now. Returns the last 60 minutes across every USDT perp we record: total USD, long/short split, prints and the top 5 symbols. If our recording is stale it answers 503 and is never billed. |
 
 ### Derivatives
 
 | Tool | Price | Route | What you get |
 |---|---|---|---|
-| `get_funding_cross` | $0.01 | `/api/funding-cross` | Funding rate for ANY USDT perp across Bybit and Hyperliquid in one call, with the cross-venue spread and a crowding read. |
-| `get_funding_radar` | $0.02 | `/api/funding-radar` | Funding rates radar across Bybit and Hyperliquid. It tracks every USDT perp listed on both of them from $5M combined open interest and, by default, shows the ones with $10M and up; min_oi_usd changes that. Per symbol: the current funding per venue at its 8h equivalent, each venue's 30-day z-score against its own settled history, the cross-venue spread, and a flag on any \|z\| of 2 or more, most extreme first. Precomputed every 5 minutes, with as_of and stale. |
-| `get_options_summary` | $0.02 | `/api/options-summary` | Implied volatility and options skew for BTC, ETH, SOL, XRP and HYPE from Deribit: DVOL (or our 30-day ATM implied vol where Deribit publishes none) with its 24h change, the ATM IV term structure, 25-delta risk reversal and butterfly per expiry, put/call ratio by open interest and 24h volume, options open interest in USD, max pain for the next three expiries and the top strikes. Precomputed every 5 minutes; a snapshot older than 15 minutes answers 503 and is never charged. |
-| `get_options_gex` | $0.03 | `/api/options-gex` | Gamma exposure (GEX) for BTC, ETH, SOL, XRP and HYPE options on Deribit: gamma by strike in USD per 1% move, net GEX under a dealer-sign convention stated in every response, the gamma flip level and the call and put walls. Black-Scholes gamma on Deribit mark implied volatility across every live expiry. Precomputed every 5 minutes; a snapshot older than 15 minutes answers 503 and is never charged. |
-| `get_market_state` | $0.02 | `/api/market-state` | Market state for BTC, ETH, SOL or HYPE in one call: spot and perp basis, realized vol 7d and 30d, implied vol (DVOL or 30-day ATM) and the IV minus RV spread, funding per venue with 30-day z-scores, open interest and its 24h change, long/short, liquidations 1h and 24h by side, Fear and Greed, the next FOMC or CPI release, and flags with stated thresholds. Every part carries its source and as-of time; a part we do not hold is null with a reason. |
-| `get_funding_extremes` | $0.02 | `/api/funding-extremes` | Funding rate extremes across every Bybit USDT perp and every Hyperliquid perp: the most positive and most negative funding with annualized %, 24h price move and open interest. The most crowded trades in the market — crowded shorts are squeeze candidates. |
-| `get_open_interest` | $0.01 | `/api/open-interest` | Open interest for ANY USDT perp: Bybit OI in base units and in USD with 1h and 24h change, plus Hyperliquid open interest and the mark price. /api/positioning covers SOL and BTC only. |
-| `get_oi_spike_scan` | $0.02 | `/api/oi-spike-scan` | Open interest spikes across every Bybit USDT perp and every Hyperliquid perp: abnormal OI jumps against an earlier snapshot of the same universe, at least 30 minutes old and with its exact age returned as baseline_min_ago, plus funding and 24h price context. |
-| `get_long_short` | $0.01 | `/api/long-short` | Long/short ratio for ANY USDT perp: the retail long and short account percentages from Bybit with 1h and 24h trend. The crowding gauge. |
-| `get_basis` | $0.01 | `/api/basis` | Perp-vs-spot basis for any USDT pair: the premium or discount in % on Bybit, a contango or backwardation read and the funding context, plus Hyperliquid's mark against its oracle price. |
-| `get_volatility` | $0.01 | `/api/volatility` | Realized volatility for any USDT perp: 7-day and 30-day annualized from daily closes, plus today's range in %, on Bybit and on Hyperliquid. A position-sizing input. |
-| `get_funding_history` | $0.005 | `/api/funding-history` | Funding rate history for any USDT perp, up to 200 intervals on Bybit and the same number of hourly settlements on Hyperliquid: the average rate, its annualized %, the share of intervals that were positive, and the raw series. What the carry has actually been. |
-| `get_top_movers` | $0.01 | `/api/top-movers` | Top gainers and losers over 24h across every Bybit USDT perp and every Hyperliquid perp above a liquidity floor, each with its funding rate attached. The "what moved" screener. |
-| `get_perp` | $0.005 | `/api/perp` | Use when an agent needs one perp market in a single call. Returns cross-venue funding (Bybit, Hyperliquid), open interest with 1h/24h change, long/short ratio, and 24h liquidations with long/short split and biggest print from our own tape. A symbol no venue lists answers 400 and is never billed. |
-| `get_funding_pulse` | $0.005 | `/api/funding-pulse` | Use when an agent needs the most extreme funding rates right now. Returns the 5 largest absolute annualised rates across the whole Bybit USDT perp universe, and the 5 on Hyperliquid, each with venue, 8h rate, open interest and 24h price move. One call, not a full screen. |
+| `get_funding_radar` | $0.02 | `/api/funding-radar` | Funding radar over every Hyperliquid perp: 337 on 13 Oct 2026, 178 on the main dex and 159 on the HIP-3 dexes (stocks, indices, commodities, FX). Per perp: the current funding at its 8h equivalent, its 30-day z-score against its own settled history, the dex and asset class, and a flag on any \|z\| of 2 or more, most extreme first. By default it returns the perps with $10M and up of open interest; min_oi_usd changes that and 0 returns them all. Precomputed every 5 minutes with as_of; a snapshot older than 15 minutes answers 503 and is never billed. |
+| `get_market_state` | $0.02 | `/api/market-state` | Market state for BTC, ETH, SOL or HYPE in one call: spot and the perp's basis against the Hyperliquid oracle, realized vol 7d and 30d, funding with its 30-day z-score, open interest and its changes, the top Hyperliquid accounts' net-long share, liquidations 1h and 24h by side, Fear and Greed, the next FOMC or CPI release, and flags with stated thresholds. Every part carries its source and as-of time; a part we do not hold is null with a reason. When nothing of the market itself could be built it answers 503 and is never billed. |
+| `get_funding_extremes` | $0.02 | `/api/funding-extremes` | Funding rate extremes across every Hyperliquid perp above a liquidity floor: the most positive and most negative funding with annualized %, 24h price move and open interest. The most crowded trades in the market — crowded shorts are squeeze candidates. |
+| `get_open_interest` | $0.01 | `/api/open-interest` | Open interest for ANY Hyperliquid perp: OI in base units and in USD with the mark price, and its 1h and 24h change from our own 5-minute sampler (null until that record reaches back so far). /api/positioning adds the whale net-long share for SOL and BTC. |
+| `get_oi_spike_scan` | $0.02 | `/api/oi-spike-scan` | Open interest spikes across every Hyperliquid perp: coins whose open interest moved abnormally in the last hour against their own previous day, with the 1h, 4h and 24h change (in coin units, so a price move does not count), a spike z-score, the price move and funding. Read from our own 5-minute sampler: it answers 503 and is never billed until that record is 24 hours deep. |
+| `get_basis` | $0.01 | `/api/basis` | Perp basis for any Hyperliquid perp: its mark price against Hyperliquid's oracle price (the validators' weighted median of spot venues), as a premium or discount in %, with a contango or backwardation read and the funding context. |
+| `get_volatility` | $0.01 | `/api/volatility` | Realized volatility for any Hyperliquid perp: 7-day and 30-day annualized from daily candles, plus today's range in %. A position-sizing input. |
+| `get_funding_history` | $0.005 | `/api/funding-history` | Funding rate history for any Hyperliquid perp, up to 200 hourly settlements: the average rate, its annualized %, the share of intervals that were positive, and the raw series. What the carry has actually been. |
+| `get_top_movers` | $0.01 | `/api/top-movers` | Top gainers and losers over 24h across every Hyperliquid perp above a liquidity floor, each with its funding rate attached. The "what moved" screener. |
+| `get_perp` | $0.005 | `/api/perp` | Use when an agent needs one perp market in a single call. Returns Hyperliquid funding and open interest (with 1h/24h change from our 5-minute sampler) and 24h liquidations with long/short split and biggest print from our own tape. A symbol nothing lists answers 400 and a failed read answers 503; neither is ever billed. |
+| `get_funding_pulse` | $0.005 | `/api/funding-pulse` | Use when an agent needs the most extreme funding rates right now. Returns the 5 largest absolute annualised rates across the Hyperliquid perps above a liquidity floor, each with 8h rate, open interest and 24h price move. One call, not a full screen. |
 
 ### Microstructure
 
 | Tool | Price | Route | What you get |
 |---|---|---|---|
-| `get_orderbook_imbalance` | $0.01 | `/api/orderbook-imbalance` | Orderbook imbalance for any USDT perp on Bybit and Hyperliquid: resting bid and ask liquidity in USD within ±N bps of mid, the ratio between the two sides, and a skew read. |
-| `get_orderbook_walls` | $0.01 | `/api/orderbook-walls` | Orderbook walls for any USDT perp on Bybit and Hyperliquid: the largest resting orders on each side of the book, with USD size and distance from mid. |
-| `get_whale_trades` | $0.02 | `/api/whale-trades` | Whale trades for any USDT perp: prints from the live trade tape above a USD threshold, with buy and sell totals, net flow and the dominant side. |
-| `get_spread_arb` | $0.02 | `/api/spread-arb` | Cross-exchange spread and arbitrage edge for any USDT perp: the best bid and ask on Bybit and Hyperliquid, with the best cross-venue edge in bps, pre-fee. |
+| `get_orderbook_imbalance` | $0.01 | `/api/orderbook-imbalance` | Orderbook imbalance for any Hyperliquid perp: resting bid and ask liquidity in USD within ±N bps of mid, the ratio between the two sides, and a skew read. |
+| `get_orderbook_walls` | $0.01 | `/api/orderbook-walls` | Orderbook walls for any Hyperliquid perp: the largest resting orders on each side of the book, with USD size and distance from mid. |
 
 ### Market & positioning
 
@@ -317,10 +305,10 @@ Sampled every 5 minutes since 19 July 2026. Deviation is measured against the un
 | `get_sol_price` | $0.001 | `/api/sol-price` | SOL price / Solana spot price in USD, live, read on-chain: the median of the two deepest SOL/USDC pools on Solana (Orca Whirlpool, Raydium CLMM), computed from chain state. Returns the price, the read time and the pools that answered. |
 | `get_btc_price` | $0.001 | `/api/btc-price` | BTC price / Bitcoin spot price in USD, live, read on-chain: the median of three Uniswap V3 reads on Base and Ethereum (cbBTC/USDC, and cbBTC and WBTC through WETH/USDC), computed from chain state. Returns the price, the read time and the pools that answered. |
 | `get_eth_price` | $0.001 | `/api/eth-price` | ETH spot price in USD, read on-chain from the two deepest WETH/USDC Uniswap V3 pools, on Ethereum and on Base. Returns their median plus each pool's own price, so a caller can see the spread between chains. Computed from chain state; no exchange feed. |
-| `get_funding_rate` | $0.005 | `/api/funding-rate` | Funding rate for any USDT perp on Bybit and Hyperliquid: per venue the raw rate, its interval in hours, the 8h equivalent, the annualised rate, next funding time and mark price. Without a symbol: funding rates for the SOL and BTC perps on Hyperliquid, with open interest. Cross-venue spread and crowding: /api/funding-cross. |
+| `get_funding_rate` | $0.005 | `/api/funding-rate` | Funding rate for any Hyperliquid perp: the raw rate, its interval in hours, the 8h equivalent, the annualised rate, next funding time and mark price. Without a symbol: funding rates for the SOL and BTC perps on Hyperliquid, with open interest. The whole table with 30-day z-scores: /api/funding-radar. |
 | `get_market_snapshot` | $0.005 | `/api/market-snapshot` | Crypto market snapshot in one call: SOL and BTC spot prices read on-chain from DEX pools, both Hyperliquid perp funding rates with mark price and open interest, and the Fear & Greed index with its classification. Five reads, one payment. |
-| `get_positioning` | $0.005 | `/api/positioning` | Open interest and long/short ratio for SOL and BTC perps: the retail long/short account ratio plus Bybit open interest with 1h and 24h change, and Hyperliquid open interest. For any other USDT perp use /api/open-interest and /api/long-short. |
-| `get_trade_context` | $0.01 | `/api/trade-context` | Crypto trading context in one call: SOL and BTC prices read on-chain from DEX pools, perp funding rates, Fear & Greed, long/short positioning, open interest and 1h/24h liquidation stats. The whole pre-trade picture, one payment. |
+| `get_positioning` | $0.005 | `/api/positioning` | Positioning for SOL and BTC perps on Hyperliquid: open interest with its 1h and 24h change, and the net-long share of the top 250 Hyperliquid accounts. For any other Hyperliquid perp use /api/open-interest. |
+| `get_trade_context` | $0.01 | `/api/trade-context` | Crypto trading context in one call: SOL and BTC prices read on-chain from DEX pools, perp funding rates, Fear & Greed, positioning (open interest and the top Hyperliquid accounts' net-long share) and 1h/24h liquidation stats. The whole pre-trade picture, one payment. |
 | `get_hl_whales` | $0.02 | `/api/hl-whales` | Use when an agent needs to know how the biggest Hyperliquid traders are positioned. Returns the open perp positions of the largest Hyperliquid accounts aggregated per coin: net long or short USD, account counts, size-weighted entries, notional-weighted distance to liquidation, notional within 10% of liquidation and uPnL. With coin=BTC: whale liquidation levels in 5% price bands and the largest positions. Refreshed every 5 minutes; stale data answers 503. |
 
 ### Solana on-chain
@@ -367,8 +355,8 @@ Sampled every 5 minutes since 19 July 2026. Deviation is measured against the un
 
 | Tool | Price | Route | What you get |
 |---|---|---|---|
-| `get_tradfi_radar` | $0.02 | `/api/tradfi-radar` | Stock perps, S&P 500, Nasdaq, gold and oil perps ranked by funding rate: every stock, index, commodity and FX perp on Hyperliquid HIP-3 dexes (trade[XYZ], Paragon, Markets by Kinetiq, Entropy) and Bybit, with funding at its 8h equivalent, a 30-day funding z-score on HIP-3, open interest and its 24h change, mark minus oracle basis and 24h volume. Filter by asset class or venue. Precomputed every 5 minutes; stale data answers 503. |
-| `get_equity_24h` | $0.01 | `/api/equity-24h` | Weekend price for US stocks: an indicative 24/7 price for a stock or index (TSLA, NVDA, S&P 500, Nasdaq) from stock perps on Hyperliquid and Bybit and our tokenized stocks DEX price, with the last regular-session price, its time and source, the implied gap in %, each source's liquidity and the session (open, pre, after, overnight, weekend). Indicative, never an exchange quote; 503 when no source has liquidity. |
+| `get_tradfi_radar` | $0.02 | `/api/tradfi-radar` | Stock perps, S&P 500, Nasdaq, gold and oil perps ranked by funding rate: every stock, index, commodity and FX perp on the Hyperliquid HIP-3 dexes (trade[XYZ], Paragon, Markets by Kinetiq, Entropy), with funding at its 8h equivalent, a 30-day funding z-score, open interest and its 24h change, mark minus oracle basis and 24h volume. Filter by asset class. Precomputed every 5 minutes; stale data answers 503. |
+| `get_equity_24h` | $0.01 | `/api/equity-24h` | Weekend price for US stocks: an indicative 24/7 price for a stock or index (TSLA, NVDA, S&P 500, Nasdaq) from stock perps on Hyperliquid and our tokenized stocks DEX price, with the last regular-session price, its time and source, the implied gap in %, each source's liquidity and the session (open, pre, after, overnight, weekend). Indicative, never an exchange quote; 503 when no source has liquidity. |
 | `get_tradfi_perps` | $0.005 | `/api/tradfi-perps` | Use when an agent needs a 24/7 price for a stock, index, commodity or currency outside market hours. Returns Hyperliquid HIP-3 perp markets: oracle and mark price, premium, hourly and 8h funding, open interest, 24h change and the dex. With symbol (TSLA, GOLD, EUR or xyz:TSLA): every live market for it. Without: the whole list. Prices are each market's own HIP-3 oracle and mark. |
 
 ### Free tasters
@@ -391,7 +379,7 @@ Two more free HTTP endpoints carry no tool of their own:
 | Endpoint | What you get |
 |---|---|
 | `GET /api/sample` | Lists every paid route that has a stored sample response |
-| `GET /api/sample/<route>` | The real captured response for one of the 66 paid routes — the same example its Bazaar listing carries — with its price, input schema and paid URL. See what a route returns before paying for it. |
+| `GET /api/sample/<route>` | The real captured response for one of the 60 paid routes — the same example its Bazaar listing carries — with its price, input schema and paid URL. See what a route returns before paying for it. |
 
 A free route answers `"paid": false`, and a paid one `"paid": true`, because that field is
 per-request: it reports whether the route you called is priced. `curl`ing either of the two
@@ -517,7 +505,7 @@ on — `MPP_SECRET_KEY` have no working default.
 | `CALIPER_RECORD_DB` | `$CALIPER_DIR/record.db` | |
 | `CALIPER_LIQ_DB` | `/opt/agentfeed/liquidations.db` | |
 | `TELEGRAPH_LOG` | alongside the source | request-shape log |
-| `BYBIT_WS` `BYBIT_REST` `BYBIT_API` `BYBIT_MAX_SYMBOLS` | Bybit public | `1000` symbol cap |
+| `BYBIT_WS` `BYBIT_API` `BYBIT_MAX_SYMBOLS` | Bybit public, the liquidation tape only (no route reads Bybit market data since R7) | `1000` symbol cap |
 | `OKX_WS` `OKX_API` | OKX public, the liquidation tape only (no route reads OKX market data since R6) | |
 | `BINANCE_WS` | Binance public, the liquidation tape only (no route reads Binance market data since R6) | |
 | `HL_API` | `https://api.hyperliquid.xyz/info` | |

@@ -8,6 +8,18 @@ const SYMBOLS = { SOL: 'SOLUSDT', BTC: 'BTCUSDT', ETH: 'ETHUSDT', XRP: 'XRPUSDT'
 
 function label(side) { return side === 'Sell' ? 'short_liquidated' : 'long_liquidated'; }
 
+// R7 R4: a route that reports "right now" from our own recording must prove the recording is live first. A collector
+// that died would otherwise make a quiet hour and a dead feed look identical. Older than 30 minutes (the bound
+// tools/entry.js uses for liq-pulse) is a 503 with Retry-After: the settlement is cancelled, nothing is billed.
+const TAPE_STALE_S = 30 * 60;
+function assertFresh() {
+  const r = db.prepare('SELECT MAX(ts) AS t FROM liquidations').get();
+  const age = r && r.t ? Math.round((Date.now() - r.t) / 1000) : null;
+  if (age == null || age > TAPE_STALE_S) {
+    throw Object.assign(new Error(age == null ? 'the liquidation tape is empty. Not charged.' : `the liquidation tape is ${age}s old, past the ${TAPE_STALE_S}s freshness bound. Not charged.`), { status: 503 });
+  }
+}
+
 // v3: the collector records every USDT perp, so accept them. Aliases (SOL/BTC/...) still
 // resolve; anything else must look like a USDT perp. Regex-validated (query is parameterized).
 function resolveSymbol(s) {
@@ -19,6 +31,7 @@ function resolveSymbol(s) {
 }
 
 function getRecentLiquidations(req) {
+  assertFresh();
   const q = req.query || {};
   const limit = Math.min(Math.max(parseInt(q.limit) || 25, 1), 100);
   const minUsd = Math.max(parseFloat(q.min_usd) || 0, 0);
@@ -73,6 +86,7 @@ function windowStats(symbol, ms) {
 }
 
 function getLiquidationStats() {
+  assertFresh();
   const oldest = db.prepare('SELECT MIN(ts) t FROM liquidations').get().t;
   const out = { source: 'multi_exchange_collector', exchanges: ['bybit', 'okx', 'binance'], collecting_since: oldest };
   for (const [k, sym] of Object.entries(SYMBOLS)) {
@@ -82,6 +96,7 @@ function getLiquidationStats() {
 }
 
 function getLiquidationLeaders(req) {
+  assertFresh();
   const q = (req && req.query) || {};
   const mins  = Math.min(Math.max(parseInt(q.window_min) || 60, 5), 1440);
   const limit = Math.min(Math.max(parseInt(q.limit) || 10, 1), 50);
@@ -109,7 +124,7 @@ function getLiquidationLeaders(req) {
   };
 }
 
-module.exports = { getRecentLiquidations, getLiquidationStats, getLiquidationLeaders };
+module.exports = { getRecentLiquidations, getLiquidationStats, getLiquidationLeaders, assertFresh };
 
 function getLastLiquidation() {
   const cutoff = Date.now() - 15 * 60 * 1000;

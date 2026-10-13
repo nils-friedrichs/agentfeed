@@ -20,7 +20,7 @@ Working name: agentfeed (rename whenever). One backend, two rails: raw HTTP x402
 │   ├── prices.js       multi-source: Coinbase, then Kraken — SOL, BTC
 │   ├── funding.js      funding rate source (reuse skrly market strip source)
 │   ├── feargreed.js    alternative.me
-│   └── onchain.js      Helius DAS: wallet holdings, token metadata
+│   └── onchain.js      Solana RPC (standard methods): wallet holdings, token metadata
 ├── ratelimit.js        per-payer-wallet limits + free tier ledger (SQLite)
 └── agentfeed.db        SQLite: payments log, free-tier usage, audit trail
 ```
@@ -32,11 +32,11 @@ Working name: agentfeed (rename whenever). One backend, two rails: raw HTTP x402
 |---------------------------|---------------|--------------|-------|
 | get_sol_price             | multi-source: Coinbase, then Kraken | 0.001        | spot price. `confidence` and `publish_time` are always null: neither Coinbase nor Kraken publishes them |
 | get_btc_price             | multi-source: Coinbase, then Kraken | 0.001        | spot price. same null-when-unavailable fields as above |
-| get_funding_rate          | Hyperliquid; with `symbol`, Bybit + OKX + Hyperliquid | 0.002        | SOL + BTC perp funding; with `symbol`, any USDT perp per venue, each rate at its own interval |
+| get_funding_rate          | Hyperliquid   | 0.002        | SOL + BTC perp funding; with `symbol`, any Hyperliquid perp, each rate at its own interval (hourly) |
 | get_fear_greed            | alternative.me| 0.001        | cache 30 min |
 | get_market_snapshot       | all above     | 0.003        | one call, everything — agents prefer fewer calls |
-| get_wallet_holdings       | Helius DAS    | 0.008        | the differentiated one |
-| get_token_metadata        | Helius DAS    | 0.005        | |
+| get_wallet_holdings       | Solana RPC    | 0.008        | the differentiated one (R7: standard RPC reads, no indexer) |
+| get_token_metadata        | Solana RPC    | 0.005        | |
 
 Pricing logic: commodity data at floor ($0.001), Helius-backed on-chain data at premium ($0.005–0.008, under Ref's $0.009 benchmark). Every price > unit cost (Helius credit fraction). Adjust after real traffic.
 

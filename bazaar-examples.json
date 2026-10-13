@@ -126,25 +126,17 @@
      "data": {
       "symbol": "ETHUSDT",
       "venues": {
-       "bybit": {
-        "funding_rate_raw": 0.00001757,
-        "funding_interval_hours": 8,
-        "funding_rate_8h": 0.00001757,
-        "annualized_pct": 1.92,
-        "next_funding_time": 1791849600000,
-        "mark_price": 2494.46
-       },
        "hyperliquid": {
-        "funding_rate_raw": 0.0000115192,
+        "funding_rate_raw": 0.0000125,
         "funding_interval_hours": 1,
-        "funding_rate_8h": 0.0000921536,
-        "annualized_pct": 10.09,
-        "next_funding_time": 1791842400000,
-        "mark_price": 2494.5
+        "funding_rate_8h": 0.0001,
+        "annualized_pct": 10.95,
+        "next_funding_time": 1791867600000,
+        "mark_price": 2515.9
        }
       },
-      "note": "Each rate is quoted for its own interval: funding_rate_8h = raw x 8 / funding_interval_hours, annualized_pct = raw x 24 / funding_interval_hours x 365 x 100. /api/funding-cross adds the cross-venue spread and a crowding read.",
-      "source": "bybit+hyperliquid public funding"
+      "note": "The rate is quoted for its own interval: funding_rate_8h = raw x 8 / funding_interval_hours, annualized_pct = raw x 24 / funding_interval_hours x 365 x 100. Hyperliquid settles hourly.",
+      "source": "hyperliquid public funding"
      },
      "paid": true
     },
@@ -293,18 +285,21 @@
       "wallet": "Gack9UtqfeZxFA1LqeqjLgC3JGuD7rS6CsSHKoXsD4Tu",
       "native_sol": 0,
       "native_sol_usd": 0,
-      "native_sol_usd_source": "native_sol x 107.061 USD per SOL, AgentFeed's own price: on-chain DEX mid, median of orca-whirlpool SOL/USDC on solana; raydium-clmm SOL/USDC on solana",
+      "native_sol_usd_source": "native_sol x 107.876 USD per SOL, AgentFeed's own price: on-chain DEX mid, median of orca-whirlpool SOL/USDC on solana; raydium-clmm SOL/USDC on solana",
       "fungible_tokens": [
        {
         "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
         "symbol": "USDC",
-        "amount": 0.567
+        "amount": 0.52,
+        "decimals": 6,
+        "program": "spl-token"
        }
       ],
+      "fungible_count": 1,
       "nft_count": 0,
       "total_items": 1,
-      "source": "helius-das (balances and on-chain token metadata)",
-      "note": "SPL token prices and values are not included. Only native SOL is valued, with AgentFeed's on-chain SOL price (native_sol_usd_source)."
+      "source": "Solana RPC: SOL balance, the token accounts of both token programs, and on-chain token metadata (Metaplex metadata account or Token-2022 metadata extension)",
+      "note": "SPL token prices and values are not included. Only native SOL is valued, with AgentFeed's on-chain SOL price (native_sol_usd_source). nft_count counts token accounts of 0 decimals and a balance of 1; compressed NFTs have no token account and are not counted."
      },
      "paid": true
     },
@@ -331,6 +326,9 @@
         },
         "fungible_tokens": {
          "type": "array"
+        },
+        "fungible_count": {
+         "type": "number"
         },
         "nft_count": {
          "type": "number"
@@ -964,46 +962,42 @@
     "example": {
      "tool": "get_positioning",
      "data": {
-      "source": "bybit_v5_public",
-      "period": "1h",
+      "source": "Hyperliquid info API (open interest, our 5-minute sampler for its changes) and the top-250 Hyperliqu…",
+      "history_note": "open interest history is recorded by our own sampler every 5 minutes (Hyperliquid publishes the curr…",
       "sol": {
-       "long_short_ratio": {
-        "long_pct": 74.61,
-        "short_pct": 25.39,
-        "long_pct_prev_hour": 74.53,
-        "ts": 1791838800000
-       },
        "open_interest": {
-        "base": 6252475.9,
-        "usd": 665602707,
-        "change_1h_pct": 0.45,
-        "change_24h_pct": -2.41
+        "base": 5801220.159999999,
+        "usd": 626357741,
+        "change_1h_pct": null,
+        "change_24h_pct": null,
+        "mark_price": 107.97
        },
-       "hyperliquid_open_interest": {
-        "coin": "SOL",
-        "oi_base": 6101599.260000003,
-        "oi_usd": 653664329,
-        "source": "Hyperliquid info API (public chain state)"
+       "whale_positioning": {
+        "net_long_share_pct": 31.63,
+        "long_usd": 92194048.81,
+        "short_usd": 199325207.24,
+        "long_accounts": 11,
+        "short_accounts": 18,
+        "covers": "the top 250 Hyperliquid accounts by account value (67 of them hold perp positions); whale crowding,…",
+        "as_of": "2026-10-13T04:50:10.147Z"
        }
       },
       "btc": {
-       "long_short_ratio": {
-        "long_pct": 61.33,
-        "short_pct": 38.67,
-        "long_pct_prev_hour": 61.06,
-        "ts": 1791838800000
-       },
        "open_interest": {
-        "base": 57240.379,
-        "usd": 4703751682,
-        "change_1h_pct": -0.45,
-        "change_24h_pct": 3.59
+        "base": 37645.76526,
+        "usd": 3139882697,
+        "change_1h_pct": null,
+        "change_24h_pct": null,
+        "mark_price": 83406
        },
-       "hyperliquid_open_interest": {
-        "coin": "BTC",
-        "oi_base": 38553.4727,
-        "oi_usd": 3188333639,
-        "source": "Hyperliquid info API (public chain state)"
+       "whale_positioning": {
+        "net_long_share_pct": 28.28,
+        "long_usd": 290728115.92,
+        "short_usd": 737229548.02,
+        "long_accounts": 14,
+        "short_accounts": 23,
+        "covers": "the top 250 Hyperliquid accounts by account value (67 of them hold perp positions); whale crowding,…",
+        "as_of": "2026-10-13T04:50:10.147Z"
        }
       }
      },
@@ -1021,7 +1015,7 @@
         "source": {
          "type": "string"
         },
-        "period": {
+        "history_note": {
          "type": "string"
         },
         "sol": {
@@ -1051,91 +1045,87 @@
     "example": {
      "tool": "get_trade_context",
      "data": {
-      "ts": 1791841998583,
+      "ts": 1791867033696,
       "prices": {
        "sol": {
         "symbol": "SOL",
-        "price": 107.061,
+        "price": 107.876,
         "confidence": null,
-        "publish_time": 1791841995,
+        "publish_time": 1791867033,
         "source": "on-chain DEX mid, me…"
        },
        "btc": {
         "symbol": "BTC",
-        "price": 82614.71,
+        "price": 83351.94,
         "confidence": null,
-        "publish_time": 1791841995,
+        "publish_time": 1791867033,
         "source": "on-chain DEX mid, me…"
        }
       },
       "funding": {
        "sol": {
         "symbol": "SOL",
-        "funding_rate_hourly": 0.0000125,
-        "funding_rate_8h_equiv": 0.0001,
-        "funding_rate_pct_hourly": 0.00125,
-        "mark_price": 107.145,
-        "open_interest": 6106081.660000002,
+        "funding_rate_hourly": 0.0000100158,
+        "funding_rate_8h_equiv": 0.00008013,
+        "funding_rate_pct_hourly": 0.001002,
+        "mark_price": 107.97,
+        "open_interest": 5801220.159999999,
         "source": "hyperliquid"
        },
        "btc": {
         "symbol": "BTC",
-        "funding_rate_hourly": 0.0000100532,
-        "funding_rate_8h_equiv": 0.00008043,
-        "funding_rate_pct_hourly": 0.001005,
-        "mark_price": 82700,
-        "open_interest": 38553.4659,
+        "funding_rate_hourly": 0.0000125,
+        "funding_rate_8h_equiv": 0.0001,
+        "funding_rate_pct_hourly": 0.00125,
+        "mark_price": 83406,
+        "open_interest": 37645.76526,
         "source": "hyperliquid"
        }
       },
       "fear_greed": {
-       "value": 69,
+       "value": 57,
        "classification": "Greed",
-       "timestamp": 1791763200,
+       "timestamp": 1791849600,
        "source": "alternative.me",
        "attribution": "Fear & Greed Index b…"
       },
       "positioning": {
-       "source": "bybit_v5_public",
-       "period": "1h",
+       "source": "Hyperliquid info API…",
+       "history_note": "open interest histor…",
        "sol": {
-        "long_short_ratio": {
-         "long_pct": 74.61,
-         "short_pct": 25.39,
-         "long_pct_prev_hour": 74.53,
-         "ts": 1791838800000
-        },
         "open_interest": {
-         "base": 6252475.9,
-         "usd": 665695176,
-         "change_1h_pct": 0.45,
-         "change_24h_pct": -2.41
+         "base": 5801220.159999999,
+         "usd": 626357741,
+         "change_1h_pct": null,
+         "change_24h_pct": null,
+         "mark_price": 107.97
         },
-        "hyperliquid_open_interest": {
-         "coin": "SOL",
-         "oi_base": 6101599.260000003,
-         "oi_usd": 653664329,
-         "source": "Hyperliquid info API…"
+        "whale_positioning": {
+         "net_long_share_pct": 31.63,
+         "long_usd": 92194048.81,
+         "short_usd": 199325207.24,
+         "long_accounts": 11,
+         "short_accounts": 18,
+         "covers": "the top 250 Hyperliq…",
+         "as_of": "2026-10-13T04:50:10.…"
         }
        },
        "btc": {
-        "long_short_ratio": {
-         "long_pct": 61.33,
-         "short_pct": 38.67,
-         "long_pct_prev_hour": 61.06,
-         "ts": 1791838800000
-        },
         "open_interest": {
-         "base": 57240.379,
-         "usd": 4703747701,
-         "change_1h_pct": -0.45,
-         "change_24h_pct": 3.59
+         "base": 37645.76526,
+         "usd": 3139882697,
+         "change_1h_pct": null,
+         "change_24h_pct": null,
+         "mark_price": 83406
         },
-        "hyperliquid_open_interest": {
-         "coin": "BTC",
-         "oi_base": 38553.4727,
-         "oi_usd": 3188333639,
-         "source": "Hyperliquid info API…"
+        "whale_positioning": {
+         "net_long_share_pct": 28.28,
+         "long_usd": 290728115.92,
+         "short_usd": 737229548.02,
+         "long_accounts": 14,
+         "short_accounts": 23,
+         "covers": "the top 250 Hyperliq…",
+         "as_of": "2026-10-13T04:50:10.…"
         }
        }
       },
@@ -1149,19 +1139,12 @@
        "collecting_since": 1783528952067,
        "sol": {
         "1h": {
-         "events": 230,
-         "total_usd": 1904638.09,
-         "longs_liquidated_usd": 1903249.94,
-         "shorts_liquidated_usd": 1388.15,
-         "biggest_print_usd": 474058.95,
+         "events": 28,
+         "total_usd": 435269.03,
+         "longs_liquidated_usd": 0,
+         "shorts_liquidated_usd": 435269.03,
+         "biggest_print_usd": 308627.67,
          "by_exchange": {
-          "bybit": {
-           "events": 134,
-           "total_usd": 337408.39,
-           "longs_liquidated_usd": 337236.12,
-           "shorts_liquidated_usd": 172.27,
-           "biggest_print_usd": 46408.14
-          },
           "binance": {
            "events": null,
            "total_usd": null,
@@ -1175,15 +1158,22 @@
            "longs_liquidated_usd": null,
            "shorts_liquidated_usd": null,
            "biggest_print_usd": null
+          },
+          "bybit": {
+           "events": 5,
+           "total_usd": 13203.76,
+           "longs_liquidated_usd": 0,
+           "shorts_liquidated_usd": 13203.76,
+           "biggest_print_usd": 12508.9
           }
          }
         },
         "24h": {
-         "events": 1565,
-         "total_usd": 16714824.99,
-         "longs_liquidated_usd": 13769288.41,
-         "shorts_liquidated_usd": 2945536.59,
-         "biggest_print_usd": 881208,
+         "events": 3043,
+         "total_usd": 41259631.04,
+         "longs_liquidated_usd": 38448706.79,
+         "shorts_liquidated_usd": 2810924.25,
+         "biggest_print_usd": 2748128.7,
          "by_exchange": {
           "binance": {
            "events": null,
@@ -1193,11 +1183,11 @@
            "biggest_print_usd": null
           },
           "bybit": {
-           "events": 569,
-           "total_usd": 1839590.39,
-           "longs_liquidated_usd": 1690321.3,
-           "shorts_liquidated_usd": 149269.09,
-           "biggest_print_usd": 99403.49
+           "events": 1439,
+           "total_usd": 5474712.91,
+           "longs_liquidated_usd": 5245651.42,
+           "shorts_liquidated_usd": 229061.49,
+           "biggest_print_usd": 99413.22
           },
           "okx": {
            "events": null,
@@ -1800,64 +1790,6 @@
      }
     },
     "required": []
-   },
-   "output": {
-    "example": {
-     "tool": "get_squeeze_score",
-     "data": {
-      "symbol": "SOLUSDT",
-      "short_squeeze_score": 0,
-      "long_flush_score": 7,
-      "inputs": {
-       "funding_rate_8h": -0.00000411,
-       "funding_rate_raw": -0.00000411,
-       "funding_interval_hours": 8,
-       "oi_change_24h_pct": -2.41,
-       "long_account_pct": 74.61,
-       "liq_24h": {
-        "longs_usd": 13769288,
-        "shorts_usd": 2945537
-       }
-      },
-      "read": "no extreme setup",
-      "note": "heuristic composite 0-100 (funding 35 / crowding 25 / OI 20 / liq-skew 20). Context, not financial advice."
-     },
-     "paid": true
-    },
-    "schema": {
-     "type": "object",
-     "properties": {
-      "tool": {
-       "type": "string"
-      },
-      "data": {
-       "type": "object",
-       "properties": {
-        "symbol": {
-         "type": "string"
-        },
-        "short_squeeze_score": {
-         "type": "number"
-        },
-        "long_flush_score": {
-         "type": "number"
-        },
-        "inputs": {
-         "type": "object"
-        },
-        "read": {
-         "type": "string"
-        },
-        "note": {
-         "type": "string"
-        }
-       }
-      },
-      "paid": {
-       "type": "boolean"
-      }
-     }
-    }
    }
   },
   "GET /api/venue-liq-share": {
@@ -1953,77 +1885,6 @@
    },
    "redacted": true
   },
-  "GET /api/funding-cross": {
-   "tool": "get_funding_cross",
-   "price_usd": 0.01,
-   "input": {
-    "symbol": "SOLUSDT"
-   },
-   "inputSchema": {
-    "properties": {
-     "symbol": {
-      "description": "USDT perp symbol e.g. SOLUSDT, BTCUSDT (default SOLUSDT)",
-      "type": "string"
-     }
-    },
-    "required": []
-   },
-   "output": {
-    "example": {
-     "tool": "get_funding_cross",
-     "data": {
-      "symbol": "SOLUSDT",
-      "venues": {
-       "bybit": {
-        "funding_rate_8h": -0.00000411,
-        "funding_rate_raw": -0.00000411,
-        "funding_interval_hours": 8,
-        "next_funding_time": 1791849600000,
-        "mark_price": 107.173
-       },
-       "hyperliquid": {
-        "funding_rate_1h": 0.0000125,
-        "funding_rate_8h_equiv": 0.0001,
-        "funding_rate_raw": 0.0000125,
-        "funding_interval_hours": 1,
-        "mark_price": 107.145
-       }
-      },
-      "spread_8h": 0.00010411,
-      "crowding": "mixed"
-     },
-     "paid": true
-    },
-    "schema": {
-     "type": "object",
-     "properties": {
-      "tool": {
-       "type": "string"
-      },
-      "data": {
-       "type": "object",
-       "properties": {
-        "symbol": {
-         "type": "string"
-        },
-        "venues": {
-         "type": "object"
-        },
-        "spread_8h": {
-         "type": "number"
-        },
-        "crowding": {
-         "type": "string"
-        }
-       }
-      },
-      "paid": {
-       "type": "boolean"
-      }
-     }
-    }
-   }
-  },
   "GET /api/funding-extremes": {
    "tool": "get_funding_extremes",
    "price_usd": 0.02,
@@ -2035,7 +1896,7 @@
       "type": "number"
      },
      "min_turnover_usd": {
-      "description": "liquidity floor, default 1M",
+      "description": "24h volume floor in USD, default 1M",
       "type": "number"
      }
     },
@@ -2045,62 +1906,57 @@
     "example": {
      "tool": "get_funding_extremes",
      "data": {
-      "source": "bybit_linear_universe",
-      "universe_size": 285,
-      "min_turnover_usd": 1000000,
+      "source": "Hyperliquid info API (public chain state)",
+      "universe_size": 90,
+      "min_volume_24h_usd": 1000000,
       "most_positive": [
        {
-        "symbol": "BWETUSDT",
-        "funding_rate_8h": 0.00211342,
-        "funding_rate_raw": 0.00211342,
-        "funding_interval_hours": 8,
-        "annualized_pct": 231.42,
-        "price_24h_pct": 4.17,
-        "oi_usd": 169147
+        "coin": "AZTEC",
+        "price": 0.021144,
+        "funding_rate_raw": 0.0000813176,
+        "funding_interval_hours": 1,
+        "funding_rate_8h": 0.0006505408,
+        "annualized_pct": 71.23,
+        "change_24h_pct": 4.56,
+        "oi_usd": 3706917,
+        "volume_24h_usd": 4369926
+       },
+       {
+        "coin": "BTC",
+        "price": 83406,
+        "funding_rate_raw": 0.0000125,
+        "funding_interval_hours": 1,
+        "funding_rate_8h": 0.0001,
+        "annualized_pct": 10.95,
+        "change_24h_pct": -0.83,
+        "oi_usd": 3139882697,
+        "volume_24h_usd": 3057771276
        }
       ],
       "most_negative": [
        {
-        "symbol": "RSRUSDT",
-        "funding_rate_8h": -0.02634064,
-        "funding_rate_raw": -0.00329258,
+        "coin": "RSR",
+        "price": 0.002111,
+        "funding_rate_raw": -0.0016439065,
         "funding_interval_hours": 1,
-        "annualized_pct": -2884.3,
-        "price_24h_pct": 32.86,
-        "oi_usd": 6244856
+        "funding_rate_8h": -0.013151252,
+        "annualized_pct": -1440.06,
+        "change_24h_pct": -10.47,
+        "oi_usd": 4050094,
+        "volume_24h_usd": 11569695
+       },
+       {
+        "coin": "BLUR",
+        "price": 0.013398,
+        "funding_rate_raw": -0.000249273,
+        "funding_interval_hours": 1,
+        "funding_rate_8h": -0.001994184,
+        "annualized_pct": -218.36,
+        "change_24h_pct": -29.7,
+        "oi_usd": 997406,
+        "volume_24h_usd": 3050687
        }
-      ],
-      "hyperliquid": {
-       "universe_size": 87,
-       "min_volume_24h_usd": 1000000,
-       "most_positive": [
-        {
-         "coin": "AZTEC",
-         "price": 0.019256,
-         "funding_rate_raw": 0.000138122,
-         "funding_interval_hours": 1,
-         "funding_rate_8h": 0.001104976,
-         "annualized_pct": 120.99,
-         "change_24h_pct": 5.52,
-         "oi_usd": 3056142,
-         "volume_24h_usd": 4472101
-        }
-       ],
-       "most_negative": [
-        {
-         "coin": "BLUR",
-         "price": 0.01481,
-         "funding_rate_raw": -0.0036470922,
-         "funding_interval_hours": 1,
-         "funding_rate_8h": -0.0291767376,
-         "annualized_pct": -3194.85,
-         "change_24h_pct": -22.2,
-         "oi_usd": 1151881,
-         "volume_24h_usd": 2029333
-        }
-       ],
-       "source": "Hyperliquid info API (public chain state)"
-      }
+      ]
      },
      "paid": true
     },
@@ -2119,7 +1975,7 @@
         "universe_size": {
          "type": "number"
         },
-        "min_turnover_usd": {
+        "min_volume_24h_usd": {
          "type": "number"
         },
         "most_positive": {
@@ -2127,9 +1983,6 @@
         },
         "most_negative": {
          "type": "array"
-        },
-        "hyperliquid": {
-         "type": "object"
         }
        }
       },
@@ -2147,11 +2000,11 @@
    "inputSchema": {
     "properties": {
      "top": {
-      "description": "symbols returned, most extreme first, 1-100, default 20",
+      "description": "perps returned, most extreme first, 1-100, default 20",
       "type": "number"
      },
      "min_oi_usd": {
-      "description": "minimum combined open interest in USD across the venues: default 10000000 ($10M); the radar tracks pairs from 5000000 ($5M), and lower values return that floor",
+      "description": "minimum open interest in USD: default 10000000 ($10M); 0 returns every perp the radar tracks",
       "type": "number"
      }
     },
@@ -2161,68 +2014,75 @@
     "example": {
      "tool": "get_funding_radar",
      "data": {
-      "as_of": "2026-10-12T21:50:02.074Z",
-      "age_s": 200,
-      "stale": false,
+      "as_of": "2026-10-13T04:47:53.649Z",
+      "age_s": 160,
       "venues": [
-       "bybit",
        "hyperliquid"
       ],
       "window_target_days": 30,
       "z_flag_abs": 2,
       "min_oi_usd": 10000000,
-      "universe_size": 100,
-      "matched": 85,
+      "universe": {
+       "total": 337,
+       "by_dex": {
+        "main": 178,
+        "xyz": 114,
+        "io": 10,
+        "mkts": 5,
+        "para": 30
+       }
+      },
+      "universe_size": 337,
+      "matched": 100,
       "returned": 20,
       "coverage": {
-       "series_total": 200,
-       "series_with_history": 200,
-       "series_full_window": 200
+       "series_total": 178,
+       "series_with_history": 164,
+       "series_full_window": 164
       },
       "symbols": [
        {
-        "symbol": "NEARUSDT",
-        "oi_usd": {
-         "bybit": 199065133,
-         "hyperliquid": 366698799,
-         "total": 565763932
-        },
+        "symbol": "SUIUSDT",
+        "oi_usd": 66919212,
         "venues": {
-         "bybit": {
-          "funding_rate_8h": -0.00023511,
-          "funding_rate_raw": -0.00023511,
-          "funding_interval_hours": 8,
-          "next_funding_time": 1791849600000,
-          "z_30d": -4.42,
-          "mean_8h_30d": 0.00006225,
-          "std_8h_30d": 0.00006734,
-          "samples": 90,
-          "window_days": 29.9
-         },
          "hyperliquid": {
-          "funding_rate_8h": -0.00036259,
-          "funding_rate_raw": -0.0000453237,
+          "funding_rate_8h": -0.00015434,
+          "funding_rate_raw": -0.0000192925,
           "funding_interval_hours": 1,
-          "z_30d": -3.23,
-          "mean_8h_30d": 0.00016474,
-          "std_8h_30d": 0.00016333,
+          "z_30d": -2.67,
+          "mean_8h_30d": 0.00012468,
+          "std_8h_30d": 0.00010431,
           "samples": 720,
           "window_days": 30
          }
         },
-        "spread_8h": 0.00012748,
-        "spread_high_venue": "bybit",
-        "spread_low_venue": "hyperliquid",
-        "max_abs_z": 4.42,
-        "extreme_venue": "bybit",
+        "max_abs_z": 2.67,
         "flag": true,
-        "flagged_venues": [
-         "bybit",
-         "hyperliquid"
-        ]
+        "coin": "SUI",
+        "dex": null
+       },
+       {
+        "symbol": "WUSDT",
+        "oi_usd": 10623759,
+        "venues": {
+         "hyperliquid": {
+          "funding_rate_8h": -0.00052502,
+          "funding_rate_raw": -0.0000656275,
+          "funding_interval_hours": 1,
+          "z_30d": -2.44,
+          "mean_8h_30d": 0.00011905,
+          "std_8h_30d": 0.00026435,
+          "samples": 720,
+          "window_days": 30
+         }
+        },
+        "max_abs_z": 2.44,
+        "flag": true,
+        "coin": "W",
+        "dex": null
        }
       ],
-      "method": "funding_rate_8h is each venue's current rate at its own inte…"
+      "method": "funding_rate_8h is the perp's current rate at its own interval scaled to 8h (Hyperliquid settles hourly). z_30d compares it with that perp's…"
      },
      "paid": true
     },
@@ -2241,9 +2101,6 @@
         "age_s": {
          "type": "number"
         },
-        "stale": {
-         "type": "boolean"
-        },
         "venues": {
          "type": "array"
         },
@@ -2255,6 +2112,9 @@
         },
         "min_oi_usd": {
          "type": "number"
+        },
+        "universe": {
+         "type": "object"
         },
         "universe_size": {
          "type": "number"
@@ -2272,282 +2132,6 @@
          "type": "array"
         },
         "method": {
-         "type": "string"
-        }
-       }
-      },
-      "paid": {
-       "type": "boolean"
-      }
-     }
-    }
-   }
-  },
-  "GET /api/options-summary": {
-   "tool": "get_options_summary",
-   "price_usd": 0.02,
-   "input": {},
-   "inputSchema": {
-    "properties": {
-     "currency": {
-      "description": "BTC (default), ETH, SOL, XRP or HYPE",
-      "type": "string"
-     }
-    },
-    "required": []
-   },
-   "output": {
-    "example": {
-     "tool": "get_options_summary",
-     "data": {
-      "underlying": "BTC",
-      "venue": "deribit",
-      "settlement": "inverse BTC-settled…",
-      "spot": 82581,
-      "spot_note": "Deribit index btc_us…",
-      "as_of": "2026-10-12T21:50:02.…",
-      "age_s": 200,
-      "volatility_index": {
-       "kind": "deribit_dvol",
-       "value": 37.39,
-       "as_of": "2026-10-12T21:50:02.…",
-       "change_24h": 0,
-       "compared_with": "2026-10-11T22:00:00.…",
-       "source": "Deribit DVOL: live i…"
-      },
-      "term_structure": [
-       {
-        "expiry": "2026-10-13T08:00:00.…",
-        "days": 0.42,
-        "forward": 82572.68,
-        "atm_iv": 25.05,
-        "rr25": -1,
-        "bf25": 0.62,
-        "iv25_call": 25.17,
-        "iv25_put": 26.17
-       }
-      ],
-      "iv30_atm": 35.6,
-      "put_call_ratio": {
-       "by_open_interest": 0.596,
-       "by_volume_24h": 1.391
-      },
-      "open_interest": {
-       "calls": 238187.05,
-       "puts": 141964.59,
-       "total": 380151.64,
-       "total_usd": 31393302583,
-       "unit": "BTC"
-      },
-      "max_pain": [
-       {
-        "expiry": "2026-10-13T08:00:00.…",
-        "max_pain": 83500,
-        "intrinsic_paid_at_max_pain_usd": 79740
-       }
-      ],
-      "top_strikes_by_oi": [
-       {
-        "strike": 95000,
-        "call_oi": 29433.33,
-        "put_oi": 400.6,
-        "total_oi": 29833.93,
-        "total_oi_usd": 2463715773
-       }
-      ],
-      "instruments": 1476,
-      "gex_headline": {
-       "net_gex_usd_per_1pct": 109663082,
-       "flip_level": 79835.984234,
-       "detail": "/api/options-gex"
-      },
-      "method": "IV values are in vol…",
-      "source": "Deribit public API (…"
-     },
-     "paid": true
-    },
-    "schema": {
-     "type": "object",
-     "properties": {
-      "tool": {
-       "type": "string"
-      },
-      "data": {
-       "type": "object",
-       "properties": {
-        "underlying": {
-         "type": "string"
-        },
-        "venue": {
-         "type": "string"
-        },
-        "settlement": {
-         "type": "string"
-        },
-        "spot": {
-         "type": "number"
-        },
-        "spot_note": {
-         "type": "string"
-        },
-        "as_of": {
-         "type": "string"
-        },
-        "age_s": {
-         "type": "number"
-        },
-        "volatility_index": {
-         "type": "object"
-        },
-        "term_structure": {
-         "type": "array"
-        },
-        "iv30_atm": {
-         "type": "number"
-        },
-        "put_call_ratio": {
-         "type": "object"
-        },
-        "open_interest": {
-         "type": "object"
-        },
-        "max_pain": {
-         "type": "array"
-        },
-        "top_strikes_by_oi": {
-         "type": "array"
-        },
-        "instruments": {
-         "type": "number"
-        },
-        "gex_headline": {
-         "type": "object"
-        },
-        "method": {
-         "type": "string"
-        },
-        "source": {
-         "type": "string"
-        }
-       }
-      },
-      "paid": {
-       "type": "boolean"
-      }
-     }
-    }
-   }
-  },
-  "GET /api/options-gex": {
-   "tool": "get_options_gex",
-   "price_usd": 0.03,
-   "input": {},
-   "inputSchema": {
-    "properties": {
-     "currency": {
-      "description": "BTC (default), ETH, SOL, XRP or HYPE",
-      "type": "string"
-     }
-    },
-    "required": []
-   },
-   "output": {
-    "example": {
-     "tool": "get_options_gex",
-     "data": {
-      "underlying": "BTC",
-      "venue": "deribit",
-      "spot": 82581,
-      "as_of": "2026-10-12T21:50:02.070Z",
-      "age_s": 200,
-      "convention": "dealer-sign convention: dealers are assumed long the calls and short the puts that customers hold the other side of, so call gamma counts po…",
-      "units": "USD change in dealer delta for a 1% move in the underlying (gamma x open interest x spot^2 x 0.01), summed over every live expiry",
-      "net_gex_usd_per_1pct": 109663082,
-      "regime": "positive gamma (dealers dampen moves under the convention)",
-      "flip_level": 79835.984234,
-      "flip_note": "net GEX recomputed across spot ±20% with each forward shifted in proportion and IV held; null means no sign change in that range",
-      "call_wall": {
-       "strike": 90000,
-       "call_gex_usd": 55266294
-      },
-      "put_wall": {
-       "strike": 80000,
-       "put_gex_usd": -35015836
-      },
-      "by_strike": [
-       {
-        "strike": 58000,
-        "call_gex_usd": 20896,
-        "put_gex_usd": -829576,
-        "net_gex_usd": -808679
-       },
-       {
-        "strike": 59000,
-        "call_gex_usd": 91,
-        "put_gex_usd": -31125,
-        "net_gex_usd": -31034
-       }
-      ],
-      "by_strike_band": "strikes within ±30% of spot",
-      "source": "Deribit public API (get_book_summary_by_currency, get_instruments, get_volatility_index_data)"
-     },
-     "paid": true
-    },
-    "schema": {
-     "type": "object",
-     "properties": {
-      "tool": {
-       "type": "string"
-      },
-      "data": {
-       "type": "object",
-       "properties": {
-        "underlying": {
-         "type": "string"
-        },
-        "venue": {
-         "type": "string"
-        },
-        "spot": {
-         "type": "number"
-        },
-        "as_of": {
-         "type": "string"
-        },
-        "age_s": {
-         "type": "number"
-        },
-        "convention": {
-         "type": "string"
-        },
-        "units": {
-         "type": "string"
-        },
-        "net_gex_usd_per_1pct": {
-         "type": "number"
-        },
-        "regime": {
-         "type": "string"
-        },
-        "flip_level": {
-         "type": "number"
-        },
-        "flip_note": {
-         "type": "string"
-        },
-        "call_wall": {
-         "type": "object"
-        },
-        "put_wall": {
-         "type": "object"
-        },
-        "by_strike": {
-         "type": "array"
-        },
-        "by_strike_band": {
-         "type": "string"
-        },
-        "source": {
          "type": "string"
         }
        }
@@ -2579,95 +2163,79 @@
      "tool": "get_market_state",
      "data": {
       "symbol": "SOL",
-      "as_of": "2026-10-12T21:53:22.…",
+      "as_of": "2026-10-13T04:50:33.…",
       "spot": {
-       "value": 107.0971,
+       "value": 107.876,
        "source": "on-chain DEX mid, me…",
-       "as_of": "2026-10-12T21:53:22.…"
+       "as_of": "2026-10-13T04:50:33.…"
       },
       "perp": {
-       "mark_price": 107.174,
-       "basis_pct": -0.0615,
+       "mark_price": 107.97,
+       "basis_pct": -0.052,
        "basis_state": "backwardation (perp…",
-       "source": "Bybit perp mark vs s…",
-       "as_of": "2026-10-12T21:53:22.…"
+       "source": "Hyperliquid perp mar…",
+       "as_of": "2026-10-13T04:50:33.…"
       },
       "realized_vol": {
-       "rv_7d_ann_pct": 48.5,
-       "rv_30d_ann_pct": 62.85,
-       "today_range_pct": 6.76,
-       "source": "bybit_daily_klines",
-       "as_of": "2026-10-12T21:53:22.…"
+       "rv_7d_ann_pct": 58.25,
+       "rv_30d_ann_pct": 62.6,
+       "today_range_pct": 6.14,
+       "source": "Hyperliquid info API…",
+       "as_of": "2026-10-13T04:50:33.…"
       },
-      "implied_vol": {
-       "iv_30d": 50.48,
-       "kind": "agentfeed_iv30",
-       "iv_source": "computed by AgentFee…",
-       "put_call_ratio_oi": 0.764,
-       "rr25_nearest_30d": 1.09,
-       "net_gex_usd_per_1pct": -150601,
-       "source": "AgentFeed options sn…",
-       "as_of": "2026-10-12T21:50:02.…"
-      },
-      "iv_minus_rv_30d_vol_pts": -12.37,
       "funding": {
        "venues": {
-        "bybit": {
-         "funding_rate_8h": -0.00000411,
-         "z_30d": -0.44,
-         "samples": 90
-        },
         "hyperliquid": {
-         "funding_rate_8h": 0.0001,
-         "z_30d": 0.46,
+         "funding_rate_8h": 0.00008525,
+         "z_30d": 0.16,
          "samples": 720
         }
        },
-       "spread_8h": 0.00010411,
-       "max_abs_z": 0.46,
+       "max_abs_z": 0.16,
        "source": "AgentFeed funding ra…",
-       "as_of": "2026-10-12T21:50:02.…",
-       "stale": false
+       "as_of": "2026-10-13T04:47:53.…"
       },
       "open_interest": {
-       "bybit_usd": 666080506,
-       "bybit_change_24h_pct": -2.41,
-       "hyperliquid_usd": 653664329,
-       "mark_price": 107.173,
-       "source": "Bybit + Hyperliquid…",
-       "as_of": "2026-10-12T21:53:22.…"
+       "hyperliquid_usd": 626357741,
+       "change_1h_pct": null,
+       "change_24h_pct": null,
+       "mark_price": 107.97,
+       "source": "Hyperliquid open int…",
+       "as_of": "2026-10-13T04:50:33.…"
       },
-      "long_short": {
-       "long_pct": 74.61,
-       "short_pct": 25.39,
-       "long_pct_24h_ago": 74.25,
-       "period": "1h",
-       "source": "bybit_v5_public",
-       "as_of": "2026-10-12T21:00:00.…"
+      "whale_positioning": {
+       "net_long_share_pct": 31.63,
+       "long_usd": 92194048.81,
+       "short_usd": 199325207.24,
+       "long_accounts": 11,
+       "short_accounts": 18,
+       "covers": "the top 250 Hyperliq…",
+       "source": "Hyperliquid account…",
+       "as_of": "2026-10-13T04:50:10.…"
       },
       "liquidations": {
        "last_1h": {
-        "longs_usd": 1903250,
-        "shorts_usd": 1388,
-        "total_usd": 1904638
+        "longs_usd": 0,
+        "shorts_usd": 435270,
+        "total_usd": 435270
        },
        "last_24h": {
-        "longs_usd": 13769288,
-        "shorts_usd": 2945535,
-        "total_usd": 16714824,
+        "longs_usd": 38446657,
+        "shorts_usd": 2285005,
+        "total_usd": 40731662,
         "window_note": "clock-hour buckets t…"
        },
-       "hourly_median_usd": 53449,
+       "hourly_median_usd": 57429,
        "median_window_h": 167,
        "side_note": "longs_usd = longs li…",
        "source": "agentfeed_liq_tape (…",
-       "as_of": "2026-10-12T21:50:00.…"
+       "as_of": "2026-10-13T04:35:00.…"
       },
       "fear_greed": {
-       "value": 69,
+       "value": 57,
        "classification": "Greed",
        "source": "alternative.me",
-       "as_of": "2026-10-12T00:00:00.…"
+       "as_of": "2026-10-13T00:00:00.…"
       },
       "next_macro_event": {
        "type": "FOMC",
@@ -2679,18 +2247,15 @@
        "source_url": "https://www.federalr…",
        "verified_at": "2026-10-12T05:23:01.…",
        "press_conference": true,
-       "hours_to_go": 380.1
+       "hours_to_go": 373.2
       },
       "flags": [
-       "liq_spike_1h",
-       "iv_cheap"
+       "liq_spike_1h"
       ],
       "flag_rules": {
        "funding_extreme": "|z_30d| >= 2 on any…",
        "liq_spike_1h": "last 60 minutes of l…",
-       "event_within_24h": "the next FOMC decisi…",
-       "iv_rich": "30-day implied vol m…",
-       "iv_cheap": "30-day implied vol m…"
+       "event_within_24h": "the next FOMC decisi…"
       }
      },
      "paid": true
@@ -2719,19 +2284,13 @@
         "realized_vol": {
          "type": "object"
         },
-        "implied_vol": {
-         "type": "object"
-        },
-        "iv_minus_rv_30d_vol_pts": {
-         "type": "number"
-        },
         "funding": {
          "type": "object"
         },
         "open_interest": {
          "type": "object"
         },
-        "long_short": {
+        "whale_positioning": {
          "type": "object"
         },
         "liquidations": {
@@ -2892,16 +2451,12 @@
       "description": "comma list of stock, index, commodity, fx, rates, pre_ipo, crypto_index, other (default all)",
       "type": "string"
      },
-     "venue": {
-      "description": "comma list of hyperliquid, bybit (default all)",
-      "type": "string"
-     },
      "top": {
       "description": "markets returned, 1-200, default 25",
       "type": "number"
      },
      "min_oi_usd": {
-      "description": "minimum open interest in USD; venues that publish no OI are then left out (default 0)",
+      "description": "minimum open interest in USD (default 0)",
       "type": "number"
      }
     },
@@ -2911,45 +2466,47 @@
     "example": {
      "tool": "get_tradfi_radar",
      "data": {
-      "as_of": "2026-10-12T21:50:02.074Z",
-      "age_s": 201,
+      "as_of": "2026-10-13T04:47:53.649Z",
+      "age_s": 160,
       "venues": [
-       "hyperliquid (HIP-3 dexes)",
-       "bybit"
+       "hyperliquid (HIP-3 dexes)"
       ],
       "classes": {
-       "index": 78,
-       "commodity": 13,
-       "stock": 300,
+       "index": 22,
+       "commodity": 9,
+       "stock": 89,
        "pre_ipo": 3,
-       "fx": 6,
+       "fx": 3,
        "other": 3,
        "rates": 4,
-       "crypto_index": 4
+       "crypto_index": 4,
+       "unclassified": 1
       },
-      "matched": 411,
+      "matched": 138,
       "returned": 25,
       "markets": [
        {
         "venue": "hyperliquid",
-        "market": "xyz:NATGAS",
-        "dex": "xyz",
-        "ticker": "NATGAS",
-        "asset_class": "commodity",
-        "underlying": "Henry Hub natural gas, rolled futures",
-        "class_evidence": "https://docs.trade.xyz/perpetuals/specifications-and-schedul…",
-        "funding_rate_1h": 0.0006103577,
-        "funding_rate_8h": 0.00488286,
+        "market": "mkts:BVIV",
+        "dex": "mkts",
+        "ticker": "BVIV",
+        "asset_class": "crypto_index",
+        "underlying": "Volmex 30-day Bitcoin Implied Volatility Index (vol points;…",
+        "class_evidence": "https://markets.xyz/docs/bviv-volmex-bitcoin-implied-volatil…",
+        "funding_rate_1h": -0.000361824,
+        "funding_rate_8h": -0.00289459,
         "funding_interval_hours": 1,
-        "z_30d": 1.71,
-        "samples": 720,
-        "window_days": 30,
-        "oi_usd": 19618097,
-        "oi_change_24h_pct": -6.46,
-        "mark": 3.4511,
-        "oracle": 3.433,
-        "basis_bps": 52.7,
-        "volume_24h_usd": 32326937
+        "z_30d": -0.99,
+        "mean_8h_30d": 0.00120039,
+        "std_8h_30d": 0.00414615,
+        "samples": 520,
+        "window_days": 21.7,
+        "oi_usd": 600730,
+        "oi_change_24h_pct": -15.06,
+        "mark": 38.963,
+        "oracle": 39,
+        "basis_bps": -9.5,
+        "volume_24h_usd": 487225
        }
       ],
       "dexes": [
@@ -2961,7 +2518,7 @@
         "live_markets": 114
        }
       ],
-      "method": "Ranked by |funding| at its 8h equivalent (each venue's own i…"
+      "method": "Ranked by |funding| at its 8h equivalent (Hyperliquid HIP-3…"
      },
      "paid": true
     },
@@ -3034,40 +2591,38 @@
       "symbol": "TSLA",
       "indicative": true,
       "notice": "INDICATIVE price from 24/7 venues, not an exchange quote. US exchange holidays are not detected in the session label.",
-      "session": "after",
-      "indicative_price": 377.97,
+      "session": "overnight",
+      "indicative_price": 374.86,
       "indicative_source": "Hyperliquid HIP-3 xyz:TSLA perp mark",
       "last_regular_session": {
        "price": 378.2,
        "as_of": "2026-10-12T20:00:00.000Z",
-       "source": "Hyperliquid HIP-3 xyz:TSLA perp: close of the hourly candle ending at this time, the last full hour of a New York regular session (a perp tr…"
+       "source": "Hyperliquid HIP-3 xyz:TSLA perp: close of the hourly candle ending at this time, the last full hour of a New York regular session (a perp trade price, not the exchange's closing auction)"
       },
-      "implied_gap_pct": -0.061,
+      "implied_gap_pct": -0.883,
       "sources": [
        {
         "source": "Hyperliquid HIP-3 xyz:TSLA perp mark",
-        "price": 377.97,
-        "oracle": 377.86,
-        "funding_rate_8h": 0.00005,
+        "price": 374.86,
+        "oracle": 374.75,
+        "funding_rate_8h": 0.00012233,
         "liquidity": {
-         "open_interest_usd": 40863035,
-         "volume_24h_usd": 13809104
+         "open_interest_usd": 40729245,
+         "volume_24h_usd": 17860020
         },
-        "as_of": "2026-10-12T21:50:02.074Z"
+        "as_of": "2026-10-13T04:47:53.649Z"
        },
        {
-        "source": "bybit TSLAUSDT perp mark",
-        "price": 378.5,
-        "funding_rate_8h": 0.00010396,
+        "source": "TSLAx tokenized stock on Solana (raydium-clmm pool 8aDaBQkTrS6HVMjyc6EZebgdiaXhLYGriDWKWWp1NpFF), read on-chain by our collector",
+        "price": 375.3364,
         "liquidity": {
-         "open_interest_usd": 10634109,
-         "volume_24h_usd": 4836517
+         "pool_liquidity_usd": 2324536
         },
-        "as_of": "2026-10-12T21:50:02.074Z"
+        "as_of": "2026-10-13T04:46:01.000Z"
        }
       ],
-      "as_of": "2026-10-12T21:50:02.074Z",
-      "age_s": 201
+      "as_of": "2026-10-13T04:47:53.649Z",
+      "age_s": 160
      },
      "paid": true
     },
@@ -3141,21 +2696,15 @@
     "example": {
      "tool": "get_open_interest",
      "data": {
+      "coin": "SOL",
       "symbol": "SOLUSDT",
-      "bybit": {
-       "oi_base": 6252475.9,
-       "oi_usd": 666080506,
-       "change_1h_pct": 0.45,
-       "change_24h_pct": -2.41
-      },
-      "mark_price": 107.173,
-      "hyperliquid": {
-       "coin": "SOL",
-       "oi_base": 6101599.260000003,
-       "oi_usd": 653664329,
-       "mark_price": 107.13,
-       "source": "Hyperliquid info API (public chain state)"
-      }
+      "mark_price": 107.97,
+      "oi_base": 5801220.159999999,
+      "oi_usd": 626357741,
+      "change_1h_pct": null,
+      "change_24h_pct": null,
+      "history_note": "open interest history is recorded by our own sampler every 5 minutes (Hyperliquid publishes the current value only); a change is null until the record reaches that far back",
+      "source": "Hyperliquid info API (public chain state)"
      },
      "paid": true
     },
@@ -3168,17 +2717,28 @@
       "data": {
        "type": "object",
        "properties": {
-        "symbol": {
+        "coin": {
          "type": "string"
         },
-        "bybit": {
-         "type": "object"
+        "symbol": {
+         "type": "string"
         },
         "mark_price": {
          "type": "number"
         },
-        "hyperliquid": {
-         "type": "object"
+        "oi_base": {
+         "type": "number"
+        },
+        "oi_usd": {
+         "type": "number"
+        },
+        "change_1h_pct": {},
+        "change_24h_pct": {},
+        "history_note": {
+         "type": "string"
+        },
+        "source": {
+         "type": "string"
         }
        }
       },
@@ -3201,165 +2761,6 @@
      }
     },
     "required": []
-   },
-   "output": {
-    "example": {
-     "tool": "get_oi_spike_scan",
-     "data": {
-      "source": "bybit_linear_universe",
-      "baseline_min_ago": 30,
-      "spikes": [
-       {
-        "symbol": "BLURUSDT",
-        "oi_usd": 3161153,
-        "oi_change_pct": -3.9,
-        "funding_rate_8h": -0.01541675,
-        "funding_rate_raw": -0.01541675,
-        "funding_interval_hours": 8,
-        "price_24h_pct": -24.6
-       },
-       {
-        "symbol": "PLUMEUSDT",
-        "oi_usd": 6560408,
-        "oi_change_pct": 3.03,
-        "funding_rate_8h": 0.0001,
-        "funding_rate_raw": 0.00005,
-        "funding_interval_hours": 4,
-        "price_24h_pct": -5.41
-       },
-       {
-        "symbol": "WLFIUSDT",
-        "oi_usd": 18962292,
-        "oi_change_pct": 3.01,
-        "funding_rate_8h": -0.00000284,
-        "funding_rate_raw": -0.00000142,
-        "funding_interval_hours": 4,
-        "price_24h_pct": -0.67
-       }
-      ],
-      "hyperliquid": {
-       "spikes": [
-        {
-         "coin": "STX",
-         "oi_usd": 3545250,
-         "oi_change_pct": 3.9
-        },
-        {
-         "coin": "RENDER",
-         "oi_usd": 4056943,
-         "oi_change_pct": -3.56
-        },
-        {
-         "coin": "FIL",
-         "oi_usd": 10568329,
-         "oi_change_pct": -2.27
-        }
-       ],
-       "source": "Hyperliquid info API (public chain state)"
-      }
-     },
-     "paid": true
-    },
-    "schema": {
-     "type": "object",
-     "properties": {
-      "tool": {
-       "type": "string"
-      },
-      "data": {
-       "type": "object",
-       "properties": {
-        "source": {
-         "type": "string"
-        },
-        "baseline_min_ago": {
-         "type": "number"
-        },
-        "spikes": {
-         "type": "array"
-        },
-        "hyperliquid": {
-         "type": "object"
-        }
-       }
-      },
-      "paid": {
-       "type": "boolean"
-      }
-     }
-    }
-   }
-  },
-  "GET /api/long-short": {
-   "tool": "get_long_short",
-   "price_usd": 0.01,
-   "input": {
-    "symbol": "SOLUSDT"
-   },
-   "inputSchema": {
-    "properties": {
-     "symbol": {
-      "description": "USDT perp symbol e.g. SOLUSDT, BTCUSDT (default SOLUSDT)",
-      "type": "string"
-     }
-    },
-    "required": []
-   },
-   "output": {
-    "example": {
-     "tool": "get_long_short",
-     "data": {
-      "symbol": "SOLUSDT",
-      "source": "bybit_v5_public",
-      "period": "1h",
-      "long_pct": 74.61,
-      "short_pct": 25.39,
-      "long_pct_1h_ago": 74.53,
-      "long_pct_24h_ago": 74.25,
-      "ts": 1791838800000
-     },
-     "paid": true
-    },
-    "schema": {
-     "type": "object",
-     "properties": {
-      "tool": {
-       "type": "string"
-      },
-      "data": {
-       "type": "object",
-       "properties": {
-        "symbol": {
-         "type": "string"
-        },
-        "source": {
-         "type": "string"
-        },
-        "period": {
-         "type": "string"
-        },
-        "long_pct": {
-         "type": "number"
-        },
-        "short_pct": {
-         "type": "number"
-        },
-        "long_pct_1h_ago": {
-         "type": "number"
-        },
-        "long_pct_24h_ago": {
-         "type": "number"
-        },
-        "ts": {
-         "type": "number"
-        }
-       }
-      },
-      "paid": {
-       "type": "boolean"
-      }
-     }
-    }
    }
   },
   "GET /api/basis": {
@@ -3381,25 +2782,17 @@
     "example": {
      "tool": "get_basis",
      "data": {
+      "coin": "SOL",
       "symbol": "SOLUSDT",
-      "mark_price": 107.174,
-      "spot_price": 107.24,
-      "basis_pct": -0.0615,
+      "mark_price": 107.97,
+      "oracle_price": 108.0262,
+      "basis_pct": -0.052,
+      "basis_against": "Hyperliquid oracle price (validators' weighted median of spot venues)",
       "state": "backwardation (perp discount — shorts aggressive)",
-      "funding_rate_8h": -0.00000411,
-      "funding_rate_raw": -0.00000411,
-      "funding_interval_hours": 8,
-      "hyperliquid": {
-       "coin": "SOL",
-       "mark_price": 107.13,
-       "oracle_price": 107.18,
-       "basis_pct": -0.0467,
-       "basis_against": "Hyperliquid oracle price (validators' weighted median of spot venues)",
-       "funding_rate_8h": 0.0001,
-       "funding_rate_raw": 0.0000125,
-       "funding_interval_hours": 1,
-       "source": "Hyperliquid info API (public chain state)"
-      }
+      "funding_rate_8h": 0.0000801264,
+      "funding_rate_raw": 0.0000100158,
+      "funding_interval_hours": 1,
+      "source": "Hyperliquid info API (public chain state)"
      },
      "paid": true
     },
@@ -3412,17 +2805,23 @@
       "data": {
        "type": "object",
        "properties": {
+        "coin": {
+         "type": "string"
+        },
         "symbol": {
          "type": "string"
         },
         "mark_price": {
          "type": "number"
         },
-        "spot_price": {
+        "oracle_price": {
          "type": "number"
         },
         "basis_pct": {
          "type": "number"
+        },
+        "basis_against": {
+         "type": "string"
         },
         "state": {
          "type": "string"
@@ -3436,8 +2835,8 @@
         "funding_interval_hours": {
          "type": "number"
         },
-        "hyperliquid": {
-         "type": "object"
+        "source": {
+         "type": "string"
         }
        }
       },
@@ -3467,19 +2866,13 @@
     "example": {
      "tool": "get_volatility",
      "data": {
+      "coin": "SOL",
       "symbol": "SOLUSDT",
-      "source": "bybit_daily_klines",
-      "realized_vol_7d_ann_pct": 48.5,
-      "realized_vol_30d_ann_pct": 62.85,
-      "today_range_pct": 6.76,
-      "hyperliquid": {
-       "coin": "SOL",
-       "realized_vol_7d_ann_pct": 48.54,
-       "realized_vol_30d_ann_pct": 62.22,
-       "today_range_pct": 6.74,
-       "basis": "daily perp candles",
-       "source": "Hyperliquid info API (public chain state)"
-      }
+      "realized_vol_7d_ann_pct": 58.25,
+      "realized_vol_30d_ann_pct": 62.6,
+      "today_range_pct": 6.14,
+      "basis": "daily perp candles",
+      "source": "Hyperliquid info API (public chain state)"
      },
      "paid": true
     },
@@ -3492,10 +2885,10 @@
       "data": {
        "type": "object",
        "properties": {
-        "symbol": {
+        "coin": {
          "type": "string"
         },
-        "source": {
+        "symbol": {
          "type": "string"
         },
         "realized_vol_7d_ann_pct": {
@@ -3507,8 +2900,11 @@
         "today_range_pct": {
          "type": "number"
         },
-        "hyperliquid": {
-         "type": "object"
+        "basis": {
+         "type": "string"
+        },
+        "source": {
+         "type": "string"
         }
        }
       },
@@ -3532,7 +2928,7 @@
       "type": "string"
      },
      "limit": {
-      "description": "intervals, 1-200, default 30",
+      "description": "hourly settlements, 1-200, default 30",
       "type": "number"
      }
     },
@@ -3542,60 +2938,34 @@
     "example": {
      "tool": "get_funding_history",
      "data": {
+      "coin": "SOL",
       "symbol": "SOLUSDT",
       "intervals": 30,
-      "avg_rate_8h": 0.0000114,
-      "avg_annualized_pct": 1.25,
-      "positive_share_pct": 57,
+      "funding_interval_hours": 1,
+      "avg_rate_8h": 0.00007605,
+      "avg_annualized_pct": 8.33,
+      "positive_share_pct": 90,
       "history": [
        {
-        "ts": 1791820800000,
-        "rate_8h": -0.00002467,
-        "funding_rate_raw": -0.00002467,
-        "funding_interval_hours": 8
+        "ts": 1791864000003,
+        "rate_8h": 0.0000376384,
+        "funding_rate_raw": 0.0000047048,
+        "funding_interval_hours": 1
        },
        {
-        "ts": 1791792000000,
-        "rate_8h": 0.0001,
-        "funding_rate_raw": 0.0001,
-        "funding_interval_hours": 8
+        "ts": 1791860400106,
+        "rate_8h": 0.000017936,
+        "funding_rate_raw": 0.000002242,
+        "funding_interval_hours": 1
        },
        {
-        "ts": 1791763200000,
-        "rate_8h": 0.0001,
-        "funding_rate_raw": 0.0001,
-        "funding_interval_hours": 8
+        "ts": 1791856800038,
+        "rate_8h": 0.0000686424,
+        "funding_rate_raw": 0.0000085803,
+        "funding_interval_hours": 1
        }
       ],
-      "hyperliquid": {
-       "coin": "SOL",
-       "intervals": 30,
-       "funding_interval_hours": 1,
-       "avg_rate_8h": 0.00009937,
-       "avg_annualized_pct": 10.88,
-       "positive_share_pct": 100,
-       "history": [
-        {
-         "ts": 1791838800015,
-         "rate_8h": 0.0001,
-         "funding_rate_raw": 0.0000125,
-         "funding_interval_hours": 1
-        },
-        {
-         "ts": 1791835200018,
-         "rate_8h": 0.0001,
-         "funding_rate_raw": 0.0000125,
-         "funding_interval_hours": 1
-        },
-        {
-         "ts": 1791831600005,
-         "rate_8h": 0.0001,
-         "funding_rate_raw": 0.0000125,
-         "funding_interval_hours": 1
-        }
-       ],
-       "source": "Hyperliquid info API (public chain state)"
-      }
+      "source": "Hyperliquid info API (public chain state)"
      },
      "paid": true
     },
@@ -3608,10 +2978,16 @@
       "data": {
        "type": "object",
        "properties": {
+        "coin": {
+         "type": "string"
+        },
         "symbol": {
          "type": "string"
         },
         "intervals": {
+         "type": "number"
+        },
+        "funding_interval_hours": {
          "type": "number"
         },
         "avg_rate_8h": {
@@ -3626,8 +3002,8 @@
         "history": {
          "type": "array"
         },
-        "hyperliquid": {
-         "type": "object"
+        "source": {
+         "type": "string"
         }
        }
       },
@@ -3649,7 +3025,7 @@
       "type": "number"
      },
      "min_turnover_usd": {
-      "description": "liquidity floor, default 1M",
+      "description": "24h volume floor in USD, default 1M",
       "type": "number"
      }
     },
@@ -3659,61 +3035,57 @@
     "example": {
      "tool": "get_top_movers",
      "data": {
-      "source": "bybit_linear_universe",
-      "universe_size": 285,
-      "min_turnover_usd": 1000000,
+      "source": "Hyperliquid info API (public chain state)",
+      "universe_size": 90,
+      "min_volume_24h_usd": 1000000,
       "gainers": [
        {
-        "symbol": "RSRUSDT",
-        "price": 0.00219,
-        "change_24h_pct": 32.86,
-        "turnover_24h_usd": 110323619,
-        "funding_rate_8h": -0.02634064,
-        "funding_rate_raw": -0.00329258,
-        "funding_interval_hours": 1
+        "coin": "STX",
+        "price": 0.43196,
+        "funding_rate_raw": 0.0000125,
+        "funding_interval_hours": 1,
+        "funding_rate_8h": 0.0001,
+        "annualized_pct": 10.95,
+        "change_24h_pct": 10.96,
+        "oi_usd": 3844962,
+        "volume_24h_usd": 11706328
+       },
+       {
+        "coin": "PYTH",
+        "price": 0.086762,
+        "funding_rate_raw": 0.0000125,
+        "funding_interval_hours": 1,
+        "funding_rate_8h": 0.0001,
+        "annualized_pct": 10.95,
+        "change_24h_pct": 8.6,
+        "oi_usd": 4849143,
+        "volume_24h_usd": 7976544
        }
       ],
       "losers": [
        {
-        "symbol": "BOMEUSDT",
-        "price": 0.0007995,
-        "change_24h_pct": -27.38,
-        "turnover_24h_usd": 8082957,
-        "funding_rate_8h": -0.00046692,
-        "funding_rate_raw": -0.00023346,
-        "funding_interval_hours": 4
+        "coin": "W",
+        "price": 0.01919,
+        "funding_rate_raw": -0.0000657257,
+        "funding_interval_hours": 1,
+        "funding_rate_8h": -0.0005258056,
+        "annualized_pct": -57.58,
+        "change_24h_pct": -33.09,
+        "oi_usd": 10586820,
+        "volume_24h_usd": 46208376
+       },
+       {
+        "coin": "BLUR",
+        "price": 0.013398,
+        "funding_rate_raw": -0.000249273,
+        "funding_interval_hours": 1,
+        "funding_rate_8h": -0.001994184,
+        "annualized_pct": -218.36,
+        "change_24h_pct": -29.7,
+        "oi_usd": 997406,
+        "volume_24h_usd": 3050687
        }
-      ],
-      "hyperliquid": {
-       "universe_size": 87,
-       "gainers": [
-        {
-         "coin": "RSR",
-         "price": 0.002165,
-         "funding_rate_raw": -0.0014459523,
-         "funding_interval_hours": 1,
-         "funding_rate_8h": -0.0115676184,
-         "annualized_pct": -1266.65,
-         "change_24h_pct": 31.29,
-         "oi_usd": 2160430,
-         "volume_24h_usd": 7404715
-        }
-       ],
-       "losers": [
-        {
-         "coin": "BOME",
-         "price": 0.000801,
-         "funding_rate_raw": 0.0000045218,
-         "funding_interval_hours": 1,
-         "funding_rate_8h": 0.0000361744,
-         "annualized_pct": 3.96,
-         "change_24h_pct": -27.25,
-         "oi_usd": 2022331,
-         "volume_24h_usd": 3022896
-        }
-       ],
-       "source": "Hyperliquid info API (public chain state)"
-      }
+      ]
      },
      "paid": true
     },
@@ -3732,7 +3104,7 @@
         "universe_size": {
          "type": "number"
         },
-        "min_turnover_usd": {
+        "min_volume_24h_usd": {
          "type": "number"
         },
         "gainers": {
@@ -3740,9 +3112,6 @@
         },
         "losers": {
          "type": "array"
-        },
-        "hyperliquid": {
-         "type": "object"
         }
        }
       },
@@ -3776,24 +3145,17 @@
     "example": {
      "tool": "get_orderbook_imbalance",
      "data": {
+      "coin": "SOL",
       "symbol": "SOLUSDT",
-      "mid_price": 107.135,
+      "mid_price": 107.975,
       "window_bps": 50,
-      "bid_usd": 10442132,
-      "ask_usd": 11000935,
-      "imbalance_ratio": 0.949,
+      "bid_usd": 6121399,
+      "ask_usd": 6589495,
+      "imbalance_ratio": 0.929,
       "skew": "balanced",
       "note": "visible resting liquidity only — spoofable, read as context not signal",
-      "hyperliquid": {
-       "coin": "SOL",
-       "mid_price": 107.175,
-       "bid_usd": 4662335,
-       "ask_usd": 6492599,
-       "imbalance_ratio": 0.718,
-       "skew": "balanced",
-       "depth_note": "Hyperliquid serves 20 aggregated levels a side, so a wide window may reach past its visible book",
-       "source": "Hyperliquid info API (public chain state)"
-      }
+      "depth_note": "Hyperliquid serves 20 aggregated levels a side, so a wide window may reach past its visible book",
+      "source": "Hyperliquid info API (public chain state)"
      },
      "paid": true
     },
@@ -3806,6 +3168,9 @@
       "data": {
        "type": "object",
        "properties": {
+        "coin": {
+         "type": "string"
+        },
         "symbol": {
          "type": "string"
         },
@@ -3830,8 +3195,11 @@
         "note": {
          "type": "string"
         },
-        "hyperliquid": {
-         "type": "object"
+        "depth_note": {
+         "type": "string"
+        },
+        "source": {
+         "type": "string"
         }
        }
       },
@@ -3865,83 +3233,45 @@
     "example": {
      "tool": "get_orderbook_walls",
      "data": {
+      "coin": "SOL",
       "symbol": "SOLUSDT",
-      "mid_price": 107.135,
-      "depth_levels": 400,
+      "mid_price": 107.975,
+      "depth_levels": 40,
       "bid_walls": [
        {
-        "price": 105.93,
-        "usd": 2275323,
-        "distance_pct": -1.125
+        "price": 107.88,
+        "usd": 575212,
+        "distance_pct": -0.088
        },
        {
-        "price": 105.55,
-        "usd": 1741322,
-        "distance_pct": -1.479
+        "price": 107.83,
+        "usd": 511565,
+        "distance_pct": -0.134
        },
        {
-        "price": 105.17,
-        "usd": 1661623,
-        "distance_pct": -1.834
+        "price": 107.82,
+        "usd": 506131,
+        "distance_pct": -0.144
        }
       ],
       "ask_walls": [
        {
-        "price": 108.27,
-        "usd": 2423981,
-        "distance_pct": 1.059
+        "price": 108.08,
+        "usd": 585348,
+        "distance_pct": 0.097
        },
        {
-        "price": 108.65,
-        "usd": 2093533,
-        "distance_pct": 1.414
+        "price": 108.12,
+        "usd": 544992,
+        "distance_pct": 0.134
        },
        {
-        "price": 107.74,
-        "usd": 1918365,
-        "distance_pct": 0.565
+        "price": 108.16,
+        "usd": 538772,
+        "distance_pct": 0.171
        }
       ],
-      "hyperliquid": {
-       "coin": "SOL",
-       "mid_price": 107.175,
-       "depth_levels": 40,
-       "bid_walls": [
-        {
-         "price": 107.09,
-         "usd": 548183,
-         "distance_pct": -0.079
-        },
-        {
-         "price": 107,
-         "usd": 473083,
-         "distance_pct": -0.163
-        },
-        {
-         "price": 106.99,
-         "usd": 453607,
-         "distance_pct": -0.173
-        }
-       ],
-       "ask_walls": [
-        {
-         "price": 107.22,
-         "usd": 595936,
-         "distance_pct": 0.042
-        },
-        {
-         "price": 107.3,
-         "usd": 508840,
-         "distance_pct": 0.117
-        },
-        {
-         "price": 107.23,
-         "usd": 489129,
-         "distance_pct": 0.051
-        }
-       ],
-       "source": "Hyperliquid info API (public chain state)"
-      }
+      "source": "Hyperliquid info API (public chain state)"
      },
      "paid": true
     },
@@ -3954,6 +3284,9 @@
       "data": {
        "type": "object",
        "properties": {
+        "coin": {
+         "type": "string"
+        },
         "symbol": {
          "type": "string"
         },
@@ -3969,170 +3302,7 @@
         "ask_walls": {
          "type": "array"
         },
-        "hyperliquid": {
-         "type": "object"
-        }
-       }
-      },
-      "paid": {
-       "type": "boolean"
-      }
-     }
-    }
-   }
-  },
-  "GET /api/whale-trades": {
-   "tool": "get_whale_trades",
-   "price_usd": 0.02,
-   "input": {
-    "symbol": "SOLUSDT",
-    "min_usd": 50000
-   },
-   "inputSchema": {
-    "properties": {
-     "symbol": {
-      "description": "USDT perp symbol e.g. SOLUSDT, BTCUSDT (default SOLUSDT)",
-      "type": "string"
-     },
-     "min_usd": {
-      "description": "min print USD, default 100k",
-      "type": "number"
-     },
-     "limit": {
-      "description": "max trades returned, 1-50, default 20",
-      "type": "number"
-     }
-    },
-    "required": []
-   },
-   "output": {
-    "example": {
-     "tool": "get_whale_trades",
-     "data": {
-      "symbol": "SOLUSDT",
-      "tape_size": 1000,
-      "min_usd": 50000,
-      "whale_count": 1,
-      "whale_buy_usd": 55698,
-      "whale_sell_usd": 0,
-      "net_usd": 55698,
-      "dominant": "buyers",
-      "trades": [
-       {
-        "ts": 1791841969873,
-        "side": "Buy",
-        "price": 107.09,
-        "usd": 55698
-       }
-      ]
-     },
-     "paid": true
-    },
-    "schema": {
-     "type": "object",
-     "properties": {
-      "tool": {
-       "type": "string"
-      },
-      "data": {
-       "type": "object",
-       "properties": {
-        "symbol": {
-         "type": "string"
-        },
-        "tape_size": {
-         "type": "number"
-        },
-        "min_usd": {
-         "type": "number"
-        },
-        "whale_count": {
-         "type": "number"
-        },
-        "whale_buy_usd": {
-         "type": "number"
-        },
-        "whale_sell_usd": {
-         "type": "number"
-        },
-        "net_usd": {
-         "type": "number"
-        },
-        "dominant": {
-         "type": "string"
-        },
-        "trades": {
-         "type": "array"
-        }
-       }
-      },
-      "paid": {
-       "type": "boolean"
-      }
-     }
-    }
-   }
-  },
-  "GET /api/spread-arb": {
-   "tool": "get_spread_arb",
-   "price_usd": 0.02,
-   "input": {
-    "symbol": "SOLUSDT"
-   },
-   "inputSchema": {
-    "properties": {
-     "symbol": {
-      "description": "USDT perp symbol e.g. SOLUSDT, BTCUSDT (default SOLUSDT)",
-      "type": "string"
-     }
-    },
-    "required": []
-   },
-   "output": {
-    "example": {
-     "tool": "get_spread_arb",
-     "data": {
-      "symbol": "SOLUSDT",
-      "venues": {
-       "bybit": {
-        "bid": 107.11,
-        "ask": 107.12
-       },
-       "hyperliquid": {
-        "bid": 107.13,
-        "ask": 107.15
-       }
-      },
-      "best_cross": {
-       "sell_on": "hyperliquid",
-       "buy_on": "bybit",
-       "edge": 0.009999999999990905,
-       "edge_usd_per_unit": 0.01,
-       "edge_bps": 0.93
-      },
-      "note": "gross edge, pre-fee — perp funding and fees usually eat sub-5bps gaps"
-     },
-     "paid": true
-    },
-    "schema": {
-     "type": "object",
-     "properties": {
-      "tool": {
-       "type": "string"
-      },
-      "data": {
-       "type": "object",
-       "properties": {
-        "symbol": {
-         "type": "string"
-        },
-        "venues": {
-         "type": "object"
-        },
-        "best_cross": {
-         "type": "object"
-        },
-        "note": {
+        "source": {
          "type": "string"
         }
        }
@@ -6362,59 +5532,38 @@
       "symbol": "SOLUSDT",
       "funding": {
        "venues": {
-        "bybit": {
-         "funding_rate_8h": -0.00000411,
-         "funding_rate_raw": -0.00000411,
-         "funding_interval_hours": 8,
-         "next_funding_time": 1791849600000,
-         "mark_price": 107.173
-        },
         "hyperliquid": {
-         "funding_rate_1h": 0.0000125,
-         "funding_rate_8h_equiv": 0.0001,
-         "funding_rate_raw": 0.0000125,
+         "funding_rate_raw": 0.0000100158,
          "funding_interval_hours": 1,
-         "mark_price": 107.145
+         "funding_rate_8h": 0.0000801264,
+         "annualized_pct": 8.77,
+         "next_funding_time": 1791867600000,
+         "mark_price": 107.97
         }
        },
-       "spread_8h": 0.00010411,
-       "crowding": "mixed"
+       "crowding": "longs_pay"
       },
       "open_interest": {
-       "bybit": {
-        "oi_base": 6252475.9,
-        "oi_usd": 666080506,
-        "change_1h_pct": 0.45,
-        "change_24h_pct": -2.41
-       },
        "hyperliquid": {
-        "coin": "SOL",
-        "oi_base": 6101599.260000003,
-        "oi_usd": 653664329,
-        "mark_price": 107.13,
-        "source": "Hyperliquid info API (public chain state)"
+        "oi_base": 5801220.159999999,
+        "oi_usd": 626357741,
+        "change_1h_pct": null,
+        "change_24h_pct": null
        },
-       "mark_price": 107.173
-      },
-      "long_short": {
-       "long_pct": 74.61,
-       "short_pct": 25.39,
-       "long_pct_1h_ago": 74.53,
-       "long_pct_24h_ago": 74.25,
-       "source": "bybit_v5_public"
+       "mark_price": 107.97
       },
       "liquidations_24h": {
-       "prints": 1565,
-       "total_usd": 16714824.99,
-       "longs_usd": 13769288.41,
-       "shorts_usd": 2945536.59,
-       "biggest_print_usd": 881208,
+       "prints": 3043,
+       "total_usd": 41259631.04,
+       "longs_usd": 38448706.79,
+       "shorts_usd": 2810924.25,
+       "biggest_print_usd": 2748128.7,
        "venues": 3,
        "dominant_side": "longs"
       },
-      "tape_age_sec": 5,
+      "tape_age_sec": 11,
       "partial": null,
-      "source": "bybit+hyperliquid venues, liquidations from our own tape"
+      "source": "hyperliquid funding and open interest, liquidations from our own tape"
      },
      "paid": true
     },
@@ -6434,9 +5583,6 @@
          "type": "object"
         },
         "open_interest": {
-         "type": "object"
-        },
-        "long_short": {
          "type": "object"
         },
         "liquidations_24h": {
@@ -6472,41 +5618,41 @@
      "data": {
       "stale": false,
       "window_min": 60,
-      "tape_age_sec": 5,
-      "prints": 13699,
-      "total_usd": 46553453.96,
-      "longs_usd": 43242089.96,
-      "shorts_usd": 3311364,
-      "dominant_side": "longs",
-      "symbols": 688,
+      "tape_age_sec": 11,
+      "prints": 1369,
+      "total_usd": 4315929.53,
+      "longs_usd": 1253952.44,
+      "shorts_usd": 3061977.09,
+      "dominant_side": "shorts",
+      "symbols": 204,
       "venues": 3,
       "top_symbols": [
        {
         "symbol": "ETHUSDT",
-        "prints": 335,
-        "usd": 9085712.73,
-        "longs_usd": 8869060.91,
-        "shorts_usd": 216651.82,
+        "prints": 38,
+        "usd": 1098161.3,
+        "longs_usd": 0,
+        "shorts_usd": 1098161.3,
+        "dominant_side": "shorts"
+       },
+       {
+        "symbol": "SKHYNIXUSDT",
+        "prints": 49,
+        "usd": 490477.49,
+        "longs_usd": 489635.07,
+        "shorts_usd": 842.42,
         "dominant_side": "longs"
        },
        {
-        "symbol": "DOSUSDT",
-        "prints": 2171,
-        "usd": 4790608.48,
-        "longs_usd": 2900319.64,
-        "shorts_usd": 1890288.84,
-        "dominant_side": "longs"
-       },
-       {
-        "symbol": "BTCUSDT",
-        "prints": 210,
-        "usd": 4573164.96,
-        "longs_usd": 4258838.21,
-        "shorts_usd": 314326.75,
-        "dominant_side": "longs"
+        "symbol": "SOLUSDT",
+        "prints": 28,
+        "usd": 435269.03,
+        "longs_usd": 0,
+        "shorts_usd": 435269.03,
+        "dominant_side": "shorts"
        }
       ],
-      "source": "our own bybit+okx+binance liquidation tape"
+      "source": "our own liquidation tape (Bybit, OKX and Binance streams)"
      },
      "paid": true
     },
@@ -6578,56 +5724,43 @@
      "data": {
       "extremes": [
        {
-        "symbol": "RSRUSDT",
-        "venue": "bybit",
-        "funding_rate_8h": -0.02634064,
-        "funding_rate_raw": -0.00329258,
+        "coin": "RSR",
+        "venue": "hyperliquid",
+        "funding_rate_8h": -0.013151252,
+        "funding_rate_raw": -0.0016439065,
         "funding_interval_hours": 1,
-        "annualized_pct": -2884.3,
-        "oi_usd": 6244856,
-        "price_24h_pct": 32.86
+        "annualized_pct": -1440.06,
+        "oi_usd": 4050094,
+        "price_24h_pct": -10.47
        },
-       {
-        "symbol": "BLURUSDT",
-        "venue": "bybit",
-        "funding_rate_8h": -0.01322525,
-        "funding_rate_raw": -0.01322525,
-        "funding_interval_hours": 8,
-        "annualized_pct": -1448.16,
-        "oi_usd": 3279600,
-        "price_24h_pct": -22.3
-       }
-      ],
-      "hyperliquid_extremes": [
        {
         "coin": "BLUR",
         "venue": "hyperliquid",
-        "funding_rate_8h": -0.0291767376,
-        "funding_rate_raw": -0.0036470922,
+        "funding_rate_8h": -0.001994184,
+        "funding_rate_raw": -0.000249273,
         "funding_interval_hours": 1,
-        "annualized_pct": -3194.85,
-        "oi_usd": 1151881,
-        "price_24h_pct": -22.2
+        "annualized_pct": -218.36,
+        "oi_usd": 997406,
+        "price_24h_pct": -29.7
        },
        {
-        "coin": "RSR",
+        "coin": "AZTEC",
         "venue": "hyperliquid",
-        "funding_rate_8h": -0.0115676184,
-        "funding_rate_raw": -0.0014459523,
+        "funding_rate_8h": 0.0006505408,
+        "funding_rate_raw": 0.0000813176,
         "funding_interval_hours": 1,
-        "annualized_pct": -1266.65,
-        "oi_usd": 2160430,
-        "price_24h_pct": 31.29
+        "annualized_pct": 71.23,
+        "oi_usd": 3706917,
+        "price_24h_pct": 4.56
        }
       ],
-      "universe_size": 285,
-      "min_turnover_usd": 1000000,
+      "universe_size": 90,
+      "min_volume_24h_usd": 1000000,
       "venue_scope": [
-       "bybit",
        "hyperliquid"
       ],
-      "note": "Ranked by absolute annualised funding across every Bybit USDT perp above the liquidity floor, and separately across every Hyperliquid perp w…",
-      "source": "bybit_linear_universe"
+      "note": "Ranked by absolute annualised funding across every Hyperliquid perp above the liquidity floor. For the whole table with each coin's 30-day z-score use /api/funding-radar.",
+      "source": "Hyperliquid info API (public chain state)"
      },
      "paid": true
     },
@@ -6643,13 +5776,10 @@
         "extremes": {
          "type": "array"
         },
-        "hyperliquid_extremes": {
-         "type": "array"
-        },
         "universe_size": {
          "type": "number"
         },
-        "min_turnover_usd": {
+        "min_volume_24h_usd": {
          "type": "number"
         },
         "venue_scope": {
@@ -6737,5 +5867,8 @@
    }
   }
  },
- "_outputs_recaptured_at": "2026-10-12T22:18:21.408Z"
+ "_outputs_recaptured_at": "2026-10-13T04:50:35.038Z",
+ "_pruned_at": "2026-10-13T04:50:31.410Z",
+ "_schemas_regenerated_at": "2026-10-13T04:50:31.953Z",
+ "_outputs_dropped_at": "2026-10-13T04:50:35.546Z"
 }
