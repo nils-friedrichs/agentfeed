@@ -28,6 +28,7 @@
     "express": "^4.19.2",
     "fast-xml-parser": "5.11.2",
     "linkedom": "0.18.13",
+    "qrcode-generator": "2.0.4",
     "turndown": "7.2.4",
     "unpdf": "1.8.1",
     "viem": "2.54.6",

@@ -116,3 +116,7 @@ peg-onchain.db-shm
 peg-collect.log
 jito-tips.json
 jito-tips.log
+
+# R11 runtime data (refreshed by cron, never committed)
+data/sanctions-ofac.json
+data/disposable-domains.txt
