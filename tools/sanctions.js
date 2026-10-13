@@ -138,23 +138,36 @@ function sanctionsCheck(p = {}, { now = Date.now() } = {}) {
 }
 
 // ---- refresh (cron) ----
-function download(url, dest, { fetchImpl } = {}) {
+// The Sanctions List Service answers the download URL with a 302 to a short-lived signed link on the Treasury's own S3 bucket;
+// follow at most 3 redirects, https only, and only to treas.gov or amazonaws.com hosts.
+const REDIRECT_OK = /(^|\.)(treas\.gov|amazonaws\.com)$/;
+function download(url, dest, { fetchImpl, get = https.get } = {}) {
   if (fetchImpl) return fetchImpl(url, dest);
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { 'user-agent': 'AgentFeed/1.0 (+https://x402.ochinimus.app)' }, timeout: 120000 }, (res) => {
-      if (res.statusCode !== 200) { res.resume(); return reject(new Error(`HTTP ${res.statusCode}`)); }
-      const out = fs.createWriteStream(dest);
-      res.pipe(out); out.on('finish', () => resolve()); out.on('error', reject); res.on('error', reject);
-    });
-    req.on('timeout', () => req.destroy(new Error('timeout')));
-    req.on('error', reject);
+    const hop = (u, left) => {
+      const req = get(u, { headers: { 'user-agent': 'AgentFeed/1.0 (+https://x402.ochinimus.app)' }, timeout: 120000 }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          if (left <= 0) return reject(new Error('too many redirects'));
+          let next; try { next = new URL(res.headers.location, u); } catch { return reject(new Error('bad redirect')); }
+          if (next.protocol !== 'https:' || !REDIRECT_OK.test(next.hostname)) return reject(new Error(`refusing redirect to ${next.hostname}`));
+          return hop(next.href, left - 1);
+        }
+        if (res.statusCode !== 200) { res.resume(); return reject(new Error(`HTTP ${res.statusCode}`)); }
+        const out = fs.createWriteStream(dest);
+        res.pipe(out); out.on('finish', () => resolve()); out.on('error', reject); res.on('error', reject);
+      });
+      req.on('timeout', () => req.destroy(new Error('timeout')));
+      req.on('error', reject);
+    };
+    hop(url, 3);
   });
 }
 
-async function refresh({ url = SDN_URL, fetchImpl, now = Date.now() } = {}) {
+async function refresh({ url = SDN_URL, fetchImpl, get, now = Date.now() } = {}) {
   const f = file(); const tmpXml = `${f}.xml.tmp`; const tmpJson = `${f}.tmp`;
   try {
-    await download(url, tmpXml, { fetchImpl });
+    await download(url, tmpXml, { fetchImpl, get });
     const r = await parseSdn(readline.createInterface({ input: fs.createReadStream(tmpXml), crlfDelay: Infinity }));
     // sanity: the real file has ~19k records and ~1,000 addresses; a truncated or re-formatted one must not replace a good copy
     if (!r.published || !r.records || r.records < 10000) throw new Error(`implausible file: records=${r.records} published=${r.published}`);
@@ -163,7 +176,7 @@ async function refresh({ url = SDN_URL, fetchImpl, now = Date.now() } = {}) {
     if (prev && r.entries.length < prev.entries.length * 0.5) throw new Error(`refusing to replace ${prev.entries.length} addresses with ${r.entries.length}`);
     fs.writeFileSync(tmpJson, JSON.stringify({ source: url, published: isoDate(r.published), records: r.records, fetched_at: new Date(now).toISOString(), entries: r.entries }));
     fs.renameSync(tmpJson, f);
-    return { ok: true, published: r.published, records: r.records, addresses: r.entries.length };
+    return { ok: true, published: isoDate(r.published), records: r.records, addresses: r.entries.length };
   } finally {
     for (const t of [tmpXml, tmpJson]) { try { fs.unlinkSync(t); } catch { /* absent */ } }
   }

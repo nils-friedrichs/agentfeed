@@ -107,6 +107,20 @@ test('sanctions: refresh builds the file, the route matches, and every failure m
   assert.equal(JSON.parse(fs.readFileSync(process.env.SANCTIONS_FILE, 'utf8')).entries.length, 312, 'the last good copy survived');
 });
 
+test('sanctions: the download follows the Treasury redirect to its signed S3 link, and nothing else', async () => {
+  const { EventEmitter } = require('events'); const { Readable } = require('stream');
+  const scripted = (steps) => { const seen = []; const get = (u, o, cb) => { seen.push(String(u)); const step = steps.shift(); const req = new EventEmitter(); req.destroy = () => {}; setImmediate(() => { const res = Readable.from([Buffer.from(step.body || '')]); res.statusCode = step.status; res.headers = step.location ? { location: step.location } : {}; cb(res); }); return req; }; return { get, seen }; };
+  const f = process.env.SANCTIONS_FILE; fs.rmSync(f, { force: true });
+  const body = SDN(19000).replace('</sdnList>', Array.from({ length: 310 }, (_, i) => `<sdnEntry>\n<uid>${i}</uid>\n<lastName>Y${i}</lastName>\n<sdnType>Entity</sdnType>\n<idList>\n<id>\n<uid>1</uid>\n<idType>Digital Currency Address - XBT</idType>\n<idNumber>1Redir${String(i).padStart(28, '0')}</idNumber>\n</id>\n</idList>\n</sdnEntry>`).join('\n') + '\n</sdnList>');
+  let s1 = scripted([{ status: 302, location: 'https://bucket.s3.us-gov-west-1.amazonaws.com/Published/SDN.XML?X-Amz=1' }, { status: 200, body }]);
+  assert.equal((await S.refresh({ get: s1.get })).ok, true); assert.equal(s1.seen.length, 2); assert.match(s1.seen[1], /amazonaws\.com/);
+  await assert.rejects(S.refresh({ get: scripted([{ status: 302, location: 'https://evil.example.com/sdn.xml' }]).get }), /refusing redirect to evil\.example\.com/);
+  await assert.rejects(S.refresh({ get: scripted([{ status: 302, location: 'http://x.s3.amazonaws.com/a' }]).get }), /refusing redirect/);
+  await assert.rejects(S.refresh({ get: scripted([{ status: 302, location: 'https://a.treas.gov/1' }, { status: 302, location: 'https://a.treas.gov/2' }, { status: 302, location: 'https://a.treas.gov/3' }, { status: 302, location: 'https://a.treas.gov/4' }]).get }), /too many redirects/);
+  await assert.rejects(S.refresh({ get: scripted([{ status: 500 }]).get }), /HTTP 500/);
+  assert.equal(JSON.parse(fs.readFileSync(f, 'utf8')).entries.length, 312, 'a refused or failed download leaves the last good copy');
+});
+
 // ---------- email ----------
 fs.writeFileSync(process.env.DISPOSABLE_FILE, Array.from({ length: 1200 }, (_, i) => `junk${i}.example`).concat(['mailinator.com', 'tempmail.dev']).join('\n'));
 const MX = (kind) => ({
