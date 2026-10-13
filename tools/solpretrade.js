@@ -83,6 +83,17 @@ function isOnCurve(addr) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // The shared key 429s bursts (a batch of 10 getTransaction calls was refused, single calls two at a time were not), so a
 // 429 backs off and retries, and transaction reads go out two at a time.
+// Pacer state is process-wide, not per request: two flow requests at once share one history-read rate, so these routes
+// cannot between them starve the key the other Solana routes use. (planning chat, 13 Oct)
+const pacer = { gap: 170, nextAt: 0 };
+async function pace() { const at = Math.max(Date.now(), pacer.nextAt); pacer.nextAt = at + pacer.gap; if (at > Date.now()) await sleep(at - Date.now()); }
+// at most this many history-heavy requests (flow, clusters) run at once; the rest are told to retry shortly, unbilled
+const HEAVY_MAX = 2; let heavyNow = 0;
+async function heavy(fn) {
+  if (heavyNow >= HEAVY_MAX) throw unavailable('two trade-flow or holder-cluster requests are already running; retry in a few seconds. Not charged.', { retryAfter: 5 });
+  heavyNow++;
+  try { return await fn(); } finally { heavyNow--; }
+}
 function makeCtx(opts = {}) {
   const ctx = { calls: 0, budget: opts.budget || 60, deadline: opts.deadline || Infinity, raw: opts.rpc || sr.rpc, mocked: !!opts.rpc };
   const guard = (n = 1) => {
@@ -93,14 +104,16 @@ function makeCtx(opts = {}) {
   // Reads of history go out through one shared pacer: the key is shared with other services and answers a burst with 429,
   // so the gap between calls widens on a 429 and narrows again on a success. A paced call that still gets 429s retries.
   const PACED = new Set(['getTransaction', 'getSignaturesForAddress']);
-  let gap = opts.gapMs ?? 170; let nextAt = 0;
-  const pace = async () => { const at = Math.max(Date.now(), nextAt); nextAt = at + gap; if (at > Date.now()) await sleep(at - Date.now()); };
+  const floor = opts.gapMs ?? 170;
   ctx.rpc = async (method, params, o) => {
     for (let attempt = 0; ; attempt++) {
       guard();
       if (PACED.has(method) && !ctx.mocked) await pace();
-      try { const r = await ctx.raw(method, params, o); if (PACED.has(method)) gap = Math.max(opts.gapMs ?? 170, gap * 0.97); return r; } catch (e) {
-        if (/http 429/.test(e.message || '') && attempt < 4) { gap = Math.min(1200, gap * 1.6); await sleep(300 * (attempt + 1)); continue; }
+      // a call may not outlive the request's deadline: its own timeout is whatever time is left
+      const left = ctx.deadline - Date.now();
+      const callOpts = Number.isFinite(left) ? { ...(o || {}), timeoutMs: Math.max(1000, Math.min(10000, left)) } : o;
+      try { const r = await ctx.raw(method, params, callOpts); if (PACED.has(method)) pacer.gap = Math.max(floor, pacer.gap * 0.97); return r; } catch (e) {
+        if (/http 429/.test(e.message || '') && attempt < 4) { pacer.gap = Math.min(1200, pacer.gap * 1.6); await sleep(300 * (attempt + 1)); continue; }
         throw e;
       }
     }
@@ -383,7 +396,14 @@ const sig = (x) => Number(Number(x).toPrecision(6));
 
 
 // ---------- shared: where does this mint trade, and who owns the vaults ----------
-async function findMarket(ctx, mint, m, deps) {
+// The market (pools, vaults, depth) changes slowly and costs 15-25 calls to find, which is most of a flow request's 20 s on a
+// busy token; the production path remembers it for 5 minutes. Calls with an injected rpc or ctx (tests) never use the cache.
+const marketCache = new Map();
+function findMarket(ctx, mint, m, deps) {
+  if (deps.rpc || deps.ctx) return findMarketRun(ctx, mint, m, deps);
+  return memo(marketCache, mint, 300e3, () => findMarketRun(ctx, mint, m, deps));
+}
+async function findMarketRun(ctx, mint, m, deps) {
   const [curve, disc] = await Promise.all([readCurve(ctx, mint, deps).catch((e) => { if (e.status === 503) throw e; return null; }), discoverPools(ctx, mint)]);
   const ranked = await priceAndDepth(ctx, disc.pools, mint, m.decimals, deps);
   const pool = ranked.find((x) => x.kind !== 'bins') || ranked[0] || null;
@@ -438,32 +458,41 @@ async function tokenFlow(p = {}, deps = {}) {
   const mint = checkMintParam(p.mint);
   if (QUOTE_ASSETS.has(mint)) throw bad('this is a quote asset (SOL or a major stablecoin): trade flow is not served for it');
   let swaps = p.swaps == null || p.swaps === '' ? 50 : Number(p.swaps);
-  if (!Number.isInteger(swaps) || swaps < 20 || swaps > 1000) throw bad('swaps must be an integer from 20 to 1000');
-  return memo(flowCache, `${mint}|${swaps}`, deps.ttl ?? 60e3, () => tokenFlowRun(mint, swaps, deps), deps.now);
+  if (!Number.isInteger(swaps) || swaps < 20 || swaps > 100) throw bad('swaps must be an integer from 20 to 100');
+  return memo(flowCache, `${mint}|${swaps}`, deps.ttl ?? 60e3, () => heavy(() => tokenFlowRun(mint, swaps, deps)), deps.now);
 }
 async function tokenFlowRun(mint, swaps, deps) {
-  const ctx = deps.ctx || makeCtx({ rpc: deps.rpc, budget: 1500, deadline: Date.now() + 45e3 });
+  const ctx = deps.ctx || makeCtx({ rpc: deps.rpc, budget: 400, deadline: Date.now() + (deps.budgetMs ?? 20e3) });
   const now = deps.nowMs ? deps.nowMs() : Date.now();
   const m = await readMint(ctx, mint);
   const market = await findMarket(ctx, mint, m, deps);
-  const sigs = (await ctx.rpc('getSignaturesForAddress', [market.history_key, { limit: Math.min(1000, Math.ceil(swaps * 1.8)) }])).filter((x) => !x.err);
-  let unreadable = 0; const rows = [];
-  const { txs, truncated } = await getTxs(ctx, sigs.map((x) => x.signature), { partial: true });
-  if (truncated && txs.filter(Boolean).length < 50) throw unavailable('the RPC time budget for this request ran out before enough swaps were read. Not charged.');
-  for (const t of txs) {
-    if (!t || !t.meta || t.meta.err) { unreadable++; continue; }
-    const d = balanceDeltas(t, mint, m.decimals);
-    let poolDelta = 0; for (const o of market.owners) poolDelta += d.get(o) || 0;
-    if (Math.abs(poolDelta) < 1e-12) continue; // not a swap against this market
-    const feePayer = keysOf(t)[0];
-    let trader = null; let best = 0;
-    for (const [o, v] of d) { if (market.owners.has(o) || v === 0 || Math.sign(v) === Math.sign(poolDelta)) continue; if (Math.abs(v) > best || (Math.abs(v) === best && o === feePayer)) { best = Math.abs(v); trader = o; } }
-    if (!trader) continue;
-    const qUnits = quoteDelta(t, market);
-    rows.push({ trader, side: d.get(trader) > 0 ? 'buy' : 'sell', usd: qUnits * market.qUsd, ts: t.blockTime, slot: t.slot, sig: t.transaction.signatures[0] });
-    if (rows.length >= swaps) break;
+  // Many transactions that touch a busy vault move none of this mint (bots that check and back out), so read in chunks of 20
+  // from a long signature list until enough swaps are found or the budget ends.
+  const sigs = (await ctx.rpc('getSignaturesForAddress', [market.history_key, { limit: Math.min(1000, swaps * 6) }])).filter((x) => !x.err);
+  let unreadable = 0; let read = 0; let truncated = false; const rows = [];
+  for (let i = 0; i < sigs.length && rows.length < swaps && !truncated; i += 20) {
+    const r = await getTxs(ctx, sigs.slice(i, i + 20).map((x) => x.signature), { partial: true });
+    truncated = r.truncated; read += r.txs.length;
+    for (const t of r.txs) {
+      if (!t || !t.meta || t.meta.err) { unreadable++; continue; }
+      const d = balanceDeltas(t, mint, m.decimals);
+      let poolDelta = 0; for (const o of market.owners) poolDelta += d.get(o) || 0;
+      if (Math.abs(poolDelta) < 1e-12) continue; // not a swap against this market
+      const feePayer = keysOf(t)[0];
+      let trader = null; let best = 0;
+      for (const [o, v] of d) { if (market.owners.has(o) || v === 0 || Math.sign(v) === Math.sign(poolDelta)) continue; if (Math.abs(v) > best || (Math.abs(v) === best && o === feePayer)) { best = Math.abs(v); trader = o; } }
+      if (!trader) continue;
+      const qUnits = quoteDelta(t, market);
+      rows.push({ trader, side: d.get(trader) > 0 ? 'buy' : 'sell', usd: qUnits * market.qUsd, ts: t.blockTime, slot: t.slot, sig: t.transaction.signatures[0] });
+      if (rows.length >= swaps) break;
+    }
   }
-  if (rows.length < 5) throw bad('fewer than 5 swaps could be read for this mint in the recent history of its market');
+  if (rows.length < 5) {
+    if (truncated) throw unavailable('the 20 second budget ran out before 5 swaps were read. Not charged.');
+    // most reads failing is the RPC refusing us (rate limit), not a quiet market: say so, and do not bill
+    if (read && unreadable >= read / 2) throw unavailable('the RPC is rate limiting transaction reads right now. Not charged.', { retryAfter: 30 });
+    throw bad('fewer than 5 swaps could be read for this mint in the recent history of its market');
+  }
   const by = new Map();
   for (const r of rows) { const e = by.get(r.trader) || { buy: 0, sell: 0, buys: 0, sells: 0 }; if (r.side === 'buy') { e.buy += r.usd; e.buys++; } else { e.sell += r.usd; e.sells++; } by.set(r.trader, e); }
   const totalUsd = rows.reduce((a, r) => a + r.usd, 0);
@@ -488,7 +517,8 @@ async function tokenFlowRun(mint, swaps, deps) {
   const pct = (a, b) => (b ? Math.round(a / b * 1e4) / 100 : null);
   return {
     mint, market: { type: market.type, venue: market.type === 'pool' ? market.pool.venue : 'pump.fun bonding curve', address: market.state, quote_asset: QUOTES[market.quote].sym },
-    window: { swaps_analyzed: rows.length, swaps_requested: swaps, from: new Date(Math.min(...ts) * 1000).toISOString(), to: new Date(Math.max(...ts) * 1000).toISOString(), transactions_unreadable: unreadable, truncated_by_time_budget: truncated },
+    truncated, swaps_analyzed: rows.length,
+    window: { swaps_analyzed: rows.length, swaps_requested: swaps, from: new Date(Math.min(...ts) * 1000).toISOString(), to: new Date(Math.max(...ts) * 1000).toISOString(), transactions_unreadable: unreadable, truncated_by_time_budget: truncated, budget_seconds: (deps.budgetMs ?? 20e3) / 1000 },
     volume_usd: Math.round(totalUsd), buys: rows.filter((r) => r.side === 'buy').length, sells: rows.filter((r) => r.side === 'sell').length,
     unique_traders: by.size, unique_buyers: buyers.length,
     top5_traders_volume_share_pct: pct(top5.reduce((a, e) => a + e.vol, 0), totalUsd),
@@ -537,7 +567,7 @@ const clusterCache = new Map();
 async function holderClusters(p = {}, deps = {}) {
   const mint = checkMintParam(p.mint);
   if (QUOTE_ASSETS.has(mint)) throw bad('this is a quote asset: holder clusters are not served for it');
-  return memo(clusterCache, mint, deps.ttl ?? 60e3, () => holderClustersRun(mint, deps), deps.now);
+  return memo(clusterCache, mint, deps.ttl ?? 60e3, () => heavy(() => holderClustersRun(mint, deps)), deps.now);
 }
 // one hop: the account that first sent SOL to the wallet
 async function funderOf(ctx, wallet) {
@@ -580,4 +610,4 @@ async function holderClustersRun(mint, deps) {
   };
 }
 
-module.exports = { launchBundle, makeCtx, mapLimit, isOnCurve, b58decode, b58, AMMS, discoverPools, readMint, readMetadata, readHolders, priceAndDepth, buyImpact, readCurve, evaluate, tokenCheck, tokenFlow, holderClusters, funderOf, findMarket, QUOTES, QUOTE_ASSETS, BURN, PROGRAM, u128, u64, keyAt, memo, bad, unavailable, accountsBatch, tokAmount, num, checkMintParam, _caches: { checkCache, flowCache, clusterCache } };
+module.exports = { heavy, launchBundle, makeCtx, mapLimit, isOnCurve, b58decode, b58, AMMS, discoverPools, readMint, readMetadata, readHolders, priceAndDepth, buyImpact, readCurve, evaluate, tokenCheck, tokenFlow, holderClusters, funderOf, findMarket, QUOTES, QUOTE_ASSETS, BURN, PROGRAM, u128, u64, keyAt, memo, bad, unavailable, accountsBatch, tokAmount, num, checkMintParam, _caches: { checkCache, flowCache, clusterCache } };

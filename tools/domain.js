@@ -1,10 +1,10 @@
-// tools/domain.js — /api/domain/:domain (R11 A3): DNS, RDAP registration and the TLS certificate of a domain.
+// tools/domain.js — /api/domain/:domain (R11 A3): DNS records and the TLS certificate of a domain.
 //
-// DNS: A, AAAA, MX, NS, TXT via node:dns. RDAP: the IANA bootstrap (data.iana.org/rdap/dns.json,
-// cached 24 h) names the registry's RDAP server; registrar, dates and status come from there. TLS:
-// one handshake to port 443, 5 s, certificate read without trusting it. The same public-hosts-only
-// rule as lib/safe-fetch.js applies to the handshake: the socket's own DNS lookup refuses a name that
-// resolves to a private, loopback, link-local or metadata address, so the route cannot be aimed at the box.
+// DNS: A, AAAA, MX, NS, TXT via node:dns. TLS: one handshake to port 443, 5 s, certificate read without
+// trusting it. RDAP (registrar, dates, status) was dropped by the planning chat on 13 Oct 2026: Verisign's and
+// PIR's terms bar automated querying and compliance cannot be promised (docs/SOURCES.md). The same
+// public-hosts-only rule as lib/safe-fetch.js applies to the handshake: the socket's own DNS lookup refuses a name
+// that resolves to a private, loopback, link-local or metadata address, so the route cannot be aimed at the box.
 'use strict';
 const dns = require('dns');
 const tls = require('tls');
@@ -14,8 +14,7 @@ const { isPrivate } = require('../lib/safe-fetch');
 
 const bad = (msg) => Object.assign(new Error(msg), { kind: 'bad_request' });
 const unavailable = (msg) => Object.assign(new Error(msg), { status: 503 });
-const UA = 'AgentFeed/1.0 (+https://x402.ochinimus.app)';
-const DNS_MS = 4000; const TLS_MS = 5000; const RDAP_MS = 6000;
+const DNS_MS = 4000; const TLS_MS = 5000;
 const LABEL_RE = /^(?!-)[a-z0-9-]{1,63}(?<!-)$/;
 
 function parseDomain(raw) {
@@ -53,62 +52,6 @@ async function dnsSet(name, resolvers) {
   return { records: res, errors };
 }
 
-// ---- RDAP ----
-// Registry RDAP terms (Verisign, PIR; read 13 Oct 2026, docs/SOURCES.md) forbid "high volume, automated, electronic processes that
-// send queries" to their systems. A paid per-domain route is on-demand, but a catalogue sweeper could make it look like one, so a
-// domain's RDAP record is cached for 24 h and the process sends at most RDAP_PER_MIN queries a minute across all callers;
-// past that the answer carries an rdap.error and the DNS and TLS sections are still served.
-const RDAP_PER_MIN = 30; const RDAP_TTL = 24 * 3600e3;
-const rdapCache = new Map(); let rdapWindow = { start: 0, n: 0 };
-function rdapAllowed(now) { if (now - rdapWindow.start >= 60e3) rdapWindow = { start: now, n: 0 }; if (rdapWindow.n >= RDAP_PER_MIN) return false; rdapWindow.n++; return true; }
-let bootstrap = null;
-async function rdapBase(tld, fetchImpl) {
-  if (!bootstrap || Date.now() - bootstrap.at > 86400e3) {
-    const r = await fetchImpl('https://data.iana.org/rdap/dns.json', { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(RDAP_MS) });
-    if (!r.ok) throw new Error(`IANA bootstrap HTTP ${r.status}`);
-    const j = await r.json();
-    const map = new Map();
-    for (const [tlds, urls] of j.services || []) for (const t of tlds) map.set(t.toLowerCase(), urls.find((u) => u.startsWith('https://')) || urls[0]);
-    bootstrap = { at: Date.now(), map };
-  }
-  return bootstrap.map.get(tld) || null;
-}
-function vcardFn(ent) {
-  const v = ent && ent.vcardArray && ent.vcardArray[1];
-  const f = Array.isArray(v) && v.find((x) => x[0] === 'fn');
-  return f ? f[3] : null;
-}
-function parseRdap(j) {
-  const ev = (a) => { const e = (j.events || []).find((x) => x.eventAction === a); return e ? e.eventDate : null; };
-  const registrar = (j.entities || []).find((e) => (e.roles || []).includes('registrar'));
-  return {
-    name: j.ldhName || null, registrar: vcardFn(registrar), registered: ev('registration'), expires: ev('expiration'), last_changed: ev('last changed'),
-    status: j.status || [], nameservers: (j.nameservers || []).map((n) => String(n.ldhName || '').toLowerCase()).filter(Boolean).slice(0, 10),
-  };
-}
-async function rdap(domain, fetchImpl, now = Date.now()) {
-  const hit = rdapCache.get(domain);
-  if (hit && now - hit.at < RDAP_TTL) return { ...hit.value, cached: true };
-  if (!rdapAllowed(now)) return { error: 'RDAP query allowance for this minute is used (registry terms forbid high-volume automated queries); try again shortly' };
-  const out = await rdapFetch(domain, fetchImpl);
-  if (!out.error || /404/.test(out.error)) { rdapCache.set(domain, { at: now, value: out }); if (rdapCache.size > 2000) rdapCache.delete(rdapCache.keys().next().value); }
-  return out;
-}
-async function rdapFetch(domain, fetchImpl) {
-  const labels = domain.split('.');
-  const base = await rdapBase(labels[labels.length - 1], fetchImpl);
-  if (!base) return { error: 'no RDAP service for this top-level domain' };
-  // a subdomain has no registration of its own: climb toward the registrable name, at most 3 tries
-  for (let i = 0; i < 3 && labels.length - i >= 2; i++) {
-    const name = labels.slice(i).join('.');
-    const r = await fetchImpl(`${base.replace(/\/?$/, '/')}domain/${name}`, { headers: { accept: 'application/rdap+json', 'user-agent': UA }, signal: AbortSignal.timeout(RDAP_MS) });
-    if (r.status === 404) continue;
-    if (!r.ok) return { error: `RDAP server answered HTTP ${r.status}` };
-    return { ...parseRdap(await r.json()), queried: name, source_server: base };
-  }
-  return { error: 'no registration found (RDAP 404): the domain may be unregistered' };
-}
-
 // ---- TLS ----
 function guardedLookup(host, opts, cb) {
   dns.lookup(host, { all: true, verbatim: true }, (err, addrs) => {
@@ -144,22 +87,19 @@ function certOf(domain, { connect = tls.connect, now = Date.now() } = {}) {
 
 async function getDomain(p = {}, deps = {}) {
   const domain = parseDomain(p.domain);
-  const fetchImpl = deps.fetchImpl || fetch;
-  const rdapP = rdap(domain, fetchImpl, deps.now || Date.now()).catch((e) => ({ error: `RDAP unreachable (${e.code || e.name || e.message})` }));
   const d = await dnsSet(domain, deps.resolvers);
   const recs = d.records;
+  const hasDns = ['A', 'AAAA', 'MX', 'NS', 'TXT'].some((k) => recs[k] && recs[k].length);
+  // every lookup failed on the network and none on an answer: nothing was learned, so nothing is billed
+  if (d.errors.length === 5) throw unavailable('DNS lookups failed from here. Not charged.');
   // no address record: a handshake can only time out, so it is not attempted
   const c = (recs.A && recs.A.length) || (recs.AAAA && recs.AAAA.length) ? await certOf(domain, deps) : { error: 'no A or AAAA record, handshake not attempted' };
-  const r = await rdapP;
-  const hasDns = ['A', 'AAAA', 'MX', 'NS', 'TXT'].some((k) => recs[k] && recs[k].length);
-  // every section failed on the network, none on an answer: nothing was learned, so nothing is billed
-  if (d.errors.length === 5 && r.error && /unreachable/.test(r.error)) throw unavailable('DNS and RDAP lookups failed from here. Not charged.');
   return {
     domain, resolves: hasDns,
     dns: { ...recs, ...(d.errors.length ? { errors: d.errors } : {}) },
-    rdap: r, tls: c,
-    source: 'DNS (node:dns), RDAP via the IANA bootstrap (data.iana.org/rdap), live TLS handshake on port 443',
+    tls: c,
+    source: 'DNS (node:dns), live TLS handshake on port 443',
   };
 }
 
-module.exports = { getDomain, parseDomain, parseRdap, _guardedLookup: guardedLookup, _rdapCache: rdapCache, RDAP_PER_MIN };
+module.exports = { getDomain, parseDomain, _guardedLookup: guardedLookup };

@@ -190,13 +190,45 @@ test('flow: unique traders, top-5 share, round trips, new-wallet buyers, in a sc
   assert.equal(r.window.transactions_unreadable, 0);
   assert.equal(r.market.venue, 'raydium-amm-v4');
 });
-test('flow: input rules, too few swaps, and no market are 400; a budget that runs dry early is 503', async () => {
-  await assert.rejects(T.tokenFlow({ mint: MINT, swaps: 5 }), (e) => e.kind === 'bad_request'); await assert.rejects(T.tokenFlow({ mint: MINT, swaps: 1001 }), (e) => e.kind === 'bad_request'); await assert.rejects(T.tokenFlow({ mint: WSOL }), (e) => e.kind === 'bad_request');
+test('flow: input rules, too few swaps, and no market are 400; a budget that runs dry is truncated, or 503 when too little was read', async () => {
+  await assert.rejects(T.tokenFlow({ mint: MINT, swaps: 5 }), (e) => e.kind === 'bad_request'); await assert.rejects(T.tokenFlow({ mint: MINT, swaps: 101 }), (e) => e.kind === 'bad_request'); await assert.rejects(T.tokenFlow({ mint: WSOL }), (e) => e.kind === 'bad_request');
   await assert.rejects(T.tokenFlow({ mint: MINT }, { rpc: chain().rpc, solPrice: SOLP, ttl: 0 }), (e) => e.kind === 'bad_request' && /no pool/.test(e.message));
   const p1 = v4Pool(1); const c = chain({ pools: [p1] }); c.accounts.set(p1.vb, tokAcct(5000n * 10n ** 6n)); c.accounts.set(p1.vq, tokAcct(50n * 10n ** 9n)); c.owners.set(p1.vb, POOL_AUTH); c.owners.set(p1.vq, POOL_AUTH);
   await assert.rejects(T.tokenFlow({ mint: MINT }, { rpc: c.rpc, solPrice: SOLP, ttl: 0 }), (e) => e.kind === 'bad_request' && /fewer than 5 swaps/.test(e.message));
   c.sigs.set(p1.vb, Array.from({ length: 60 }, (_, i) => ({ signature: `x${i}`, err: null, slot: i, blockTime: 1 }))); for (let i = 0; i < 60; i++) c.txs.set(`x${i}`, swapTx(`x${i}`, i, 1, WALLET[i % 3], 1, 0.1, POOL_AUTH));
-  await assert.rejects(T.tokenFlow({ mint: MINT, swaps: 50 }, { ctx: T.makeCtx({ rpc: c.rpc, budget: 40 }), solPrice: SOLP, ttl: 0 }), (e) => e.status === 503);
+  const part = await T.tokenFlow({ mint: MINT, swaps: 50 }, { ctx: T.makeCtx({ rpc: c.rpc, budget: 40 }), solPrice: SOLP, ttl: 0 });
+  assert.equal(part.truncated, true, 'a call budget that runs dry mid-read returns what was read, flagged');
+  await assert.rejects(T.tokenFlow({ mint: MINT, swaps: 50 }, { ctx: T.makeCtx({ rpc: c.rpc, budget: 16 }), solPrice: SOLP, ttl: 0 }), (e) => e.status === 503);
+});
+
+test('flow: when the 20 s budget runs out the analysed swaps are returned with truncated true and the count; the cap is 100', async () => {
+  const p1 = v4Pool(1); const c = chain({ pools: [p1] }); c.accounts.set(p1.vb, tokAcct(5000n * 10n ** 6n)); c.accounts.set(p1.vq, tokAcct(50n * 10n ** 9n)); c.owners.set(p1.vb, POOL_AUTH); c.owners.set(p1.vq, POOL_AUTH);
+  const t = 1760000000;
+  c.sigs.set(p1.vb, Array.from({ length: 90 }, (_, i) => ({ signature: `y${i}`, err: null, slot: i, blockTime: t })));
+  for (let i = 0; i < 90; i++) c.txs.set(`y${i}`, swapTx(`y${i}`, i, t, WALLET[i % 3], 1, 0.1, POOL_AUTH));
+  // a deadline that passes after 30 transaction reads
+  let reads = 0; const ctx = T.makeCtx({ rpc: async (m, p) => { if (m === 'getTransaction' && ++reads > 30) { ctx.deadline = 0; } return c.rpc(m, p); }, budget: 400, deadline: Date.now() + 20e3 });
+  const r = await T.tokenFlow({ mint: MINT, swaps: 100 }, { ctx, solPrice: SOLP, ttl: 0 });
+  assert.equal(r.truncated, true); assert.equal(r.swaps_analyzed, r.window.swaps_analyzed); assert.ok(r.swaps_analyzed >= 30 && r.swaps_analyzed < 90, `analysed ${r.swaps_analyzed}`);
+  assert.equal(r.window.swaps_requested, 100);
+  // a full read says truncated false
+  const c2 = chain({ pools: [p1] }); c2.accounts = c.accounts; c2.owners = c.owners; c2.sigs = c.sigs; c2.txs = c.txs;
+  const ok = await T.tokenFlow({ mint: MINT, swaps: 50 }, { rpc: c2.rpc, solPrice: SOLP, ttl: 0 }); assert.equal(ok.truncated, false); assert.equal(ok.swaps_analyzed, 50);
+  assert.equal((await T.tokenFlow({ mint: MINT }, { rpc: c2.rpc, solPrice: SOLP, ttl: 0 })).window.swaps_requested, 50, 'the default is 50');
+});
+test('flow: transaction reads that mostly fail are a 503 (RPC refusing), not a 400 about a quiet market', async () => {
+  const p1 = v4Pool(1); const c = chain({ pools: [p1] }); c.accounts.set(p1.vb, tokAcct(5000n * 10n ** 6n)); c.accounts.set(p1.vq, tokAcct(50n * 10n ** 9n)); c.owners.set(p1.vb, POOL_AUTH); c.owners.set(p1.vq, POOL_AUTH);
+  c.sigs.set(p1.vb, Array.from({ length: 40 }, (_, i) => ({ signature: `z${i}`, err: null, slot: i, blockTime: 1 })));
+  const flaky = async (m, p) => { if (m === 'getTransaction') throw Object.assign(new Error('solana rpc http 500'), { status: 503 }); return c.rpc(m, p); };
+  await assert.rejects(T.tokenFlow({ mint: MINT, swaps: 20 }, { rpc: flaky, solPrice: SOLP, ttl: 0 }), (e) => e.status === 503 && /rate limiting/.test(e.message));
+});
+test('heavy routes: at most two flow or cluster requests run at once; the third is a 503 with Retry-After, and the slot is freed after', async () => {
+  let release; const gate = new Promise((r) => { release = r; });
+  const a = T.heavy(() => gate); const b = T.heavy(() => gate);
+  await assert.rejects(T.heavy(async () => 1), (e) => e.status === 503 && e.retryAfter === 5);
+  release(); await Promise.all([a, b]);
+  assert.equal(await T.heavy(async () => 7), 7);
+  await assert.rejects(T.heavy(async () => { throw new Error('x'); }), /x/); assert.equal(await T.heavy(async () => 8), 8, 'a failure frees its slot too');
 });
 
 test('clusters: wallets first funded by the same account form a cluster; busy wallets are named as untraceable, not guessed', async () => {

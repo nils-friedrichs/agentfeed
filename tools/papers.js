@@ -1,12 +1,14 @@
 // tools/papers.js — /api/papers and /api/paper/:doi (R11 A4): scholarly works from OpenAlex.
 //
 // OpenAlex data is CC0 (docs.openalex.org: "all data is CC0 -- no license worries, ever"). The API,
-// though, is metered, and the brief's "no key, 100,000 calls a day" is out of date (read 13 Oct 2026):
-// a keyless caller gets $0.10 of usage a day and a free key $1.00. A search costs $0.001 (about 1,000 a
-// day on a free key, 100 keyless), a filtered list $0.0001, and fetching one work by DOI is FREE and
-// unlimited. So /api/paper/:doi works without a key at any volume; /api/papers needs OPENALEX_API_KEY
-// in .env (a free account) to serve more than ~100 searches a day. A 429 from OpenAlex answers 503
-// with Retry-After and is never billed. The 24 h cache below means a repeated query costs nothing.
+// though, is metered (read 13 Oct 2026): a keyless caller gets $0.10 of usage a day, a free key $1.00. A search costs
+// $0.001, a filtered list $0.0001, and fetching one work by DOI is FREE and unlimited.
+//
+// Planning chat, 13 Oct: ship without a key. Searches that reach OpenAlex are counted per UTC day; once the day
+// holds SEARCH_DAILY_CAP (90, under the ~100 the keyless budget buys) /api/papers answers 503 with Retry-After
+// until 00:00 UTC and is never billed. A cache hit costs OpenAlex nothing and is not counted. DOI lookups are not
+// counted. If OPENALEX_API_KEY is ever set the cap is 10x (900). The count lives in memory and in
+// data/openalex-searches.json (written on each counted search) so a restart does not forget it.
 'use strict';
 
 const bad = (msg) => Object.assign(new Error(msg), { kind: 'bad_request' });
@@ -15,7 +17,26 @@ const BASE = 'https://api.openalex.org';
 const UA = 'AgentFeed/1.0 (+https://x402.ochinimus.app)';
 const TTL = 24 * 3600e3;
 const SELECT = 'id,doi,title,publication_year,publication_date,type,authorships,primary_location,cited_by_count,open_access,abstract_inverted_index,language';
+const fs = require('fs');
+const path = require('path');
 const cache = new Map(); // key -> { at, value }
+const countFile = () => process.env.OPENALEX_COUNT_FILE || path.join(__dirname, '..', 'data', 'openalex-searches.json');
+const utcDay = (ms) => new Date(ms).toISOString().slice(0, 10);
+let counter = null; // { day, n }
+function readCounter(now) {
+  const day = utcDay(now);
+  if (!counter) { try { counter = JSON.parse(fs.readFileSync(countFile(), 'utf8')); } catch { counter = { day, n: 0 }; } }
+  if (counter.day !== day) counter = { day, n: 0 };
+  return counter;
+}
+const capFor = (key) => (key ? 900 : 90);
+function secondsToUtcMidnight(now) { const d = new Date(now); return Math.max(1, Math.ceil((Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1) - now) / 1000)); }
+function chargeSearch(now, key) {
+  const c = readCounter(now);
+  if (c.n >= capFor(key)) throw unavailable(`the daily OpenAlex search allowance (${capFor(key)}) is used up; it resets at 00:00 UTC. Not charged.`, { retryAfter: secondsToUtcMidnight(now) });
+  c.n++;
+  try { fs.writeFileSync(countFile(), JSON.stringify(c)); } catch { /* the in-memory count still holds */ }
+}
 function cget(k, now) { const e = cache.get(k); if (e && now - e.at < TTL) return e.value; if (e) cache.delete(k); return undefined; }
 function cput(k, v, now) { cache.set(k, { at: now, value: v }); if (cache.size > 500) cache.delete(cache.keys().next().value); }
 
@@ -64,6 +85,7 @@ async function searchPapers(p = {}, deps = {}) {
   if (p.year_from != null && p.year_from !== '') { yf = Number(p.year_from); if (!Number.isInteger(yf) || yf < 1000 || yf > new Date(now).getUTCFullYear() + 1) throw bad('year_from must be a four-digit year'); }
   const ck = `s|${q.toLowerCase()}|${yf}|${limit}`;
   const hit = cget(ck, now); if (hit) return { ...hit, cached: true };
+  chargeSearch(now, key);
   const path = `/works?search=${encodeURIComponent(q)}${yf ? `&filter=from_publication_date:${yf}-01-01` : ''}&per-page=${limit}&select=${SELECT}`;
   const j = await call(path, { fetchImpl, key });
   const out = { query: q, year_from: yf, total_matches: (j.meta && j.meta.count) ?? null, returned: (j.results || []).length, papers: (j.results || []).map((w) => shape(w, { withAbstract: false })), ...SRC, cached: false };
@@ -89,4 +111,4 @@ async function getPaper(p = {}, deps = {}) {
   return out;
 }
 
-module.exports = { searchPapers, getPaper, abstractOf, normDoi, _cache: cache };
+module.exports = { searchPapers, getPaper, abstractOf, normDoi, _cache: cache, _resetCounter: () => { counter = null; }, SEARCH_DAILY_CAP: 90 };

@@ -9,6 +9,7 @@ const zlib = require('zlib');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r11-'));
 process.env.SANCTIONS_FILE = path.join(dir, 'sanctions.json');
 process.env.DISPOSABLE_FILE = path.join(dir, 'disposable.txt');
+process.env.OPENALEX_COUNT_FILE = path.join(dir, 'openalex.json');
 
 const S = require('../tools/sanctions');
 const E = require('../tools/emailverify');
@@ -164,48 +165,31 @@ test('domain: input rules', () => {
   assert.equal(D.parseDomain('Example.COM.'), 'example.com'); assert.equal(D.parseDomain('bücher.de'), 'xn--bcher-kva.de');
   for (const b of ['', 'localhost', '127.0.0.1', '10.0.0.1', '::1', 'a', 'foo.internal', 'x.local', 'a b.com', '-a.com', `${'a'.repeat(64)}.com`, `${'a.'.repeat(130)}com`, 'http://x.com']) assert.throws(() => D.parseDomain(b), isBad, b);
 });
-test('domain: RDAP parsing and the answer, with every upstream stubbed', async () => {
-  const rd = D.parseRdap({ ldhName: 'EXAMPLE.COM', status: ['client transfer prohibited'], events: [{ eventAction: 'registration', eventDate: '2020-01-01T00:00:00Z' }, { eventAction: 'expiration', eventDate: '2027-01-01T00:00:00Z' }], entities: [{ roles: ['registrar'], vcardArray: ['vcard', [['version', {}, 'text', '4.0'], ['fn', {}, 'text', 'Reg Inc']]] }], nameservers: [{ ldhName: 'NS1.EXAMPLE.COM' }] });
-  assert.deepEqual([rd.registrar, rd.registered, rd.expires, rd.nameservers[0]], ['Reg Inc', '2020-01-01T00:00:00Z', '2027-01-01T00:00:00Z', 'ns1.example.com']);
-  const fetchImpl = async (u) => {
-    if (u.includes('data.iana.org')) return new Response(JSON.stringify({ services: [[['com'], ['https://rdap.test/com/v1/']], [['org'], ['https://r.test/']], [['net'], ['https://r.test/']]] }));
-    if (u.endsWith('/domain/sub.example.com')) return new Response('{}', { status: 404 });
-    if (u.endsWith('/domain/example.com')) return new Response(JSON.stringify({ ldhName: 'EXAMPLE.COM', status: ['ok'], events: [] }));
-    return new Response('{}', { status: 404 });
-  };
+test('domain: the answer is DNS and TLS only, with every upstream stubbed, and the RDAP section is gone', async () => {
   const resolvers = { A: async () => ['192.0.2.1'], AAAA: async () => { const e = new Error('x'); e.code = 'ENODATA'; throw e; }, MX: async () => [{ exchange: 'm.example.com', priority: 5 }], NS: async () => ['ns1.example.com'], TXT: async () => [['v=spf1 ', 'a -all']] };
   const connect = (opts, cb) => { const { EventEmitter } = require('events'); const s = new EventEmitter(); s.destroy = () => {}; s.authorized = true; s.getProtocol = () => 'TLSv1.3';
     s.getPeerCertificate = () => ({ valid_from: 'Oct 1 00:00:00 2026 GMT', valid_to: 'Jan 1 00:00:00 2027 GMT', subject: { CN: 'sub.example.com' }, issuer: { O: 'Test CA', CN: 'T1' }, subjectaltname: 'DNS:sub.example.com, DNS:*.example.com, IP Address:1.2.3.4', fingerprint256: 'AA' });
     setImmediate(cb); return s; };
-  const r = await D.getDomain({ domain: 'sub.example.com' }, { fetchImpl, resolvers, connect, now: Date.parse('2026-10-13T00:00:00Z') });
-  assert.equal(r.rdap.queried, 'example.com', 'a subdomain climbs to the registrable name');
-  assert.deepEqual(r.dns.TXT, ['v=spf1 a -all'], 'TXT chunks are joined');
-  assert.deepEqual([r.tls.issuer_org, r.tls.days_remaining, r.tls.sans], ['Test CA', 80, ['sub.example.com', '*.example.com']], 'only DNS SANs are listed');
-  assert.equal(r.resolves, true);
+  const realFetch = global.fetch; let fetched = 0; global.fetch = async () => { fetched++; throw new Error('no HTTP expected'); };
+  try {
+    const r = await D.getDomain({ domain: 'sub.example.com' }, { resolvers, connect, now: Date.parse('2026-10-13T00:00:00Z') });
+    assert.equal(fetched, 0, 'the route makes no HTTP request'); assert.equal('rdap' in r, false); assert.ok(!/rdap/i.test(r.source));
+    assert.deepEqual(r.dns.TXT, ['v=spf1 a -all'], 'TXT chunks are joined');
+    assert.deepEqual([r.tls.issuer_org, r.tls.days_remaining, r.tls.sans], ['Test CA', 80, ['sub.example.com', '*.example.com']], 'only DNS SANs are listed');
+    assert.equal(r.resolves, true);
+  } finally { global.fetch = realFetch; }
 });
-test('domain: RDAP is cached for 24 h per domain and capped per minute, and the rest of the answer survives the cap', async () => {
-  D._rdapCache.clear();
-  let rdapCalls = 0;
-  const fetchImpl = async (u) => { if (u.includes('iana')) return new Response(JSON.stringify({ services: [[['com'], ['https://rdap.test/']]] })); rdapCalls++; return new Response(JSON.stringify({ ldhName: 'X.COM', status: [], events: [] })); };
+test('domain: a handshake that cannot start is an error in the tls section, not a crash', async () => {
   const resolvers = { A: async () => ['192.0.2.1'], AAAA: async () => [], MX: async () => [], NS: async () => [], TXT: async () => [] };
-  const connect = () => { throw new Error('no tls in this test'); };
-  const deps = (now) => ({ fetchImpl, resolvers, connect, now });
-  const t0 = Date.now() + 10 * 60e3; // a minute window no other test has used
-  await D.getDomain({ domain: 'cached.com' }, deps(t0)); const again = await D.getDomain({ domain: 'cached.com' }, deps(t0 + 5000));
-  assert.equal(rdapCalls, 1); assert.equal(again.rdap.cached, true);
-  for (let i = 0; i < D.RDAP_PER_MIN + 2; i++) await D.getDomain({ domain: `d${i}.com` }, deps(t0 + 6000));
-  const capped = await D.getDomain({ domain: 'overflow.com' }, deps(t0 + 6000));
-  assert.match(capped.rdap.error, /allowance/); assert.equal(capped.resolves, true, 'DNS still answers');
-  assert.ok(rdapCalls <= D.RDAP_PER_MIN + 1, `only ${D.RDAP_PER_MIN} queries per minute reached the registry (saw ${rdapCalls})`);
-  const later = await D.getDomain({ domain: 'overflow.com' }, deps(t0 + 6000 + 61e3)); assert.equal(later.rdap.error, undefined, 'the next minute has allowance again');
+  const r = await D.getDomain({ domain: 'x.example.com' }, { resolvers, connect: () => { throw new Error('boom'); } });
+  assert.match(r.tls.error, /could not start/);
 });
-
 test('domain: no address record means no handshake; every network section failing is a 503', async () => {
   const none = async () => { const e = new Error('x'); e.code = 'ENOTFOUND'; throw e; };
   const r = await D.getDomain({ domain: 'gone.example.org' }, { resolvers: { A: none, AAAA: none, MX: none, NS: none, TXT: none }, fetchImpl: async (u) => new Response('{}', { status: 404 }) });
-  assert.equal(r.resolves, false); assert.match(r.tls.error, /not attempted/); assert.match(r.rdap.error, /404/);
+  assert.equal(r.resolves, false); assert.match(r.tls.error, /not attempted/);
   const boom = async () => { const e = new Error('x'); e.code = 'ESERVFAIL'; throw e; };
-  await assert.rejects(D.getDomain({ domain: 'down.example.net' }, { resolvers: { A: boom, AAAA: boom, MX: boom, NS: boom, TXT: boom }, fetchImpl: async () => { throw new Error('offline'); } }), is503);
+  await assert.rejects(D.getDomain({ domain: 'down.example.net' }, { resolvers: { A: boom, AAAA: boom, MX: boom, NS: boom, TXT: boom } }), is503);
 });
 test('domain: the TLS lookup refuses names that resolve to private or metadata addresses', async () => {
   const dns = require('dns'); const real = dns.lookup;
@@ -242,6 +226,28 @@ test('papers: input errors are 400, upstream trouble is 503 with Retry-After, an
   await assert.rejects(P.getPaper({ doi: '10.1000/x' }, { fetchImpl: async () => new Response('{}', { status: 502 }) }), is503);
   await assert.rejects(P.getPaper({ doi: '10.1000/x' }, { fetchImpl: async () => { throw new Error('offline'); } }), is503);
   await assert.rejects(P.getPaper({ doi: '10.9999/none' }, { fetchImpl: async () => new Response('{}', { status: 404 }) }), isBad);
+});
+
+test('papers: 90 searches a UTC day, then 503 with Retry-After to 00:00 UTC; cache hits and DOI lookups are not counted; the next day resets', async () => {
+  P._cache.clear(); P._resetCounter(); fs.rmSync(process.env.OPENALEX_COUNT_FILE, { force: true });
+  let upstream = 0;
+  const fetchImpl = async (u) => { upstream++; return new Response(JSON.stringify(u.includes('/works/doi:') ? OA : { meta: { count: 1 }, results: [OA] })); };
+  const noon = Date.parse('2026-10-14T12:00:00Z');
+  for (let i = 0; i < 90; i++) await P.searchPapers({ q: `topic ${i}` }, { fetchImpl, now: noon, key: '' });
+  assert.equal(upstream, 90);
+  await P.searchPapers({ q: 'topic 3' }, { fetchImpl, now: noon, key: '' }); assert.equal(upstream, 90, 'a repeat is a cache hit: no upstream call, no count');
+  await assert.rejects(P.searchPapers({ q: 'one more' }, { fetchImpl, now: noon, key: '' }), (e) => e.status === 503 && e.retryAfter === 12 * 3600 && /allowance/.test(e.message));
+  assert.equal(upstream, 90, 'the 91st search never reached OpenAlex');
+  for (let i = 0; i < 20; i++) await P.getPaper({ doi: `10.1000/p${i}` }, { fetchImpl, now: noon });
+  assert.equal(upstream, 110, 'DOI lookups stay open past the cap');
+  // a restart does not forget the day's count
+  P._resetCounter();
+  await assert.rejects(P.searchPapers({ q: 'after restart' }, { fetchImpl, now: noon, key: '' }), is503);
+  // the next UTC day starts at zero
+  assert.equal((await P.searchPapers({ q: 'after midnight' }, { fetchImpl, now: Date.parse('2026-10-15T00:00:01Z'), key: '' })).cached, false);
+  // a configured key lifts the cap tenfold
+  P._resetCounter(); fs.rmSync(process.env.OPENALEX_COUNT_FILE, { force: true });
+  for (let i = 0; i < 91; i++) await P.searchPapers({ q: `keyed ${i}` }, { fetchImpl, now: noon, key: 'k' });
 });
 
 // ---------- wiki ----------
