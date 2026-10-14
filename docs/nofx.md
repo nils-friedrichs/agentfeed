@@ -28,7 +28,7 @@ gateway such as claw402.
 ## 1. Buy a key
 
 A key is a balance bought with one x402 payment, on any exact rail the route's 402 challenge offers (USDC on Solana,
-Base, Polygon, Arbitrum, Arc and Algorand on 13 Oct 2026; the high-frequency batch and Gateway accepts are not offered
+Base, Polygon, Arbitrum, Arc, Algorand, Optimism, Monad and Avalanche since 14 Oct 2026, and eleven more networks on request; the high-frequency batch and Gateway accepts are not offered
 on key purchases). Packs: **trial $0.25**, **$1**, **$5**, **$20**; top-ups $5 and $20. Each call draws half the
 route's x402 price (minimum $0.0005). Credit is a usage credit: non-refundable, no expiry. The key is a bearer secret:
 anyone holding it spends the balance, and abuse means revocation.

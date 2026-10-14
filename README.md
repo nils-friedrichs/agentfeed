@@ -5,7 +5,7 @@
 
 **Crypto market data for AI agents (liquidations, funding, open interest, prices), Solana pre-trade checks, OFAC sanctions screening, scholarly papers, utilities and fixed-purpose language tasks (OCR, translate, summarize, extract, classify, prompt-injection check, transcribe). Pay per call in USDC. No accounts, no subscriptions, and no API key needed (prepaid keys are optional, for bots that cannot pay x402).**
 
-AgentFeed sells live trading data through the [x402 payment protocol](https://solana.com/x402) on Solana, Base, Polygon, Arbitrum, Arc and Algorand. An agent hits an endpoint, gets a `402 Payment Required` with the price, pays a fraction of a cent in USDC from its own wallet, and receives the data — in about two seconds, gas sponsored by the facilitator.
+AgentFeed sells live trading data through the [x402 payment protocol](https://solana.com/x402) on Solana, Base, Polygon, Arbitrum, Arc, Algorand, Optimism, Monad and Avalanche, and on request on Celo, HyperEVM, Unichain, Scroll, SKALE Base, BNB Chain, Ethereum, Robinhood Chain, World Chain, Sei and X Layer (`GET /api/<route>|<network>`). An agent hits an endpoint, gets a `402 Payment Required` with the price, pays a fraction of a cent in USDC (or the dollar token the network names) from its own wallet, and receives the data — in about two seconds, gas sponsored by the facilitator.
 
 Two rails, same data:
 
@@ -185,8 +185,11 @@ Every paid route answers `402` with an x402 v2 challenge in the `PAYMENT-REQUIRE
 the same challenge as an x402 v1 body (`{x402Version: 1, accepts}`) for Base and Solana. Pay with
 `PAYMENT-SIGNATURE` (v2, any rail) or `X-PAYMENT` (v1 on Base or Solana, verified and settled
 through the CDP facilitator's v1 kinds; Polygon and Arbitrum have no v1 kind there and stay v2).
-Arc (`eip155:5042`, USDC) is a fifth v2 rail, settled through Circle's Facilitator Service to a
-dedicated Arc address; CDP keeps every other network.
+Nine networks are in every 402 and eleven more are offered on request (see "Pay on any chain"). Each network is settled by
+exactly one facilitator: CDP for Solana, Base, Polygon, Arbitrum and World Chain; Circle's Facilitator Service for Arc, to a
+dedicated Arc address; GoPlausible for Algorand; Ultravioleta for Optimism, Monad, Avalanche, Celo, HyperEVM, Unichain, Scroll,
+SKALE Base, BNB Chain, Ethereum and Robinhood Chain; PayAI for Sei and X Layer. `payments.js` gives each facilitator client only
+its own networks, so a payment on one network can never reach another's facilitator.
 Every paid route also carries MPP `tempo`/`charge` challenges in `WWW-Authenticate` (Tempo
 mainnet, chain 4217, OUSD first, then USDC.e, at the route's price; no fee payer, the payer pays
 gas). Only signed transactions (pull mode) are accepted: the server validates the transfer, runs
@@ -375,6 +378,70 @@ All of them were paid from our own test wallets.
 - `payments.js`: facilitator order: Coinbase CDP first, Circle for Arc, then the Gateway tier.
 - `ops/gateway-withdraw.mjs` and `ops/arc-sweep.mjs`: revenue out of the hot addresses.
 - `test/arc.test.js`.
+
+## Pay on any chain
+
+Nine networks are in every paid route's `402`; eleven more are offered on request. Ask for one by suffixing the route: `GET /api/<route>|<network>` (the `|` may be sent as `%7C`), for example `/api/sol-price|eip155:42220` for Celo. The `402` that comes back carries the default accepts plus that network's accept, and a payment on any network is accepted on the plain URL too. The prepaid-key purchase routes carry the nine only. The first six networks (Solana, Base, Polygon, Arbitrum, Arc, Algorand) are described under "Two payment protocols on one 402" and "Pay on Arc"; the table lists the other fourteen, generated from `lib/ext-rails.js`. Every row is `scheme: exact` (EIP-3009), paid to the same EVM treasury, settled by the one facilitator named in the row.
+
+| Network | CAIP-2 id | Token and address | Decimals | Facilitator | Offered | Minimum route price |
+|---|---|---|---|---|---|---|
+| Optimism | `eip155:10` | USDC `0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85` | 6 | Ultravioleta | every 402 | none |
+| Monad | `eip155:143` | USDC `0x754704Bc059F8C67012fEd69BC8A327a5aafb603` | 6 | Ultravioleta | every 402 | none |
+| Avalanche | `eip155:43114` | USDC `0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E` | 6 | Ultravioleta | every 402 | none |
+| Celo | `eip155:42220` | USDC `0xcebA9300f2b948710d2653dD7B07f33A8B32118C` | 6 | Ultravioleta | on request | none |
+| HyperEVM | `eip155:999` | USDC `0xb88339CB7199b77E23DB6E890353E22632Ba630f` | 6 | Ultravioleta | on request | none |
+| Unichain | `eip155:130` | USDC `0x078D782b760474a361dDA0AF3839290b0EF57AD6` | 6 | Ultravioleta | on request | none |
+| Scroll | `eip155:534352` | USDC `0x06eFdBFf2a14a7c8E15944D1F4A48F9F95F663A4` | 6 | Ultravioleta | on request | none |
+| SKALE Base | `eip155:1187947933` | USDC.e `0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20` | 6 | Ultravioleta | on request | none |
+| BNB Chain | `eip155:56` | AUSD `0x00000000eFE302BEAA2b3e6e1b18d08D69a9012a` | 6 | Ultravioleta | on request | none |
+| Ethereum | `eip155:1` | USDC `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48` | 6 | Ultravioleta | on request | none |
+| Robinhood Chain | `eip155:4663` | USDG `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` | 6 | Ultravioleta | on request | none |
+| World Chain | `eip155:480` | USDC `0x79A02482A880bCE3F13e09Da970dC34db4CD24d1` | 6 | CDP | on request | none |
+| Sei | `eip155:1329` | USDC `0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392` | 6 | PayAI | on request | $0.005 |
+| X Layer | `eip155:196` | USDC `0xB6CEceAB302E2E4948951eE7843FC24E92933061` | 6 | PayAI | on request | $0.005 |
+
+The token is not USDC everywhere: BNB Chain settles AUSD, Robinhood Chain USDG and SKALE Base USDC.e. Sei and X Layer are offered only on routes priced $0.005 or more, because PayAI charges per settlement.
+
+### Paying with @x402/fetch
+
+`@x402/fetch` 2.28 refuses any token outside `@x402/evm`'s `DEFAULT_ASSETS` unless the client opts in with `spendControls.allowedAssets`. Out of the box a stock client pays Monad, Avalanche, Celo, Ethereum and Sei. It is refused on Optimism, HyperEVM, Unichain, Scroll, SKALE Base, BNB Chain, Robinhood Chain, World Chain and X Layer until the token is allowed. The option shape, from `@x402/core`'s own type definitions:
+
+```ts
+spendControls?: {
+  maxAmountPerPayment?: Money | false;                 // USD cap on default assets, default "$1"
+  allowedAssets?: true | SpendControlAsset[];          // true allows any asset
+}
+interface SpendControlAsset {
+  network: Network;                                    // CAIP-2, e.g. 'eip155:10'
+  asset: string;                                       // on-chain token address, or a default-asset symbol
+  maxAmountPerPayment?: string;                        // integer atomic units, e.g. '50000' = $0.05 at 6 decimals
+}
+```
+
+A payment on Optimism, with the token allowed explicitly (the cap `'50000'` is $0.05; the token is the address in the table):
+
+```js
+import { privateKeyToAccount } from 'viem/accounts';
+import { ExactEvmScheme } from '@x402/evm/exact/client';
+import { wrapFetchWithPaymentFromConfig } from '@x402/fetch';
+
+const account = privateKeyToAccount(process.env.EVM_KEY);
+const pay = wrapFetchWithPaymentFromConfig(fetch, {
+  schemes: [{ network: 'eip155:10', client: new ExactEvmScheme(account) }],
+  spendControls: { allowedAssets: [{ network: 'eip155:10', asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', maxAmountPerPayment: '50000' }] },
+});
+const res = await pay('https://x402.ochinimus.app/api/sol-price');
+console.log(res.status, await res.json());
+```
+
+Without the `spendControls` line the same client throws "All payment requirements were rejected by spendControls". Full script, with a dry run that prints the accept before anything is signed: `ops/r10-proof-evm.mjs`.
+
+### Proven on mainnet
+
+- 14 Oct 2026, three proof payments of 0.001 USDC on `/api/sol-price|<network>`, each one USDC transfer from our test wallet to the treasury: Optimism [0xdc64…d4c5](https://optimism.blockscout.com/tx/0xdc642dc7c4c3e96fa59e0704737adce62693e69cd534961676e43501ff55d4c5), Monad [0xdf06…da2d](https://monadscan.com/tx/0xdf06372e33166459c41944703f536b4e551c136e483d0366664f38a9f004da2d), Avalanche [0x5c3e…70d0](https://snowscan.xyz/tx/0x5c3ee5c2d858732abca327500e761e0977807a53a4de0f44d4cd57ddc14d70d0).
+- The other eleven networks are offered on request and have no settled payment yet.
+
+All of them were paid from our own test wallets.
 
 ## 89 tools (82 paid data routes + 7 free) & pricing
 
@@ -699,8 +766,9 @@ on — `MPP_SECRET_KEY` have no working default.
 | `X402_MODE` | `on` | `off` serves every route free |
 | `X402_NETWORK` | — | **required** when `X402_MODE` is on: `mainnet` in production, `devnet` for tests; boot fails without it |
 | `PAY_TO` | — | **required**; Solana treasury that receives USDC |
-| `PAY_TO_EVM` | — | EVM treasury for Base, Polygon and Arbitrum USDC; unset drops every EVM rail from the challenge |
-| `X402_EVM_NETWORKS` | unset (all) | comma-separated CAIP-2 ids to narrow the EVM rails, e.g. `eip155:8453` for Base only |
+| `PAY_TO_EVM` | — | EVM treasury for every EVM rail; unset drops every EVM rail from the challenge |
+| `X402_EVM_NETWORKS` | unset (all) | comma-separated CAIP-2 ids to narrow the original EVM rails (Base, Polygon, Arbitrum, Arc), e.g. `eip155:8453` for Base only; the R10 networks are narrowed by `X402_EXT_NETWORKS` |
+| `X402_EXT_NETWORKS` | unset (all) | comma-separated CAIP-2 ids to narrow the R10 networks (`lib/ext-rails.js`); `X402_EXT=off` removes all of them, `X402_ULTRAVIOLETA=off` and `X402_PAYAI=off` remove one facilitator's rows |
 | `FACILITATOR_URL` | — | **required** when `X402_MODE` is on; boot fails without it. Production uses the CDP facilitator, `https://api.cdp.coinbase.com/platform/v2/x402` |
 | `MPP_ENABLED` | unset (off) | `true` mounts the `solana/charge` layer |
 | `MPP_SECRET_KEY` | — | **required when `MPP_ENABLED=true`; must be 32 characters or longer** — mppx HMAC-binds the challenge id so verification is stateless, and init refuses anything shorter |
