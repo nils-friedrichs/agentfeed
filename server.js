@@ -22,6 +22,11 @@ app.disable('x-powered-by');
 // /api/<route>|eip155:<id> (raw or %7C) is served as /api/<route>; see lib/compat.js.
 const compat = require('./lib/compat');
 app.use(compat.stripNetworkSuffix);
+// R11: the seven language-model routes (Gemini) only serve callers inside Google's available regions (Gemini API Additional
+// Terms). tools/llm/region-gate.js answers 451 {error, country} when CF-IPCountry is present and off that list (T1 and XX
+// included), here, before the key, the rate limiter and every payment middleware, so a refusal is never charged; it also refuses
+// POST /mcp calls to those seven tools. Every other route, and any request without the header, passes untouched.
+app.use(require('./tools/llm/region-gate').regionGate);
 
 // ---- prepaid API keys (R9, lib/keys.js): bought with one x402 payment, spent per call at the high-frequency price.
 // identify() runs FIRST: it reads and removes the key header (so nothing downstream can log it), looks the hash up (no

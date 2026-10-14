@@ -95,7 +95,8 @@ async function searchPapers(p = {}, deps = {}) {
 
 function normDoi(raw) {
   if (raw == null || String(raw).trim() === '') throw bad('missing required parameter: doi');
-  let s = String(raw).trim().replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').replace(/^doi:/i, '');
+  // %2F is how the slash travels in the path; a client that encoded it twice leaves a literal %2F behind
+  let s = String(raw).trim().replace(/%2F/gi, '/').replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').replace(/^doi:/i, '');
   if (s.length > 200 || !/^10\.\d{4,9}\/\S+$/.test(s)) throw bad('doi must look like 10.1038/s43586-024-00294-7 (URL-encode the slash as %2F in the path)');
   return s.toLowerCase();
 }

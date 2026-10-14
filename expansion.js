@@ -30,6 +30,21 @@ const FX = require('./tools/fxrates');
 const BL = require('./tools/baselaunches');
 const SIG = require('./tools/signals');
 const KEYLIB = require('./lib/keys');
+// R11 (14 Oct 2026): thirteen general-purpose routes (A) and seven language-model task routes (B)
+const SANC = require('./tools/sanctions');
+const EV = require('./tools/emailverify');
+const DOM = require('./tools/domain');
+const PAP = require('./tools/papers');
+const WK = require('./tools/wiki');
+const UT = require('./tools/utils');
+const SP = require('./tools/solpretrade');
+const OCRT = require('./tools/ocr');
+const SUMT = require('./tools/summarize');
+const EXTT = require('./tools/extract');
+const TRT = require('./tools/translate');
+const CLT = require('./tools/classify');
+const INJT = require('./tools/injection');
+const TXT = require('./tools/transcribe');
 
 // The prepaid-key handlers need the store, which server.js builds after this module is loaded (payments.js and
 // mcp.js read PRICES_ADD / MCP_DEFS_ADD from here first). server.js hands it over with setKeys().
@@ -387,6 +402,112 @@ const EXP = [
     desc: KEYTOP('20'),
     schema: {},
     run: (a, req) => keys().topup(a, req, 20) },
+
+  // ---- R11 Phase A (14 Oct 2026): general-purpose routes; sources and their terms in docs/SOURCES.md ----
+  { name: 'get_sanctions_check', route: 'GET /api/sanctions-check/:address', usd: 0.008,
+    tags: ['sanctions', 'ofac', 'compliance', 'aml', 'wallet-screening', 'crypto'],
+    desc: 'Use when an agent needs to screen a crypto wallet before paying or being paid. Returns an exact match of a Bitcoin, Ethereum, Tron, Solana or other address against the OFAC SDN list, with entry, program and list date. No match is not a clearance.',
+    schema: { address: z.string().describe('a crypto address of any family: bitcoin, ethereum, tron, solana, xrp, litecoin and so on') },
+    run: (a) => SANC.sanctionsCheck(a) },
+  { name: 'get_email_verify', route: 'GET /api/email-verify', usd: 0.005,
+    tags: ['email', 'validation', 'verification', 'disposable', 'lead-quality'],
+    desc: 'Use when an agent needs to know whether an email address can plausibly receive mail. Returns syntax, MX, disposable-domain, role-account and free-provider checks with a deliverable_likely, risky or undeliverable verdict and its reasons. No SMTP probe.',
+    schema: { email: z.string().describe('the address to check, up to 254 characters') },
+    run: (a) => EV.emailVerify(a) },
+  { name: 'get_domain', route: 'GET /api/domain/:domain', usd: 0.005,
+    tags: ['domain', 'dns', 'tls', 'certificate', 'infrastructure'],
+    desc: 'Use when an agent needs the basic facts about a domain. Returns its DNS A, AAAA, MX, NS and TXT records and the live TLS certificate: issuer, alternative names, validity dates and days to expiry. Public hosts only; no registrar data.',
+    schema: { domain: z.string().describe('a hostname such as example.com (no URL, no IP address)') },
+    run: (a) => DOM.getDomain(a) },
+  { name: 'get_papers', route: 'GET /api/papers', usd: 0.015,
+    tags: ['research', 'papers', 'academic', 'openalex', 'citations', 'literature'],
+    desc: 'Use when an agent needs scholarly papers on a topic. Returns OpenAlex works (CC0 data) for a search: title, year, DOI, authors, venue, citation count and open-access link, up to 25, optionally from a given year. Cached 24 hours.',
+    schema: { q: z.string().describe('the search text, up to 200 characters'), year_from: z.number().optional().describe('earliest publication year, e.g. 2022'), limit: z.number().optional().describe('papers returned, 1-25, default 10') },
+    run: (a) => PAP.searchPapers(a) },
+  { name: 'get_paper', route: 'GET /api/paper/:doi', usd: 0.005,
+    tags: ['research', 'papers', 'academic', 'doi', 'openalex', 'citations'],
+    desc: 'Use when an agent needs the paper behind a DOI. Returns title, year, authors, venue, citation count, open-access URL and the abstract where OpenAlex holds it (CC0 data). Send the slash of the DOI as %2F in the path.',
+    schema: { doi: z.string().describe('a DOI such as 10.1038/nature14539, its slash sent as %2F in the path') },
+    run: (a) => PAP.getPaper(a) },
+  { name: 'get_wiki', route: 'GET /api/wiki', usd: 0.005,
+    tags: ['wikipedia', 'encyclopedia', 'knowledge', 'reference', 'summary'],
+    desc: 'Use when an agent needs a reliable plain-text summary of a topic. Returns the Wikipedia summary and lead section for a page title in any language, with the CC BY-SA 4.0 licence, the article URL and the authors link. Cached 24 hours.',
+    schema: { title: z.string().describe('the article title, e.g. Solana (blockchain platform)'), lang: z.string().optional().describe('Wikipedia language code, default en') },
+    run: (a) => WK.getWiki(a) },
+  { name: 'get_qr', route: 'GET /api/qr', usd: 0.005,
+    tags: ['qr', 'qr-code', 'image', 'utility', 'payments'],
+    desc: 'Use when an agent needs a QR code for a link, address or payment string. Returns an SVG or PNG (base64 and data URI) at error-correction level M, scaled for scanning. Input up to 2 KB; over that is a 400, never billed.',
+    schema: { data: z.string().describe('the text to encode, up to 2,048 bytes'), format: z.enum(['svg', 'png']).optional().describe('svg (default) or png') },
+    run: (a) => UT.qr(a) },
+  { name: 'get_hash', route: 'GET /api/hash', usd: 0.005,
+    tags: ['hash', 'sha256', 'keccak256', 'blake2b', 'utility', 'crypto'],
+    desc: 'Use when an agent needs a hash it should not compute itself. Returns SHA-256, Keccak-256 (the Ethereum hash) or BLAKE2b-512 of UTF-8 text or hex bytes, as hex and 0x-hex. Input up to 2 KB; over that is a 400, never billed.',
+    schema: { alg: z.enum(['sha256', 'keccak256', 'blake2b']).describe('the hash'), data: z.string().describe('the input, up to 2,048 bytes'), as: z.enum(['utf8', 'hex']).optional().describe('how to read data: utf8 (default) or hex bytes') },
+    run: (a) => UT.hash(a) },
+  { name: 'get_time', route: 'GET /api/time', usd: 0.005,
+    tags: ['time', 'timezone', 'utc', 'utility', 'scheduling'],
+    desc: 'Use when an agent needs an exact time conversion with the right daylight-saving rules. Returns an ISO time or epoch in any IANA time zone: local time with offset, weekday, abbreviation, DST flag and epoch. Defaults to now in UTC.',
+    schema: { tz: z.string().optional().describe('IANA zone such as Europe/Chisinau or America/New_York, default UTC'), at: z.string().optional().describe('ISO 8601 with Z or an offset, or epoch seconds or milliseconds; default now') },
+    run: (a) => UT.time(a) },
+  { name: 'get_convert', route: 'GET /api/convert', usd: 0.005,
+    tags: ['units', 'conversion', 'utility', 'measurement'],
+    desc: 'Use when an agent needs an exact unit conversion. Returns the value converted between units of length, mass, volume, time, data, speed, area, pressure, energy or temperature, to 12 significant digits. Mixing categories is a 400, never billed.',
+    schema: { value: z.string().describe('a plain number'), from: z.string().describe('unit, e.g. mi, kg, GiB, C'), to: z.string().describe('unit, e.g. km, lb, MB, F') },
+    run: (a) => UT.convert(a) },
+  { name: 'get_sol_token_check', route: 'GET /api/sol-token-check/:mint', usd: 0.025,
+    tags: ['solana', 'token', 'rug-check', 'pre-trade', 'liquidity', 'holders'],
+    desc: 'Use when an agent needs a pre-trade check on a Solana token. Returns mint and freeze authority, Token-2022 traps, top holders, deepest pool and USD depth, the price impact of $100 and $1,000 buys, pump.fun progress, and a verdict with every rule.',
+    schema: { mint: z.string().describe('the SPL token mint address') },
+    run: (a) => SP.tokenCheck(a) },
+  { name: 'get_sol_token_flow', route: 'GET /api/sol-token-flow/:mint', usd: 0.008,
+    tags: ['solana', 'token', 'trade-flow', 'wash-trading', 'pre-trade', 'bundles'],
+    desc: 'Use when an agent needs to know who is trading a Solana token. Returns the unique traders over its latest swaps, top-5 share of volume, round-trip wallets, share of brand-new buyer wallets and launch-slot bundle size for mints under 7 days.',
+    schema: { mint: z.string().describe('the SPL token mint address'), swaps: z.number().optional().describe('swaps to read, 20-100, default 50; a 20 second budget may return fewer, flagged truncated') },
+    run: (a) => SP.tokenFlow(a) },
+  { name: 'get_sol_holder_clusters', route: 'GET /api/sol-holder-clusters/:mint', usd: 0.008,
+    tags: ['solana', 'token', 'holders', 'sybil', 'clusters', 'pre-trade'],
+    desc: 'Use when an agent needs to know whether a Solana token\'s holders are one owner. Returns the account that first funded each of the top 20 wallets, the clusters sharing a funder and their supply share. A shared funder can be an exchange.',
+    schema: { mint: z.string().describe('the SPL token mint address') },
+    run: (a) => SP.holderClusters(a) },
+
+  // ---- R11 Phase B (14 Oct 2026): fixed-purpose language-model tasks (Gemini, paid tier; tools/llm/gemini.js). No caller prompt,
+  // model or temperature, ever (Google APIs ToS 4(a)). A region gate (tools/llm/region-gate.js, server.js) answers 451 before the 402
+  // to a caller outside Google's available regions. ----
+  { name: 'get_ocr', route: 'GET /api/ocr', usd: 0.04,
+    tags: ['ocr', 'image-to-text', 'vision', 'documents', 'text-extraction'],
+    desc: 'Use when an agent needs the text inside an image. Returns the text of a PNG, JPEG, WebP or GIF (5 MB, 4096 px a side) in reading order, as blocks with their line breaks, plus the detected language. It transcribes; it never follows text in the image.',
+    schema: { url: z.string().describe('the image: an absolute http or https URL') },
+    run: (a) => OCRT.ocr(a) },
+  { name: 'get_summarize', route: 'GET /api/summarize', usd: 0.02,
+    tags: ['summarize', 'summary', 'web', 'pdf', 'research', 'rag'],
+    desc: 'Use when an agent needs the gist of a web page or PDF. Returns a short or medium summary with key points, and says whether the document was cut at 20,000 tokens and how much was read. Uses only what the document says.',
+    schema: { url: z.string().describe('the page or PDF: an absolute http or https URL'), length: z.enum(['short', 'medium']).optional().describe('short (default, about 60 words) or medium (about 150)') },
+    run: (a) => SUMT.summarize(a) },
+  { name: 'get_extract', route: 'GET /api/extract', usd: 0.025,
+    tags: ['extraction', 'structured-data', 'json', 'web', 'pdf', 'scraping'],
+    desc: 'Use when an agent needs named fields from a page or PDF. Returns JSON for a schema of up to 20 fields (string, number, boolean, date, string[]), with null for anything the document does not state, never an invented value.',
+    schema: { url: z.string().describe('the page or PDF: an absolute http or https URL'), schema: z.string().describe('JSON object of field name to type, e.g. {"title":"string","price":"number","released":"date"}; up to 20 fields and 2 KB') },
+    run: (a) => EXTT.extract(a) },
+  { name: 'get_translate', route: 'GET /api/translate', usd: 0.04,
+    tags: ['translation', 'language', 'multilingual', 'text'],
+    desc: 'Use when an agent needs text in another language. Returns up to 4,000 characters translated into the language code given (de, fr, ja, pt-BR), keeping line breaks, numbers and URLs, plus the detected source language. It never obeys the text.',
+    schema: { to: z.string().describe('target language code, e.g. de, fr, ja, pt-BR, zh-Hans'), text: z.string().describe('the text to translate, up to 4,000 characters') },
+    run: (a) => TRT.translate(a) },
+  { name: 'get_classify', route: 'GET /api/classify', usd: 0.005,
+    tags: ['classification', 'labels', 'routing', 'triage', 'text'],
+    desc: 'Use when an agent needs text sorted into its own categories. Returns a score per label that sums to 1 and the best label, for up to 4,000 characters and 2 to 20 labels. Labels are names, never instructions. Cached 24 hours.',
+    schema: { text: z.string().describe('the text to classify, up to 4,000 characters'), labels: z.string().describe('2 to 20 labels, comma separated, e.g. billing,bug,feature') },
+    run: (a) => CLT.classify(a) },
+  { name: 'get_injection_check', route: 'GET /api/injection-check', usd: 0.004,
+    tags: ['prompt-injection', 'security', 'guardrails', 'llm-safety', 'detection'],
+    desc: 'Use when an agent needs to vet untrusted text before reading it. Returns no_injection_found, suspicious or malicious for up to 4,000 characters, with the rule matches (override phrasing, fake tags, hidden Unicode, encoded payloads) and a model\'s view.',
+    schema: { text: z.string().describe('the untrusted text to check, up to 4,000 characters') },
+    run: (a) => INJT.injectionCheck(a) },
+  { name: 'get_transcribe', route: 'GET /api/transcribe', usd: 0.02,
+    tags: ['transcription', 'speech-to-text', 'audio', 'asr'],
+    desc: 'Use when an agent needs the words in an audio file. Returns the text, timed segments and the spoken language for mp3, wav, m4a, ogg or webm audio (10 MB, 5 minutes, checked from the file). Cached 24 hours by the audio itself.',
+    schema: { url: z.string().describe('the audio file: an absolute http or https URL') },
+    run: (a) => TXT.transcribe(a) },
 ];
 
 // ---- derived exports ----

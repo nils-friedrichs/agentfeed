@@ -205,7 +205,7 @@ test('domain: the TLS lookup refuses names that resolve to private or metadata a
 const OA = { id: 'https://openalex.org/W1', doi: 'https://doi.org/10.1000/abc', title: 'T', publication_year: 2024, type: 'article', authorships: [{ author: { display_name: 'A One' } }, { author: { display_name: 'B Two' } }], primary_location: { source: { display_name: 'Journal X' } }, cited_by_count: 7, open_access: { is_oa: true, oa_url: 'https://oa.example/x.pdf' }, abstract_inverted_index: { Hello: [0], big: [1], world: [2, 3] }, language: 'en' };
 test('papers: abstract reconstruction, DOI forms, search and lookup shape', async () => {
   assert.equal(P.abstractOf({ Hello: [0], big: [1], world: [2, 3] }), 'Hello big world world'); assert.equal(P.abstractOf(null), null);
-  assert.equal(P.normDoi('https://doi.org/10.1038/S43586-024-00294-7'), '10.1038/s43586-024-00294-7'); assert.equal(P.normDoi('doi:10.1000/AbC'), '10.1000/abc');
+  assert.equal(P.normDoi('https://doi.org/10.1038/S43586-024-00294-7'), '10.1038/s43586-024-00294-7'); assert.equal(P.normDoi('doi:10.1000/AbC'), '10.1000/abc'); assert.equal(P.normDoi('10.1038%2Fnature14539'), '10.1038/nature14539', 'a literal %2F left by double encoding is the slash');
   for (const b of ['', 'abc', '10.1000/', 'http://x.com/10.1000/a']) assert.throws(() => P.normDoi(b), isBad, b);
   P._cache.clear();
   const calls = [];

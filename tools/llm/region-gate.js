@@ -284,7 +284,7 @@ function regionGate(req, res, next) {
   if (req.method === 'POST' && p === '/mcp') {
     const decide = () => (mcpCallsPhaseB(req.body) ? refuse(res, verdict.country) : next());
     if (req.body !== undefined) return decide();
-    return require('express').json({ limit: '1mb' })(req, res, (err) => (err ? next() : decide()));
+    return require('express').json()(req, res, (err) => (err ? next() : decide()));
   }
   return next();
 }

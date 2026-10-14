@@ -34,6 +34,13 @@ const TOOL_TITLES = {
   get_exit_quote: 'Collateral exit liquidity', get_exit_method: 'Exit liquidity method',
   get_base_gas: 'Base gas price', get_base_balance: 'Base wallet balance',
   pricing: 'Price list',
+  // R11 (14 Oct 2026)
+  get_sanctions_check: 'OFAC wallet screen', get_email_verify: 'Email verification', get_domain: 'Domain DNS and TLS',
+  get_papers: 'Paper search', get_paper: 'Paper by DOI', get_wiki: 'Wikipedia summary', get_qr: 'QR code', get_hash: 'Hash',
+  get_time: 'Time zone conversion', get_convert: 'Unit conversion', get_sol_token_check: 'Solana token pre-trade check',
+  get_sol_token_flow: 'Solana token trade flow', get_sol_holder_clusters: 'Solana holder clusters',
+  get_ocr: 'Image to text (OCR)', get_summarize: 'Page or PDF summary', get_extract: 'Structured extraction', get_translate: 'Translation',
+  get_classify: 'Text classification', get_injection_check: 'Prompt injection check', get_transcribe: 'Speech to text',
 };
 
 module.exports = { TOOL_TITLES };

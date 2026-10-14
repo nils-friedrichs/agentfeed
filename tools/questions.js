@@ -88,6 +88,27 @@ const QUESTIONS = {
   get_last_liquidation: 'What was the last liquidation on each major?',
   get_exit_method: 'How is exit liquidity measured, and on how many rows?',
   get_forecast_record: 'How accurate has the cascade forecast actually been?',
+  // R11 (14 Oct 2026)
+  get_sanctions_check: 'Is this crypto address on the OFAC sanctions list?',
+  get_email_verify: 'Can this email address plausibly receive mail?',
+  get_domain: 'What DNS records and TLS certificate does this domain have?',
+  get_papers: 'Which scholarly papers cover this topic?',
+  get_paper: 'What is the paper behind this DOI?',
+  get_wiki: 'What does Wikipedia say about this topic?',
+  get_qr: 'How do I turn this text into a QR code?',
+  get_hash: 'What is the SHA-256, Keccak-256 or BLAKE2b hash of this input?',
+  get_time: 'What time is it, or was it, in this time zone?',
+  get_convert: 'What is this quantity in another unit?',
+  get_sol_token_check: 'What on-chain risks and how much liquidity does this Solana token have before I buy?',
+  get_sol_token_flow: 'Who is actually trading this Solana token: many wallets or a few?',
+  get_sol_holder_clusters: 'Do the top holders of this Solana token share a funder?',
+  get_ocr: 'What text is in this image?',
+  get_summarize: 'What does this page or PDF say, in short?',
+  get_extract: 'What are these fields on this page or PDF, as JSON?',
+  get_translate: 'What does this text say in another language?',
+  get_classify: 'Which of my labels fits this text best?',
+  get_injection_check: 'Is this text trying to give instructions to the AI that reads it?',
+  get_transcribe: 'What is said in this audio file?',
 };
 
 /** The question for a route, or one derived from its own description. */
