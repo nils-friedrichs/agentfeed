@@ -262,6 +262,12 @@ function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp, tempo }) {
       if (names.includes(name)) continue;
       parameters.push({ in: 'query', name, required: qRequired.has(name), schema: schemaFor(prop) });
     }
+    // R11b: a top-up's only input is the key it tops up, sent as a header (lib/keys.js). Declared here so a client knows to send it
+    // (and @agentcash/discovery stops reading the route as input-less); the 402 itself is unchanged: an unpaid, keyless GET still gets
+    // the plain challenge, a paid one without a key is a 401 before anything settles.
+    if (/^topup_key_/.test(p.tool)) {
+      parameters.push({ in: 'header', name: 'X-AgentFeed-Key', required: true, description: 'the prepaid key to top up (afk_ + 43 or 44 base58 characters); Authorization: Bearer <key> also works', schema: { type: 'string' } });
+    }
 
     const okContent = { schema: { type: 'object' } };
     if (m.output && m.output.example) okContent.example = m.output.example;
@@ -368,7 +374,7 @@ function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp, tempo }) {
     info: {
       title: 'AgentFeed',
       version: '1.0.0',
-      description: `Live crypto market, liquidation, tokenized-equity and Solana on-chain data for AI agents. Paid per call in USDC over x402 on ${require('../lib/rails').httpRailNames()}.${require('../lib/hf').hfSentence()} No API key or account is needed to pay per call. ${keyLine(PRICES)}`.trim(),
+      description: `${require('./scope').SCOPE} Paid per call in USDC over x402 on ${require('../lib/rails').httpRailNames()}.${require('../lib/hf').hfSentence()} No API key or account is needed to pay per call. ${keyLine(PRICES)}`.trim(),
       'x-generated-from': 'payments.PRICES + bazaar-examples.json, at boot',
       // x402scan verifies ownership from info.contact; it names the operator, a
       // reachable address and the studio site, not the repository.
@@ -476,7 +482,7 @@ function buildLlmsTxt({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo, network }) {
   const lines = [
     '# AgentFeed',
     '',
-    'Live crypto market data, a liquidation tape, tokenized-equity peg data and Solana on-chain data, served to AI agents over HTTP.',
+    require('./scope').SCOPE,
     `${Object.keys(PRICES).length} paid routes and ${FREE_TOOLS.length} free routes. Every route is a GET that returns JSON.`,
     '',
     '## How to pay',
@@ -549,7 +555,7 @@ function buildSkillMd({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo, network }) {
   return [
     '---',
     'name: agentfeed',
-    `description: Live crypto market data paid per call in USDC over x402, no API key. Use when an agent needs perp funding, open interest, a liquidation tape, cascade detection or forecasting, orderbook depth, tokenized-stock peg deviation, lending-collateral exit liquidity, Solana on-chain reads or a spot price. ${routes.length} paid routes and ${freeCount} free ones at ${ORIGIN}.`,
+    `description: ${require('./scope').SCOPE_SHORT.replace(/\.$/, '')}, paid per call in USDC over x402, no API key. Use when an agent needs perp funding, open interest, a liquidation tape, cascade detection or forecasting, orderbook depth, tokenized-stock peg deviation, lending-collateral exit liquidity, Solana on-chain reads or a spot price. ${routes.length} paid routes and ${freeCount} free ones at ${ORIGIN}.`,
     '---',
     '',
     '# AgentFeed',

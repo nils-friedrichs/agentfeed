@@ -114,7 +114,7 @@ const DISPLAY_FIRST = [
 
 // Shown by a client before any tool call. Kept short on purpose.
 const INSTRUCTIONS = [
-  'AgentFeed serves live crypto market data: a complete Bybit, OKX and Binance liquidation tape, tokenized-equity peg data and Solana on-chain reads.',
+  `AgentFeed serves ${require('./tools/scope').SCOPE.charAt(0).toLowerCase()}${require('./tools/scope').SCOPE.slice(1)}`,
   'Free, start here: get_fear_greed, get_last_liquidation, get_cascade_forecast_free, get_forecast_question, get_forecast_record, get_exit_method, pricing.',
   'Cheapest paid calls at $0.001: get_spot, get_sol_price, get_btc_price, get_eth_price; then $0.005: get_perp, get_liq_pulse, get_funding_pulse. Call pricing for the full price list.',
   `A paid tool answers with an x402 payment request, payable in USDC on ${require('./lib/rails').railNames()}. No API key is needed to pay per call; a client that cannot pay x402 can buy a prepaid key at https://x402.ochinimus.app/keys and send it as the header X-AgentFeed-Key on POST /mcp (half price per call, minimum $0.0005).`,
@@ -243,7 +243,7 @@ async function initMcp(app, keys) {
       name: 'agentfeed',
       title: 'AgentFeed',
       version: SERVER_VERSION,
-      description: 'Live crypto market data, a complete Bybit/OKX/Binance liquidation tape, a funding radar over every Hyperliquid perp, stock and index perps, a macro calendar, tokenized-equity peg data and Solana on-chain reads. Paid per call in USDC over x402, no API key needed; prepaid keys for clients that cannot pay x402.',
+      description: `${require('./tools/scope').SCOPE} Paid per call in USDC over x402, no API key needed; prepaid keys for clients that cannot pay x402.`,
       websiteUrl: 'https://x402.ochinimus.app',
       icons: [{ src: ICON_URL, mimeType: 'image/png' }],
     }, { instructions: INSTRUCTIONS });

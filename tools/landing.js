@@ -11,7 +11,26 @@
 // Null-safe: if the tape is unreachable getPerpCoverage() returns null and
 // the page falls back to the qualitative phrase. A landing page must never
 // 500 because a read-only analytics database is busy.
-const { evmRails, railNames } = require('../lib/rails');
+const { evmRails, algoRail, httpRailNames } = require('../lib/rails');
+const { hfSentence } = require('../lib/hf');
+const { SCOPE_SHORT } = require('./scope');
+
+const ORIGIN = 'https://x402.ochinimus.app';
+const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/**
+ * The page's head texts, derived at render time: the scope sentence (tools/scope.js), the rails every HTTP route takes
+ * (lib/rails httpRailNames: Solana, the EVM rails and Algorand) and the counts from the price table. The meta description is also
+ * og:description and must fit 300 characters; it keeps "No API key is needed to pay per call." (R9's guard test).
+ */
+function landingHead(PRICES) {
+  const routes = Object.keys(PRICES);
+  const keyPacks = routes.filter((r) => /^GET \/api\/keys\//.test(r)).length;
+  const dataRoutes = routes.length - keyPacks;
+  const title = 'AgentFeed — crypto market data, Solana pre-trade checks, sanctions screening and language tasks for AI agents, paid per call via x402';
+  const description = `${SCOPE_SHORT} Pay per call in USDC via x402 on ${httpRailNames()}. No API key is needed to pay per call.`;
+  return { title, description, dataRoutes, keyPacks };
+}
 
 function renderLanding(PRICES, network, coverage) {
   const n = coverage && coverage.perp_markets_7d;
@@ -21,11 +40,22 @@ function renderLanding(PRICES, network, coverage) {
     <tr><td class="t">${p.tool}</td><td class="r">${route}</td>
     <td class="p">$${p.usd}</td><td>${p.desc}</td></tr>`).join('');
 
+  const head = landingHead(PRICES);
+  const railList = ['Solana', ...evmRails().map((r) => r.name), ...(algoRail() ? ['Algorand'] : [])];
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AgentFeed — crypto trading data for AI agents, paid in USDC via x402</title>
-<meta name="description" content="Real-time liquidations across ${perpsPhrase} on Bybit, OKX and Binance — including Bybit's complete unthrottled tape — plus full-universe cascade detection, open interest and funding across every Hyperliquid perp, and prices. Pay per call in USDC via x402 on Solana or Base. No API key is needed to pay per call.">
+<title>${esc(head.title)}</title>
+<meta name="description" content="${esc(head.description)}">
+<meta property="og:title" content="${esc(head.title)}">
+<meta property="og:description" content="${esc(head.description)}">
+<meta property="og:url" content="${ORIGIN}/">
+<meta property="og:type" content="website">
+<meta property="og:image" content="${ORIGIN}/icon.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="${esc(head.title)}">
+<meta name="twitter:description" content="${esc(head.description)}">
+<meta name="twitter:image" content="${ORIGIN}/icon.png">
 <style>
   :root{--bg:#0a0e14;--card:#111722;--txt:#d7dde7;--dim:#7d8899;--gold:#ffd84d;--line:#1e2635}
   *{box-sizing:border-box;margin:0;padding:0}
@@ -44,8 +74,8 @@ function renderLanding(PRICES, network, coverage) {
   .foot{margin-top:36px;color:var(--dim);font-size:12px;border-top:1px solid var(--line);padding-top:14px}
 </style></head><body>
 <h1>AgentFeed</h1>
-<p class="tag">Live liquidations, cascade detection, positioning, funding and prices for AI trading agents — <b>${perpsPhrase}</b> across Bybit, OKX and Binance. Pay per call in USDC via x402 on ${railNames()}. No accounts, no subscriptions, and no API key needed to pay per call.${(() => { const t = require('../lib/keys').keysSentence(PRICES); return t ? ' ' + t.replace('page at /keys', 'page at <a href="/keys">/keys</a>') : ''; })()}</p>
-<span class="badge">x402 ${network}</span><span class="badge">${["Solana", ...evmRails().map((r) => r.name)].join(" + ")}</span><span class="badge">elizaOS plugin</span><span class="badge">MCP + REST</span><span class="badge">${perps} perps, 3 exchanges</span><span class="badge">full-universe cascades</span>
+<p class="tag">${SCOPE_SHORT.replace(/ for AI agents\.$/, '')}, for AI agents: <b>${head.dataRoutes} paid data routes</b>, among them live liquidations across <b>${perpsPhrase}</b> on Bybit, OKX and Binance. Pay per call in USDC via x402 on ${httpRailNames()}. No accounts, no subscriptions, and no API key needed to pay per call.${hfSentence()}${(() => { const t = require('../lib/keys').keysSentence(PRICES); return t ? ' ' + t.replace('page at /keys', 'page at <a href="/keys">/keys</a>') : ''; })()}</p>
+<span class="badge">x402 ${network}</span><span class="badge">${railList.join(" + ")}</span><span class="badge">${head.dataRoutes} paid data routes</span><span class="badge">elizaOS plugin</span><span class="badge">MCP + REST</span><span class="badge">${perps} perps, 3 exchanges</span><span class="badge">full-universe cascades</span>
 
 <p style="color:var(--dim);font-size:13px;margin-top:18px;border-left:2px solid var(--gold);padding-left:12px">
 Bybit's <code>allLiquidation</code> is the only <b>complete, unthrottled</b> public liquidation stream among the major perp venues — Binance and OKX both throttle to ~1 print/sec/symbol, a documented limitation that undercounts hardest during cascades. No exchange publishes historical liquidation data (Binance deleted theirs; Bybit never had one). We record it live. <a href="https://ochinimuse.gumroad.com/l/liqdata">Free dataset + full quality disclosure &rarr;</a>
@@ -67,7 +97,7 @@ Bybit's <code>allLiquidation</code> is the only <b>complete, unthrottled</b> pub
   <a href="/.well-known/x402.json">x402 manifest</a> ·
   <a href="/health">health</a>
 </div>
-<div class="foot">Built by <a href="https://ochinimus.app">ochinimus</a> · USDC settlement on ${["Solana", ...evmRails().map((r) => r.name)].join(", ")} · <a href="https://www.npmjs.com/package/@seekdaseek/plugin-agentfeed">elizaOS plugin</a> · <a href="https://smithery.ai/servers/ochinimus/agentfeed">Smithery</a> · <a href="https://ochinimuse.gumroad.com/l/liqdata">datasets</a> · agents hitting this URL get JSON</div>
+<div class="foot">Built by <a href="https://ochinimus.app">ochinimus</a> · USDC settlement on ${httpRailNames()} · <a href="https://www.npmjs.com/package/@seekdaseek/plugin-agentfeed">elizaOS plugin</a> · <a href="https://smithery.ai/servers/ochinimus/agentfeed">Smithery</a> · <a href="https://ochinimuse.gumroad.com/l/liqdata">datasets</a> · agents hitting this URL get JSON</div>
 </body></html>`;
 }
-module.exports = { renderLanding };
+module.exports = { renderLanding, landingHead };
