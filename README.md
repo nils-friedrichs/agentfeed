@@ -5,7 +5,7 @@
 
 **Crypto market data for AI agents (liquidations, funding, open interest, prices), Solana pre-trade checks, OFAC sanctions screening, scholarly papers, utilities and fixed-purpose language tasks (OCR, translate, summarize, extract, classify, prompt-injection check, transcribe). Pay per call in USDC. No accounts, no subscriptions, and no API key needed (prepaid keys are optional, for bots that cannot pay x402).**
 
-AgentFeed sells live trading data through the [x402 payment protocol](https://solana.com/x402) on Solana, Base, Polygon and Arbitrum. An agent hits an endpoint, gets a `402 Payment Required` with the price, pays a fraction of a cent in USDC from its own wallet, and receives the data — in about two seconds, gas sponsored by the facilitator.
+AgentFeed sells live trading data through the [x402 payment protocol](https://solana.com/x402) on Solana, Base, Polygon, Arbitrum, Arc and Algorand. An agent hits an endpoint, gets a `402 Payment Required` with the price, pays a fraction of a cent in USDC from its own wallet, and receives the data — in about two seconds, gas sponsored by the facilitator.
 
 Two rails, same data:
 
@@ -253,6 +253,128 @@ The pay-kit fix ships here as `mpp/patches/@solana+mpp+0.7.0.patch`, applied by
 `patch-package` on install and asserted by `npm run verify-patch` — the patch is a production
 dependency, not a dev one, because a `--omit=dev` install would otherwise complete silently
 *unpatched*.
+
+## Half price for high-frequency callers
+
+A bot that calls often pays half the route's price, minimum $0.0005, through either of two schemes that ride the same 402 as the per-call accepts. Per-call prices do not change. The six prepaid-key purchase routes carry per-call accepts only.
+
+| | batch-settlement | Circle Gateway nanopayment |
+|---|---|---|
+| Networks | Base, Polygon, Arbitrum | Base, Polygon, Arbitrum, Arc |
+| Accept | `scheme: batch-settlement` | `scheme: exact`, `extra.name: GatewayWalletBatched` |
+| Pays | the treasury `0x22DB3A9686EE5261e7Bf3ed4f91277232E8076e6` | Gateway seller `0xA853129ACF56A851f9d51CD8cb47619465260Fa9` |
+| Buyer does once | opens a channel with one deposit (`extra.minDeposit` in the accept); every later call is an off-chain voucher | deposits USDC into the GatewayWallet `0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE` |
+| Settlement | we claim the vouchers every 30 minutes | Circle batches the authorizations |
+| Unspent money | comes back through the channel's timed withdrawal (24 h delay) | stays in the buyer's Gateway balance |
+
+A call that answers 400 or more is never charged on either scheme.
+
+### batch-settlement, on Base
+
+```js
+import { privateKeyToAccount } from 'viem/accounts';
+import { createPublicClient, http } from 'viem';
+import { base } from 'viem/chains';
+import { BatchSettlementEvmScheme } from '@x402/evm/batch-settlement/client';
+import { wrapFetchWithPaymentFromConfig } from '@x402/fetch';
+
+const account = privateKeyToAccount(process.env.EVM_KEY);
+const pub = createPublicClient({ chain: base, transport: http() });
+const signer = Object.assign(account, { readContract: (args) => pub.readContract(args) });
+const pay = wrapFetchWithPaymentFromConfig(fetch, {
+  schemes: [{ network: 'eip155:8453', client: new BatchSettlementEvmScheme(signer) }],
+});
+
+// the first call opens the channel (one EIP-3009 authorization, no ETH needed); the rest are vouchers
+for (let i = 0; i < 5; i++) {
+  const res = await pay('https://x402.ochinimus.app/api/eth-price');
+  console.log(res.status, await res.json());
+}
+```
+
+Keep the `pay` object alive between calls. A client that starts a fresh process for every call is asked once to resync while vouchers are outstanding, and is then served in the same request.
+
+Full script, with a guard that checks the accept before anything is signed: `ops/proof-batch.mjs`.
+
+### Gateway, on Base
+
+```js
+import { GatewayClient } from '@circle-fin/x402-batching/client';
+
+const client = new GatewayClient({ chain: 'base', privateKey: process.env.EVM_KEY });
+await client.deposit('0.05'); // once: approve + deposit, gas paid in ETH on Base
+const res = await client.pay('https://x402.ochinimus.app/api/liquidation-stats');
+console.log(res.formattedAmount, res.data);
+```
+
+Full script: `ops/proof-gateway.mjs` (`CHAIN=base` or `CHAIN=arc`).
+
+### Proven on mainnet
+
+- 13 Oct 2026, batch-settlement on Base: a channel opened with deposit [0x6175…4492](https://basescan.org/tx/0x61756295ac7bfe27d7d3e897b1985f0bb7986f5062cc68bbc5492a67a6344492), ten 0.0005 USDC vouchers, claimed and settled to the treasury; a second run paid 8 calls while the claim job ran.
+- 13 Oct 2026, Gateway on Arc: see "Pay on Arc" below.
+
+All of them were paid from our own test wallets.
+
+## Pay on Arc
+
+Every paid route takes USDC on Arc mainnet (`eip155:5042`, USDC `0x3600000000000000000000000000000000000000`, 6 decimals) in two ways. Both sit in the same 402 as the other rails (the prepaid-key purchase routes offer the exact one only), so a client pays with whatever it holds. Gas on Arc is paid in USDC, so a buyer needs nothing else.
+
+| | x402 exact | Circle Gateway nanopayment |
+|---|---|---|
+| Accept | `scheme: exact` | `scheme: exact`, `extra.name: GatewayWalletBatched` |
+| Price | the route's price | half the route's price, minimum $0.0005 |
+| Settled by | Circle Facilitator Service, one transaction per call | Circle Gateway, batched |
+| Pays | `0x0Cf44185564F2b72E291050DC79E578429E52f83` | Gateway seller `0xA853129ACF56A851f9d51CD8cb47619465260Fa9` |
+| Buyer needs | USDC on Arc | a one-time deposit into the GatewayWallet `0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE` |
+
+### One call: x402 exact
+
+```js
+import { privateKeyToAccount } from 'viem/accounts';
+import { ExactEvmScheme } from '@x402/evm/exact/client';
+import { wrapFetchWithPaymentFromConfig } from '@x402/fetch';
+
+const account = privateKeyToAccount(process.env.ARC_KEY);
+const pay = wrapFetchWithPaymentFromConfig(fetch, {
+  schemes: [{ network: 'eip155:5042', client: new ExactEvmScheme(account) }],
+});
+const res = await pay('https://x402.ochinimus.app/api/liquidation-stats');
+console.log(res.status, await res.json());
+```
+
+Full script: `ops/pay-arc.mjs`.
+
+### Many calls: Gateway nanopayments
+
+```js
+import { GatewayClient } from '@circle-fin/x402-batching/client';
+
+const client = new GatewayClient({ chain: 'arc', privateKey: process.env.ARC_KEY });
+await client.deposit('0.02'); // once: approve + deposit, gas paid in USDC
+const res = await client.pay('https://x402.ochinimus.app/api/liquidation-stats');
+console.log(res.formattedAmount, res.data);
+```
+
+Full script, with a deposit sized from a live gas estimate and a dry run: `ops/proof-gateway.mjs` (`CHAIN=arc`).
+
+### Proven on mainnet
+
+- 12 Oct 2026, x402 exact through Circle's facilitator: [0x15e8…41d0](https://explorer.arc.io/tx/0x15e83159a25d280a78b5f4fc4bf46935582f3e4acfc7cac2bee271862eca41d0)
+- 13 Oct 2026, Gateway deposit [0xffe7…9d50](https://explorer.arc.io/tx/0xffe7818566106b5412f2f8025c56f4d49a4743ed74338011a8022b948f849d50), then a 0.0005 USDC nanopayment (Circle transfer `d32e4ea9-2d62-4fd6-ad4c-6de70affba00`)
+- 14 Oct 2026, x402 exact through Circle's facilitator with the production key: [0xee59…bf33](https://explorer.arc.io/tx/0xee5973cda3f2683f74695e4813e7979712dafc6bb317d918365e80ff222fbf33), a 0.001 USDC call to `/api/eth-price`, status ok
+
+All of them were paid from our own test wallets.
+
+### Where it lives in the code
+
+- `lib/rails.js`: the Arc rail (network, asset, payTo).
+- `lib/circle-arc.js`: the Circle Facilitator Service client: Arc-only `/supported`, `/verify`, `/settle` and settlement-status polling. A payment still pending is withheld and logged for `ops/arc-reconcile.js`.
+- `lib/hf.js`: the half-price tier: batch-settlement on Base, Polygon and Arbitrum, Gateway offers on Base, Polygon, Arbitrum and Arc, the half-price rule, and `routeGateway`, which hands Gateway payments to Circle's `BatchFacilitatorClient` while every other payment keeps its facilitator.
+- `ops/batch-claim.js`: claims and settles batch-settlement vouchers every 30 minutes.
+- `payments.js`: facilitator order: Coinbase CDP first, Circle for Arc, then the Gateway tier.
+- `ops/gateway-withdraw.mjs` and `ops/arc-sweep.mjs`: revenue out of the hot addresses.
+- `test/arc.test.js`.
 
 ## 89 tools (82 paid data routes + 7 free) & pricing
 
