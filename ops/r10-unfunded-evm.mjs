@@ -7,6 +7,9 @@
 // invalid_signature means our name/version is wrong. Nothing can settle: there is nothing to move.
 //
 // It asks with /api/perp|<network>, so an on-request network is in the 402. Run it against a scratch boot or the live service.
+// ALLOW_ANY_ASSET=1 sets spendControls.allowedAssets: true. Without it @x402/fetch 2.28 refuses every token that is not in
+// @x402/evm DEFAULT_ASSETS (Optimism, HyperEVM, Unichain, Scroll, SKALE Base, BNB, Robinhood, World, X Layer on 2026-10-14):
+// a stock client must add an allowedAssets entry to pay those.
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
 import { ExactEvmScheme } from '@x402/evm/exact/client';
 import { wrapFetchWithPaymentFromConfig } from '@x402/fetch';
@@ -18,7 +21,7 @@ for (const net of nets) {
   const account = privateKeyToAccount(generatePrivateKey());
   let sent = null;
   const spy = (input, init) => { const h = input instanceof Request ? input.headers : init && init.headers; if (h) sent = h; return fetch(input, init); };
-  const pay = wrapFetchWithPaymentFromConfig(spy, { schemes: [{ network: net, client: new ExactEvmScheme(account) }] });
+  const pay = wrapFetchWithPaymentFromConfig(spy, { schemes: [{ network: net, client: new ExactEvmScheme(account) }], ...(process.env.ALLOW_ANY_ASSET === '1' ? { spendControls: { allowedAssets: true } } : {}) });
   const res = await pay(`${base}/api/perp|${net}`).catch((e) => ({ status: 'client threw', e }));
   const h = sent ? Object.fromEntries((sent instanceof Headers ? [...sent] : Object.entries(sent)).map(([k, v]) => [k.toLowerCase(), v])) : {};
   const sig = h['payment-signature'];
