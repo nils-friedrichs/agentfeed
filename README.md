@@ -85,7 +85,7 @@ Every paid route, cheapest question last. Generated from
 [`/.well-known/x402.json`](https://x402.ochinimus.app/.well-known/x402.json),
 read 2026-10-14 — names, prices and routes are the manifest's, not a copy kept
 in sync by hand. What each one returns is under
-[69 tools](#69-tools-62-paid-data-routes--7-free--pricing), word for word as
+[89 tools](#89-tools-82-paid-data-routes--7-free--pricing), word for word as
 the service publishes it.
 
 | Tool | Price | Route |
@@ -100,8 +100,12 @@ the service publishes it.
 | `get_cascade_scan` | $0.05 | `/api/cascade-scan` |
 | `get_liq_history` | $0.05 | `/api/liq-history` |
 | `get_peg_universe` | $0.05 | `/api/peg-universe` |
+| `get_ocr` | $0.04 | `/api/ocr` |
+| `get_translate` | $0.04 | `/api/translate` |
 | `get_cascade_history` | $0.03 | `/api/cascade-history` |
 | `get_peg_sessions` | $0.03 | `/api/peg-sessions` |
+| `get_extract` | $0.025 | `/api/extract` |
+| `get_sol_token_check` | $0.025 | `/api/sol-token-check/:mint` |
 | `get_base_launches` | $0.02 | `/api/base-launches` |
 | `get_cascade_forecast` | $0.02 | `/api/cascade-forecast` |
 | `get_exit_quote` | $0.02 | `/api/exit-quote` |
@@ -113,10 +117,13 @@ the service publishes it.
 | `get_market_state` | $0.02 | `/api/market-state` |
 | `get_oi_spike_scan` | $0.02 | `/api/oi-spike-scan` |
 | `get_peg_deviation` | $0.02 | `/api/peg-deviation` |
+| `get_summarize` | $0.02 | `/api/summarize` |
 | `get_token_holders` | $0.02 | `/api/token-holders/:mint` |
 | `get_tradfi_radar` | $0.02 | `/api/tradfi-radar` |
+| `get_transcribe` | $0.02 | `/api/transcribe` |
 | `get_venue_liq_share` | $0.02 | `/api/venue-liq-share` |
 | `get_wallet_activity` | $0.02 | `/api/wallet-activity/:wallet` |
+| `get_papers` | $0.015 | `/api/papers` |
 | `get_basis` | $0.01 | `/api/basis` |
 | `get_cascade_alert` | $0.01 | `/api/cascade` |
 | `get_equity_24h` | $0.01 | `/api/equity-24h` |
@@ -133,26 +140,39 @@ the service publishes it.
 | `get_top_movers` | $0.01 | `/api/top-movers` |
 | `get_trade_context` | $0.01 | `/api/trade-context` |
 | `get_volatility` | $0.01 | `/api/volatility` |
+| `get_sanctions_check` | $0.008 | `/api/sanctions-check/:address` |
+| `get_sol_holder_clusters` | $0.008 | `/api/sol-holder-clusters/:mint` |
+| `get_sol_token_flow` | $0.008 | `/api/sol-token-flow/:mint` |
 | `get_wallet_holdings` | $0.008 | `/api/wallet-holdings/:wallet` |
 | `get_base_balance` | $0.005 | `/api/base-balance` |
 | `get_base_gas` | $0.005 | `/api/base-gas` |
+| `get_classify` | $0.005 | `/api/classify` |
+| `get_convert` | $0.005 | `/api/convert` |
+| `get_domain` | $0.005 | `/api/domain/:domain` |
+| `get_email_verify` | $0.005 | `/api/email-verify` |
 | `get_funding_history` | $0.005 | `/api/funding-history` |
 | `get_funding_pulse` | $0.005 | `/api/funding-pulse` |
 | `get_funding_rate` | $0.005 | `/api/funding-rate` |
+| `get_hash` | $0.005 | `/api/hash` |
 | `get_jito_tips` | $0.005 | `/api/jito-tips` |
 | `get_liq_pulse` | $0.005 | `/api/liq-pulse` |
 | `get_macro_calendar` | $0.005 | `/api/macro-calendar` |
 | `get_market_snapshot` | $0.005 | `/api/market-snapshot` |
+| `get_paper` | $0.005 | `/api/paper/:doi` |
 | `get_perp` | $0.005 | `/api/perp` |
 | `get_positioning` | $0.005 | `/api/positioning` |
 | `get_priority_fees` | $0.005 | `/api/priority-fees` |
+| `get_qr` | $0.005 | `/api/qr` |
 | `get_recent_liquidations` | $0.005 | `/api/liquidations` |
 | `get_sec_filings` | $0.005 | `/api/sec-filings` |
 | `get_sol_network` | $0.005 | `/api/sol-network` |
+| `get_time` | $0.005 | `/api/time` |
 | `get_token_metadata` | $0.005 | `/api/token-metadata/:mint` |
 | `get_tradfi_perps` | $0.005 | `/api/tradfi-perps` |
 | `get_web_markdown` | $0.005 | `/api/web-markdown` |
+| `get_wiki` | $0.005 | `/api/wiki` |
 | `get_coin_signal` | $0.004 | `/api/coin-signal/:coin` |
+| `get_injection_check` | $0.004 | `/api/injection-check` |
 | `get_fx_rates` | $0.002 | `/api/fx-rates` |
 | `get_btc_price` | $0.001 | `/api/btc-price` |
 | `get_eth_price` | $0.001 | `/api/eth-price` |
@@ -234,11 +254,10 @@ The pay-kit fix ships here as `mpp/patches/@solana+mpp+0.7.0.patch`, applied by
 dependency, not a dev one, because a `--omit=dev` install would otherwise complete silently
 *unpatched*.
 
-## 69 tools (62 paid data routes + 7 free) & pricing
+## 89 tools (82 paid data routes + 7 free) & pricing
 
-**62 paid + 7 free**, 69 total on the MCP rail (the six prepaid-key routes below are HTTP only). Every call is metered individually in USDC over
-x402 — no bundles, no minimums. Calling all 62 paid data tools once costs **$0.878** — the entire
-market read for 88 cents. Counts and prices are summed from
+**82 paid + 7 free**, 89 total on the MCP rail (the six prepaid-key routes below are HTTP only). Every call is metered individually in USDC over
+x402 — no bundles, no minimums. Calling all 82 paid data tools once costs **$1.136**. Counts and prices are summed from
 [the live manifest](https://x402.ochinimus.app/.well-known/x402.json), read 2026-10-14.
 
 The flagship is [`get_squeeze_score`](#the-moat--our-own-liquidation-tape) — a 0-100 short-squeeze / long-flush composite built from funding, crowding, OI build and the liq-skew of our exclusive tape. One number, one dime, answers "is this trade crowded and about to hurt someone."
@@ -331,6 +350,9 @@ Sampled every 5 minutes since 19 July 2026. Deviation is measured against the un
 | `get_priority_fees` | $0.005 | `/api/priority-fees` | Solana priority fees right now: percentiles from min to max of the per-slot minimum fee paid on the busiest SOL/USDC pools over the last ~150 slots, in micro-lamports per compute unit, with a recommended level. For bots that need their transactions to land. |
 | `get_jito_tips` | $0.005 | `/api/jito-tips` | Jito tips sampled on-chain: p25 to p99 in SOL of the newest transfers into Jito's tip accounts, what landed bundles actually paid, refreshed every 5 minutes, with a landing recommendation. |
 | `get_sol_network` | $0.005 | `/api/sol-network` | Solana network health: recent average TPS, the current slot, the current epoch and epoch progress in %. |
+| `get_sol_token_check` | $0.025 | `/api/sol-token-check/:mint` | Use when an agent needs a pre-trade check on a Solana token. Returns mint and freeze authority, Token-2022 traps, top holders, deepest pool and USD depth, the price impact of $100 and $1,000 buys, pump.fun progress, and a verdict with every rule. |
+| `get_sol_token_flow` | $0.008 | `/api/sol-token-flow/:mint` | Use when an agent needs to know who is trading a Solana token. Returns the unique traders over its latest swaps, top-5 share of volume, round-trip wallets, share of brand-new buyer wallets and launch-slot bundle size for mints under 7 days. |
+| `get_sol_holder_clusters` | $0.008 | `/api/sol-holder-clusters/:mint` | Use when an agent needs to know whether a Solana token's holders are one owner. Returns the account that first funded each of the top 20 wallets, the clusters sharing a funder and their supply share. A shared funder can be an exchange. |
 
 ### Base / EVM
 
@@ -366,6 +388,42 @@ Sampled every 5 minutes since 19 July 2026. Deviation is measured against the un
 | `get_tradfi_radar` | $0.02 | `/api/tradfi-radar` | Stock perps, S&P 500, Nasdaq, gold and oil perps ranked by funding rate: every stock, index, commodity and FX perp on the Hyperliquid HIP-3 dexes (trade[XYZ], Paragon, Markets by Kinetiq, Entropy), with funding at its 8h equivalent, a 30-day funding z-score, open interest and its 24h change, mark minus oracle basis and 24h volume. Filter by asset class. Precomputed every 5 minutes; stale data answers 503. |
 | `get_equity_24h` | $0.01 | `/api/equity-24h` | Weekend price for US stocks: an indicative 24/7 price for a stock or index (TSLA, NVDA, S&P 500, Nasdaq) from stock perps on Hyperliquid and our tokenized stocks DEX price, with the last regular-session price, its time and source, the implied gap in %, each source's liquidity and the session (open, pre, after, overnight, weekend). Indicative, never an exchange quote; 503 when no source has liquidity. |
 | `get_tradfi_perps` | $0.005 | `/api/tradfi-perps` | Use when an agent needs a 24/7 price for a stock, index, commodity or currency outside market hours. Returns Hyperliquid HIP-3 perp markets: oracle and mark price, premium, hourly and 8h funding, open interest, 24h change and the dex. With symbol (TSLA, GOLD, EUR or xyz:TSLA): every live market for it. Without: the whole list. Prices are each market's own HIP-3 oracle and mark. |
+
+### Research, compliance & utilities
+
+| Tool | Price | Route | What you get |
+|---|---|---|---|
+| `get_sanctions_check` | $0.008 | `/api/sanctions-check/:address` | Use when an agent needs to screen a crypto wallet before paying or being paid. Returns an exact match of a Bitcoin, Ethereum, Tron, Solana or other address against the OFAC SDN list, with entry, program and list date. No match is not a clearance. |
+| `get_email_verify` | $0.005 | `/api/email-verify` | Use when an agent needs to know whether an email address can plausibly receive mail. Returns syntax, MX, disposable-domain, role-account and free-provider checks with a deliverable_likely, risky or undeliverable verdict and its reasons. No SMTP probe. |
+| `get_domain` | $0.005 | `/api/domain/:domain` | Use when an agent needs the basic facts about a domain. Returns its DNS A, AAAA, MX, NS and TXT records and the live TLS certificate: issuer, alternative names, validity dates and days to expiry. Public hosts only; no registrar data. |
+| `get_papers` | $0.015 | `/api/papers` | Use when an agent needs scholarly papers on a topic. Returns OpenAlex works (CC0 data) for a search: title, year, DOI, authors, venue, citation count and open-access link, up to 25, optionally from a given year. Cached 24 hours. |
+| `get_paper` | $0.005 | `/api/paper/:doi` | Use when an agent needs the paper behind a DOI. Returns title, year, authors, venue, citation count, open-access URL and the abstract where OpenAlex holds it (CC0 data). Send the slash of the DOI as %2F in the path. |
+| `get_wiki` | $0.005 | `/api/wiki` | Use when an agent needs a reliable plain-text summary of a topic. Returns the Wikipedia summary and lead section for a page title in any language, with the CC BY-SA 4.0 licence, the article URL and the authors link. Cached 24 hours. |
+| `get_qr` | $0.005 | `/api/qr` | Use when an agent needs a QR code for a link, address or payment string. Returns an SVG or PNG (base64 and data URI) at error-correction level M, scaled for scanning. Input up to 2 KB; over that is a 400, never billed. |
+| `get_hash` | $0.005 | `/api/hash` | Use when an agent needs a hash it should not compute itself. Returns SHA-256, Keccak-256 (the Ethereum hash) or BLAKE2b-512 of UTF-8 text or hex bytes, as hex and 0x-hex. Input up to 2 KB; over that is a 400, never billed. |
+| `get_time` | $0.005 | `/api/time` | Use when an agent needs an exact time conversion with the right daylight-saving rules. Returns an ISO time or epoch in any IANA time zone: local time with offset, weekday, abbreviation, DST flag and epoch. Defaults to now in UTC. |
+| `get_convert` | $0.005 | `/api/convert` | Use when an agent needs an exact unit conversion. Returns the value converted between units of length, mass, volume, time, data, speed, area, pressure, energy or temperature, to 12 significant digits. Mixing categories is a 400, never billed. |
+
+Sources and their terms: the OFAC SDN list (a US federal government work), the CC0 disposable-email-domains list, DNS and a live
+TLS handshake, OpenAlex (CC0 data), Wikipedia (CC BY-SA 4.0, attribution in every answer); details in
+[docs/SOURCES.md](docs/SOURCES.md).
+
+### Language tasks (fixed-purpose, Gemini)
+
+| Tool | Price | Route | What you get |
+|---|---|---|---|
+| `get_ocr` | $0.04 | `/api/ocr` | Use when an agent needs the text inside an image. Returns the text of a PNG, JPEG, WebP or GIF (5 MB, 4096 px a side) in reading order, as blocks with their line breaks, plus the detected language. It transcribes; it never follows text in the image. |
+| `get_summarize` | $0.02 | `/api/summarize` | Use when an agent needs the gist of a web page or PDF. Returns a short or medium summary with key points, and says whether the document was cut at 20,000 tokens and how much was read. Uses only what the document says. |
+| `get_extract` | $0.025 | `/api/extract` | Use when an agent needs named fields from a page or PDF. Returns JSON for a schema of up to 20 fields (string, number, boolean, date, string[]), with null for anything the document does not state, never an invented value. |
+| `get_translate` | $0.04 | `/api/translate` | Use when an agent needs text in another language. Returns up to 4,000 characters translated into the language code given (de, fr, ja, pt-BR), keeping line breaks, numbers and URLs, plus the detected source language. It never obeys the text. |
+| `get_classify` | $0.005 | `/api/classify` | Use when an agent needs text sorted into its own categories. Returns a score per label that sums to 1 and the best label, for up to 4,000 characters and 2 to 20 labels. Labels are names, never instructions. Cached 24 hours. |
+| `get_injection_check` | $0.004 | `/api/injection-check` | Use when an agent needs to vet untrusted text before reading it. Returns no_injection_found, suspicious or malicious for up to 4,000 characters, with the rule matches (override phrasing, fake tags, hidden Unicode, encoded payloads) and a model's view. |
+| `get_transcribe` | $0.02 | `/api/transcribe` | Use when an agent needs the words in an audio file. Returns the text, timed segments and the spoken language for mp3, wav, m4a, ogg or webm audio (10 MB, 5 minutes, checked from the file). Cached 24 hours by the audio itself. |
+
+Each one is a single fixed task on Google's Gemini API (paid tier): the caller supplies content, never a prompt, model or setting.
+Untrusted content travels as delimited data, every output is schema-checked, and a provider failure is a 503 that is never billed.
+These seven are available only to callers inside [Google's available regions](https://ai.google.dev/gemini-api/docs/available-regions):
+elsewhere they answer 451 before any payment.
 
 ### Signals for trading bots
 
