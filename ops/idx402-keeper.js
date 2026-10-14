@@ -8,6 +8,8 @@
 // This job reads our x402 AND MPP rows, PATCHes the price (and rails, or MPP asset and network) of every wrong row back, sets
 // domain_verified on a row that lacks it (an owner PATCH does: 402index's editService), and DELETEs withdrawn routes' rows again.
 // MPP rows: price = the route's x402 price, payment_asset "USDC.e or OUSD", payment_network "Tempo" (as the hl-whales row reads).
+// Key-pack rows (/api/keys/*) are treated like data rows: price from the local openapi, rails as that route's own live 402 offers
+// (the six-rail string only if it offers those six), domain_verified through the PATCH. They do not count toward the 80-route floor.
 // It writes nothing while the listing is right. Upstream fix: ryanthegentry/402index PR #354 (unmerged); issue #346.
 //
 //   cd /opt/agentfeed && node ops/idx402-keeper.js           reads, then writes only what is wrong
@@ -36,7 +38,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const stamp = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
 const out = { rows: 0, mpp_rows: 0, mapped: 0, wrong_before: 0, patched: 0, deleted: 0, failed: 0 };
 let note = '';
-const line = () => console.log(`${stamp()} rows=${out.rows} mpp_rows=${out.mpp_rows} mapped=${out.mapped} wrong_before=${out.wrong_before} patched=${out.patched} deleted=${out.deleted} failed=${out.failed}${DRY ? ' DRY' : ''}${note ? ' ' + note : ''}`);
+const line = () => console.log(`${stamp()} rows=${out.rows} mpp_rows=${out.mpp_rows} mapped=${out.mapped} wrong_before=${out.wrong_before} patched=${out.patched} deleted=${out.deleted} failed=${out.failed}${DRY ? ' DRY' : ''}${keyNetSkipped ? ' key_network=not-written(live rails exceed 50 chars)' : ''}${note ? ' ' + note : ''}`);
 const skip = (why) => { note = `SKIP ${why}`; line(); process.exit(0); };
 
 async function http(method, url, body) {
@@ -59,14 +61,34 @@ async function livePrices() {
     if (!r.ok) return null;
     spec = await r.json();
   } catch { return null; }
-  const prices = {};
+  const prices = {}, keys = {};
   for (const [p, v] of Object.entries(spec.paths || {})) {
     const info = v && v.get && v.get['x-payment-info'];
-    if (!info || p.startsWith('/api/keys/')) continue; // free routes carry no x-payment-info; key packs are not data routes
+    if (!info) continue; // free routes carry no x-payment-info
     const amt = Number(info.price && info.price.amount);
-    if (Number.isFinite(amt) && amt > 0) prices[p] = amt;
+    if (Number.isFinite(amt) && amt > 0) (p.startsWith('/api/keys/') ? keys : prices)[p] = amt; // key packs are listed apart: not data routes
   }
-  return prices;
+  return { prices, keys };
+}
+
+// the rails a route's own live 402 offers, as 402index's payment_network string (canonical order); null when the read fails or a network is unknown
+const RAIL_NAME = (n) => (n.startsWith('solana:') ? 'Solana' : n.startsWith('algorand:') ? 'Algorand'
+  : { 'eip155:8453': 'Base', 'eip155:137': 'Polygon', 'eip155:42161': 'Arbitrum', 'eip155:5042': 'Arc', 'eip155:10': 'Optimism', 'eip155:143': 'Monad', 'eip155:43114': 'Avalanche' }[n] || null);
+const RAIL_ORDER = ['Solana', 'Base', 'Polygon', 'Arbitrum', 'Arc', 'Algorand', 'Optimism', 'Monad', 'Avalanche'];
+const NETWORK_CAP = 50; // 402index's payment_network limit; a longer string would be refused, so it is never sent
+let keyNetSkipped = false;
+async function liveNetwork(routePath) {
+  try {
+    const res = await fetch(new URL(routePath, OPENAPI).href, { signal: AbortSignal.timeout(20000) });
+    const hdr = res.headers.get('payment-required');
+    if (res.status !== 402 || !hdr) return null;
+    const accepts = JSON.parse(Buffer.from(hdr, 'base64').toString()).accepts || [];
+    const names = new Set();
+    for (const a of accepts) { const n = RAIL_NAME(String(a.network || '')); if (!n) return null; names.add(n); }
+    const str = RAIL_ORDER.filter((n) => names.has(n)).join(', ');
+    if (str.length > NETWORK_CAP) { keyNetSkipped = true; return null; } // more rails than 402index can hold: leave the field alone
+    return str || null;
+  } catch { return null; }
 }
 
 // our x402 and MPP rows on 402index (every url on our own domain): the same three searches as idx402-r11.py rows()
@@ -88,10 +110,14 @@ const pathOf = (s) => s.url.split(DOMAIN, 2)[1].split('?')[0];
 const escapeRx = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 (async () => {
-  const prices = await livePrices();
+  const live = await livePrices();
+  const prices = live && live.prices;
   if (!prices || Object.keys(prices).length < MIN_PRICED) skip(`local-read (${prices ? Object.keys(prices).length : 'failed'} priced data routes, need ${MIN_PRICED})`);
   // an openapi pattern /api/x/{p} matches both the colon form /api/x/:p and a concrete /api/x/VALUE
-  const patterns = Object.entries(prices).map(([p, price]) => ({ p, price, rx: new RegExp('^' + p.split(/\{[^}]+\}/).map(escapeRx).join('[^/]+') + '$') }));
+  const patterns = [...Object.entries(prices).map(([p, price]) => ({ p, price, key: false })), ...Object.entries(live.keys).map(([p, price]) => ({ p, price, key: true }))]
+    .map((x) => ({ ...x, rx: new RegExp('^' + x.p.split(/\{[^}]+\}/).map(escapeRx).join('[^/]+') + '$') }));
+  const keyNet = new Map(); // key route -> its live rails, read once per run
+  const keyNetwork = async (rp) => { if (!keyNet.has(rp)) keyNet.set(rp, await liveNetwork(rp)); return keyNet.get(rp); };
   const withdrawn = new Set(WITHDRAWN);
 
   const rows = await ourRows();
@@ -111,23 +137,24 @@ const escapeRx = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const mpp = s.protocol === 'MPP';
     const priceOk = s.price_usd !== null && s.price_usd !== undefined && Math.abs(Number(s.price_usd) - m.price) < 1e-9;
     const wantAsset = mpp ? MPP_ASSET : null; // x402 rows: the asset is not judged (USDC as the Bazaar and register path write it)
-    const wantNetwork = mpp ? MPP_NETWORK : RAILS;
+    // x402 data rows: the six-rail string; x402 key-pack rows: whatever that route's live 402 offers (null = unread, then not judged and not written)
+    const wantNetwork = mpp ? MPP_NETWORK : (m.key ? await keyNetwork(m.p) : RAILS);
     const assetOk = wantAsset === null || s.payment_asset === wantAsset;
-    if (!priceOk || !assetOk || s.payment_network !== wantNetwork || Number(s.domain_verified) !== 1) {
+    if (!priceOk || !assetOk || (wantNetwork !== null && s.payment_network !== wantNetwork) || Number(s.domain_verified) !== 1) {
       plan.push({ s, p, op: 'PATCH', price: m.price, asset: mpp ? MPP_ASSET : 'USDC', network: wantNetwork, mpp });
     }
   }
   out.wrong_before = plan.filter((x) => x.op === 'PATCH').length;
 
   if (DRY) {
-    for (const x of plan) console.log(`DRY ${x.op} ${x.s.id} ${x.s.protocol} ${x.p}${x.op === 'PATCH' ? ' price_usd ' + x.price + ' payment_asset ' + JSON.stringify(x.asset) + ' payment_network ' + JSON.stringify(x.network) : ''}`);
+    for (const x of plan) console.log(`DRY ${x.op} ${x.s.id} ${x.s.protocol} ${x.p}${x.op === 'PATCH' ? ' price_usd ' + x.price + ' payment_asset ' + JSON.stringify(x.asset) + (x.network ? ' payment_network ' + JSON.stringify(x.network) : ' (payment_network not sent)') : ''}`);
     note = `would write ${plan.length}`; line(); return;
   }
   if (plan.length && !tokenOf()) skip(`no-token (${TOKEN_FILE} unreadable)`);
 
   for (const x of plan) {
     const body = x.op === 'PATCH'
-      ? { domain: DOMAIN, verification_token: tokenOf(), price_usd: x.price, payment_asset: x.asset, payment_network: x.network }
+      ? { domain: DOMAIN, verification_token: tokenOf(), price_usd: x.price, payment_asset: x.asset, ...(x.network ? { payment_network: x.network } : {}) }
       : { domain: DOMAIN, verification_token: tokenOf() };
     const r = await http(x.op, `${BASE}/services/${x.s.id}`, body);
     if (r.status === 429) { note = `STOP 429 Retry-After=${r.retryAfter || 'n/a'}`; line(); process.exit(0); }
