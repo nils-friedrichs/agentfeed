@@ -354,7 +354,7 @@ const EXP = [
     run: (a) => SIG.getSignalBoard(a) },
   { name: 'get_coin_signal', route: 'GET /api/coin-signal/:coin', usd: 0.004,
     tags: ['signals', 'trading', 'bots', 'hyperliquid', 'funding', 'open-interest', 'liquidations', 'whales', 'exclusive'],
-    desc: 'Signal for one Hyperliquid perp, for trading bots: everything on the signal board for the coin (price changes, funding, open interest, liquidations with their z-score, whale net position and tilt, flags) plus the 15-minute liquidation cascade probability from our forecast model, the nearest liquidation cluster above and below price from the 24 h liquidation heatmap, and the top 3 whale positions (side, size, entry, liquidation price). BTC, ETH, SOL, HYPE or any other Hyperliquid perp. Poll every 1-5 minutes. An unknown coin answers 400 with the supported list and a stale source answers 503; neither is billed.',
+    desc: 'Signal for one Hyperliquid perp, for trading bots. Everything on the signal board for the coin (price changes, funding, open interest, liquidations with their z-score, whale net position and tilt, flags) plus the 15-minute liquidation cascade probability from our forecast model, the nearest liquidation cluster above and below price from the 24 h liquidation heatmap, and the top 3 whale positions (side, size, entry, liquidation price). BTC, ETH, SOL, HYPE or any other Hyperliquid perp. Poll every 1-5 minutes. An unknown coin answers 400 with the supported list and a stale source answers 503; neither is billed.',
     schema: { coin: z.string().describe('a Hyperliquid perp, e.g. BTC, ETH, SOL, HYPE, kPEPE') },
     run: (a) => SIG.getCoinSignal(a) },
   { name: 'buy_key_trial', route: 'GET /api/keys/buy-trial', usd: 0.25, noHf: true, mcp: false,

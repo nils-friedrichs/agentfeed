@@ -61,6 +61,20 @@ test('accepts: the key routes carry the exact accepts only; every other route ke
   assert.deepEqual(routeAccepts({ usd: 0.001, tool: 'x' }, ctx), before);
 });
 
+test('challenge: every priced route keeps its "Use when" sentence inside the 400-character cap of the 402 description', { skip }, () => {
+  // challengeLead puts the route's FIRST SENTENCE ahead of the "Use when you need to answer" question, and challengeDesc cuts at 400. A first
+  // sentence of ~370 characters (get_coin_signal's, live 14 Oct 2026) pushed the question past the cut, so the 402 lost it. The route's
+  // opening and its question must fit together; the rest of the description may be trimmed.
+  const { PRICES, challengeLead, challengeDesc, CHALLENGE_DESC_MAX } = require('../payments');
+  const bad = [];
+  for (const [route, p] of Object.entries(PRICES)) {
+    const d = challengeDesc(challengeLead(p));
+    if (d.length > CHALLENGE_DESC_MAX) bad.push(`${route}: ${d.length} chars`);
+    else if (!/Use when you need to answer: /.test(d)) bad.push(`${route}: the "Use when" question was cut (opening ${String(p.desc).split(/(?<=[.?!])\s+(?=[A-Z0-9$(])/)[0].length} chars)`);
+  }
+  assert.deepEqual(bad, [], 'routes whose challenge description lost its when-to-use question');
+});
+
 test('MCP: the two signal tools are listed, the six key routes are not tools', { skip }, () => {
   const { TOOL_DEFS } = require('../mcp');
   const names = TOOL_DEFS.map((d) => d.name);
@@ -99,6 +113,11 @@ test('text surfaces: one derived keys sentence in openapi, llms.txt and SKILL.md
   for (const [name, text] of [['openapi', openapi], ['llms.txt', llms], ['SKILL.md', skill]]) {
     assert.ok(text.includes('X-AgentFeed-Key'), `${name} carries the keys sentence`);
     assert.ok(!/There are no API keys and no accounts/i.test(text), `${name} no longer says there are no API keys`);
+  }
+  const landing = require('../tools/landing').renderLanding(PRICES, 'mainnet', null);
+  assert.ok(landing.includes('X-AgentFeed-Key'), 'the landing page carries the keys sentence');
+  for (const [name, text] of [['openapi', openapi], ['llms.txt', llms], ['SKILL.md', skill], ['landing page (meta description included)', landing]]) {
+    assert.ok(!/No API keys?\./.test(text), `${name} still carries the flat claim "No API key."`);
   }
   const api = D.buildOpenApi(ctx);
   assert.ok(api.paths['/api/signal-board'] && api.paths['/api/coin-signal/{coin}'] && api.paths['/api/keys/buy-trial'], 'the new routes are in openapi');
