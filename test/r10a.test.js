@@ -76,7 +76,7 @@ async function realLayer(t) {
 
 test('Phase A: today\'s accepts stay first and unchanged; the default 402 appends the inDefault rows; a suffix appends one network', async (t) => {
   const { base } = await realLayer(t);
-  const EVM = rails.evmRails({ PAY_TO_EVM });
+  const EVM = rails.evmRails({ PAY_TO_EVM, X402_ARC: 'off' }); // as realLayer: no Arc, whatever key file the machine has
   const today = (p) => routeAccepts(p, { network: SOLANA_MAINNET_CAIP2, payTo: PAY_TO, EVM, ALGO, HF: { batch: null, gateway: null }, railPrice: rails.railPrice, railPayTo: (r) => rails.railPayTo(r, { PAY_TO_EVM }), hfAccepts: hf.hfAccepts });
   const ext = extRails({ PAY_TO_EVM });
   const def = ext.filter((r) => r.inDefault).map((r) => r.network);
@@ -152,7 +152,7 @@ test('Phase A: a payment on every network reaches its own facilitator and no oth
 // ---- the 12,000-byte cap, on a production-shaped 402 -----------------------------------------------------------------
 async function prodShaped(t, { withExt }) {
   const authorizer = privateKeyToAccount(generatePrivateKey());
-  const EVM = [...rails.evmRails({ PAY_TO_EVM }), { network: ARC.network, name: 'Arc', usdc: ARC.usdc, payTo: '0x0Cf44185564F2b72E291050DC79E578429E52f83', facilitator: 'circle', asset: { address: ARC.usdc, decimals: 6, extra: ARC.extra } }];
+  const EVM = [...rails.evmRails({ PAY_TO_EVM, X402_ARC: 'off' }), { network: ARC.network, name: 'Arc', usdc: ARC.usdc, payTo: '0x0Cf44185564F2b72E291050DC79E578429E52f83', facilitator: 'circle', asset: { address: ARC.usdc, decimals: 6, extra: ARC.extra } }];
   const HF = { batch: { networks: hf.BATCH_NETWORKS, receiver: PAY_TO_EVM, authorizer }, gateway: { networks: hf.GATEWAY_NETWORKS, payTo: '0xC1dC5f1c3D2b0B3e2a9d8F7a6b5C4d3E2F1a0B9c' } };
   const EXT = withExt ? extRails({ PAY_TO_EVM }) : [];
   const nets = [...new Set([...EVM.map((r) => r.network), ...hf.GATEWAY_NETWORKS, ...EXT.map((r) => r.network)])];

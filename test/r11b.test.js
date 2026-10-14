@@ -25,7 +25,10 @@ function checkLanding(PRICES) {
   const meta = attr(html, 'description');
   assert.ok(meta && meta.length <= 300, `meta description ${meta && meta.length} characters`);
   assert.ok(meta.includes('No API key is needed to pay per call.'), 'the R9 sentence stays');
-  assert.ok(meta.includes(httpRailNames()), 'the HTTP rails, Algorand included where it is on');
+  // the HTTP rails, Algorand included where it is on: by name in the meta while they fit, else counted there (R10 Phase A) and named
+  // in full in the page footer
+  const { httpRails } = require('../lib/rails');
+  assert.ok(meta.includes(httpRailNames()) || (meta.includes(`${httpRails().length} networks (Solana`) && html.includes(`USDC settlement on ${httpRailNames()}`)), 'the HTTP rails, Algorand included where it is on');
   for (const word of ['sanctions', 'Solana pre-trade', 'OCR', 'translate']) assert.ok(meta.includes(word), `meta names ${word}`);
   assert.equal(attr(html, 'og:description'), meta, 'og:description is the meta description');
   assert.equal(attr(html, 'og:title'), title);
