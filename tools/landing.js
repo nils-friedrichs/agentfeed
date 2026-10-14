@@ -11,7 +11,7 @@
 // Null-safe: if the tape is unreachable getPerpCoverage() returns null and
 // the page falls back to the qualitative phrase. A landing page must never
 // 500 because a read-only analytics database is busy.
-const { evmRails, algoRail, httpRailNames } = require('../lib/rails');
+const { httpRails, httpRailNames } = require('../lib/rails');
 const { hfSentence } = require('../lib/hf');
 const { SCOPE_SHORT } = require('./scope');
 
@@ -41,7 +41,7 @@ function renderLanding(PRICES, network, coverage) {
     <td class="p">$${p.usd}</td><td>${p.desc}</td></tr>`).join('');
 
   const head = landingHead(PRICES);
-  const railList = ['Solana', ...evmRails().map((r) => r.name), ...(algoRail() ? ['Algorand'] : [])];
+  const railList = httpRails().map((r) => r.name);
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

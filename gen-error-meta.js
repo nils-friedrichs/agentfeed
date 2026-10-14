@@ -40,7 +40,8 @@ function must(file, re, label) {
 
 const m400 = must('lib/tool.js', /res\.status\(400\)\.json\(\{\s*tool:\s*name,\s*error:\s*e\.message,\s*\.\.\.\(Array\.isArray\(e\.supported\) \? \{ supported: e\.supported \} : \{\}\)\s*\}\)/, '400 emitter');
 const m429 = must('server.js', /res\.status\(429\)\.json\(\{\s*error:\s*`rate limit: \$\{limit\} req\/min`,\s*retry_after:\s*retryAfter\s*\}\)/, '429 emitter');
-const m405 = must('server.js', /res\.set\('Allow',\s*'GET'\);\s*\n\s*res\.status\(405\)\.end\(\)/, '405 emitter');
+// R10 F7: HEAD on a free /api route is answered like GET now; the bare 405 emitter is gone, and must stay gone.
+if (/res\.set\('Allow',\s*'GET'\);\s*\n\s*res\.status\(405\)\.end\(\)/.test(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'))) throw new Error('ABORT: server.js answers HEAD on a free route with a bare 405 again; update the 405 entry below');
 const m402v1 = must('lib/x402v1.js', /x402Version: 1,\s*error: pr\.error \|\| 'Payment required',\s*accepts:/, 'x402 v1 402 body');
 const m405json = must('lib/compat.js', /res\.set\('Allow', 'GET'\)\.status\(405\)\.json\(\{ error: `\$\{req\.method\} is not supported on \$\{req\.path\}: paid routes are GET/, '405 JSON emitter (non-GET on a paid route)');
 const m410 = must('lib/compat.js', /res\.status\(410\)\.json\(\{\s*error: 'gone',/, '410 emitter');
@@ -89,7 +90,7 @@ const SHARED = [
   {
     status: 405,
     name: 'Method Not Allowed',
-    when: 'A method other than GET on a paid route (JSON body below), or HEAD on a free /api route (empty body). Both carry Allow: GET. HEAD on a paid route answers 402 with the challenge in PAYMENT-REQUIRED and no body.',
+    when: 'A method other than GET or HEAD on a paid route (JSON body below, Allow: GET). HEAD on a paid route answers 402 with the challenge in PAYMENT-REQUIRED and no body; HEAD on a free route answers like GET, with no body.',
     body: { error: 'POST is not supported on /api/<route>: paid routes are GET. GET it unpaid for the 402 challenge.', allow: 'GET' },
   },
   {

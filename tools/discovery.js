@@ -19,7 +19,7 @@
 'use strict';
 
 const ORIGIN = 'https://x402.ochinimus.app';
-const { evmRails, railNames } = require('../lib/rails');
+const { httpRails, httpRailNames } = require('../lib/rails');
 // Address poisoning: on 2026-07-31 a lookalike of the Base treasury (same first
 // and last characters as 0x22DB...76e6) sent zero-value transfers to this
 // service's biggest buyer, so a wallet's history now shows a fake payee next to
@@ -142,6 +142,27 @@ const { QUESTIONS, questionFor } = require('./questions');
 
 /** A free tool's HTTP path. Same derivation the openapi generator has always used. */
 const freePath = (tool) => '/api/' + tool.replace(/^get_/, '').replace(/_/g, '-');
+
+// R10 F2: the six prepaid-key routes (lib/keys.js) sell credit, they are not data. Every count and total on a text surface is
+// split here, from PRICES, so "N paid data routes" and "$X for one call of each" never include a key pack.
+const isKeyPack = (pattern) => /^GET \/api\/keys\//.test(pattern);
+function splitPaid(PRICES) {
+  const data = Object.entries(PRICES).filter(([r]) => !isKeyPack(r));
+  const keys = Object.entries(PRICES).filter(([r]) => isKeyPack(r));
+  const total = data.reduce((n, [, p]) => n + p.usd, 0);
+  return { data, keys, total };
+}
+
+// Every unpriced HTTP route, in the order the text surfaces list them: the free tools (FREE_TOOLS in server.js), the sample
+// pair and the prepaid-key balance. One list, so llms.txt, SKILL.md and openapi state one count.
+function freeHttp(FREE_TOOLS) {
+  return [
+    ...FREE_TOOLS.map((t) => ({ path: freePath(t), what: questionFor(t, '') })),
+    { path: '/api/sample', what: 'Which paid routes have a stored sample response' },
+    { path: '/api/sample/<route>', what: 'One paid route\'s real captured response, with its price and input schema' },
+    { path: '/api/keys/balance', what: 'A prepaid key\'s balance, calls and spend; send the key as X-AgentFeed-Key' },
+  ];
+}
 
 // ---- catalogue grouping --------------------------------------------------
 // Ordered: first matching group wins, so the specific families are listed
@@ -364,6 +385,22 @@ function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp, tempo }) {
     };
   }
 
+  // R10 F5: the free prepaid-key balance (server.js, lib/keys.js balance): no payment, the key in a header.
+  paths['/api/keys/balance'] = {
+    get: {
+      description: 'Free. The balance of a prepaid key: balance_usd, calls, spent_usd, last_used, rate_per_min and status. Send the key as X-AgentFeed-Key (or Authorization: Bearer). A missing or unknown key answers 401 with the route that sells one. Never cached.',
+      operationId: 'get_key_balance',
+      parameters: [{ in: 'header', name: 'X-AgentFeed-Key', required: true, description: 'the prepaid key (afk_ + 43 or 44 base58 characters); Authorization: Bearer <key> also works', schema: { type: 'string' } }],
+      responses: {
+        200: { content: { 'application/json': { schema: { type: 'object', properties: { prefix: { type: 'string' }, balance_usd: { type: 'number' }, calls: { type: 'integer' }, spent_usd: { type: 'number' }, last_used: { type: ['string', 'null'] }, rate_per_min: { type: 'integer' }, status: { type: 'string' } } } } }, description: 'Free response. This endpoint is not payment-gated.' },
+        401: { content: { 'application/json': { schema: { type: 'object' }, example: { error: 'unknown key', buy: '/api/keys/buy-5' } } }, description: 'No key sent, or the key is unknown.' },
+      },
+      security: [],
+      summary: 'Read a prepaid key balance',
+      tags: ['agentfeed', 'free'],
+    },
+  };
+
   return {
     openapi: '3.1.0',
     // mpp.dev discovery: service categories and docs at the document root.
@@ -382,13 +419,13 @@ function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp, tempo }) {
       'x-guidance': [
         'Every route is a GET that returns JSON. No API key or account is needed to pay per call.',
         ...(keyLine(PRICES) ? [keyLine(PRICES)] : []),
-        `Paid routes answer 402 with the challenge twice: x402 v2, base64 JSON in the PAYMENT-REQUIRED response header, for every rail; and x402 v1, the JSON body {x402Version: 1, accepts}, for Base and Solana. Pay with a PAYMENT-SIGNATURE header (x402 v2) or an X-PAYMENT header (x402 v1, Base or Solana; an X-PAYMENT carrying a v2 payload is read as PAYMENT-SIGNATURE). USDC on ${railNames('Solana mainnet')}.`,
+        `Paid routes answer 402 with the challenge twice: x402 v2, base64 JSON in the PAYMENT-REQUIRED response header, for every rail; and x402 v1, the JSON body {x402Version: 1, accepts}, for Base and Solana. Pay with a PAYMENT-SIGNATURE header (x402 v2) or an X-PAYMENT header (x402 v1, Base or Solana; an X-PAYMENT carrying a v2 payload is read as PAYMENT-SIGNATURE). USDC on ${httpRailNames('Solana mainnet')}.`,
         PAYTO_WARNING,
         'Response shape is always { "tool": "<name>", "data": { ... }, "paid": true }.',
         'Before paying, GET /api/sample/<route> for that route\'s real captured response, free. GET /api/sample lists them.',
         'Start cheap: /api/price, /api/sol-price, /api/btc-price and /api/eth-price are $0.001; /api/perp, /api/liq-pulse and /api/funding-pulse are $0.005 and cover most questions. The premium routes are the liquidation tape, cascade detection and the tokenized-equity peg tape.',
         'It never returns fabricated or zero-filled data. An unsupported symbol answers 400 and a source that failed, is stale or has no history yet answers 503 with Retry-After; neither is ever billed. Only where the decline is the product (squeeze-score on a coin whose inputs do not resolve) does a supported symbol return 200 with a decline field naming the reason.',
-        `Limits: GET only on /api/* (HEAD on a paid route answers the 402 challenge headers with no body, on a free route 405); per caller per minute ${LIMIT_GET} GET or POST /mcp and ${LIMIT_OTHER} of any other method; a 429 carries Retry-After.`,
+        `Limits: GET only on /api/* (HEAD on a paid route answers the 402 challenge headers with no body, on a free route the GET answer's status and headers with no body); per caller per minute ${LIMIT_GET} GET or POST /mcp and ${LIMIT_OTHER} of any other method; a 429 carries Retry-After.`,
       ].join(' '),
     },
     externalDocs: { description: 'AgentFeed agent skill: when to use each route, what it answers and what it costs', url: `${ORIGIN}/SKILL.md` },
@@ -399,9 +436,13 @@ function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp, tempo }) {
 }
 
 // ---- /.well-known/x402 ---------------------------------------------------
-// x402scan's spec lists resources as CONCRETE URLs, not templates, so a
-// path-parameter route is published with the same fixture value its Bazaar
-// input example advertises -- one real, invocable URL per route.
+// ONE resource per priced route (R10 F4). A path-parameter route is published as its pattern, in the OpenAPI {name} form
+// (/api/token-risk/{mint}), not as a concrete example URL: Agent402 reads this document and also our openapi.json, and with a
+// concrete URL here it listed each of the 12 path-parameter routes twice (the {param} pattern from openapi plus the example
+// URL from here). The concrete example stays published, as path_params_example on the catalogue entry, an object no indexer
+// reads as a URL. Measured 2026-10-14: CDP /validate on https://x402.ochinimus.app/api/token-risk/{mint} answers valid, with
+// the simulation accepted, no preflight failure and the same index record as the concrete URL; x402scan reads openapi.json
+// first (its DISCOVERY.md) and this document only as a fallback.
 // Whole sentences up to max characters (one sentence cut at a word if it alone is longer).
 function firstSentences(text, max) {
   const t = String(text || '').trim();
@@ -414,42 +455,21 @@ function firstSentences(text, max) {
 function buildWellKnown({ PRICES, META }) {
   const resources = [];
   const catalog = [];
-  const skipped = [];
   for (const pattern of Object.keys(PRICES)) {
-    let p = pattern.replace('GET ', '');
+    const url = ORIGIN + toTemplate(pattern.replace('GET ', '')).template;
     const m = META[pattern];
-    const examples = (m && m.pathParams) || {};
-    for (const [name, value] of Object.entries(examples)) {
-      p = p.replace(`:${name}`, encodeURIComponent(String(value)));
-    }
-    // A route whose path parameter could not be filled in is OMITTED rather than
-    // published as a template. The spec asks for concrete URLs, and a listing
-    // containing a literal ":mint" is an uninvocable URL presented as invocable
-    // -- worse than an absent one. This only happens when the generated
-    // metadata is missing, in which case the boot log has already said so.
-    if (/\/:[A-Za-z0-9_]+/.test(p)) { skipped.push(p); continue; }
-    resources.push(ORIGIN + p);
     const pr = PRICES[pattern];
-    // ONE entry per paid route (R5 A8): the bare URL, which answers a valid 402 with no
-    // parameters; a path-parameter route keeps its concrete example path, the one Agent402
-    // needs to price it. R3 appended each route's example query here, and Agent402 then
-    // listed every query route twice (bare from the spec, again with the query): 93 paid
-    // tools for 59 routes.
-    catalog.push({ url: ORIGIN + p, method: 'GET', name: pr.tool, description: firstSentences(pr.desc, 400), price_usd: pr.usd });
+    resources.push(url);
+    catalog.push({
+      url, method: 'GET', name: pr.tool, description: firstSentences(pr.desc, 400), price_usd: pr.usd,
+      ...(m && m.pathParams && Object.keys(m.pathParams).length ? { path_params_example: m.pathParams } : {}),
+    });
   }
-  if (skipped.length) {
-    console.warn(`[discovery] ${skipped.length} route(s) left out of /.well-known/x402, no path-parameter example: ${skipped.join(', ')}`);
-  }
-  // `resources` stays a flat list of concrete URLs, which is what the spec asks
-  // for. The error contract is identical for all of them -- one wrapper, one
-  // paywall, one rate limiter -- so it is published once here rather than
-  // repeated per resource. Per-route caller-error examples live in openapi.json,
-  // which has the per-operation granularity for them.
-  // `resourceCatalog` repeats the same concrete URLs with their price, name and
-  // description. Indexers that read only the flat list learn the price from each
-  // 402; Agent402 reads this catalogue and otherwise listed the path-parameter
-  // examples (/api/token-risk/DezX...) as price_unknown, which its router never
-  // buys (R3, 2026-10-11). Same paths, one per route (R5).
+  // `resources` is a flat list, one URL per route. The error contract is identical for all of them -- one wrapper, one
+  // paywall, one rate limiter -- so it is published once here rather than repeated per resource. Per-route caller-error
+  // examples live in openapi.json, which has the per-operation granularity for them.
+  // `resourceCatalog` repeats the same URLs with their price, name and description: Agent402 reads it for the price (R3,
+  // 2026-10-11).
   return {
     version: 1,
     resources,
@@ -477,13 +497,15 @@ function catalogueLines({ PRICES, TAGS, META, bullet }) {
   return out;
 }
 
-function buildLlmsTxt({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo, network }) {
-  const total = Object.values(PRICES).reduce((n, p) => n + p.usd, 0);
+function buildLlmsTxt({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo }) {
+  const { data, keys, total } = splitPaid(PRICES);
+  const free = freeHttp(FREE_TOOLS);
+  const rails = httpRails();
   const lines = [
     '# AgentFeed',
     '',
     require('./scope').SCOPE,
-    `${Object.keys(PRICES).length} paid routes and ${FREE_TOOLS.length} free routes. Every route is a GET that returns JSON.`,
+    `${data.length} paid data routes, ${keys.length} prepaid key packs and ${free.length} free routes. Every route is a GET that returns JSON.`,
     '',
     '## How to pay',
     '',
@@ -495,10 +517,9 @@ function buildLlmsTxt({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo, network }) {
     `   ${PAYTO_WARNING}`,
     '3. The response body is `{ "tool": "<name>", "data": { ... }, "paid": true }`.',
     '',
-    `${evmRails().length + 1} rails are accepted on every paid route:`,
+    `${rails.length} rails are accepted on every paid route:`,
     '',
-    `- Solana ${network === 'mainnet' ? 'mainnet' : network} — USDC`,
-    ...evmRails().map((r) => `- ${r.name} (${r.network}) — USDC`),
+    ...rails.map((r) => `- ${r.name} (${r.network}) — USDC`),
     '',
     ...(tempo && tempo.active ? [`MPP tempo/charge is offered on every paid route, in WWW-Authenticate of the same 402: Tempo mainnet (chain 4217), OUSD or USDC.e at the route's price, pull mode only (sign the transfer, the server broadcasts it after a response below 400, so a failed call is never charged; no fee payer).`, ''] : []),
     ...(mpp && mpp.active ? [`MPP (solana/charge) is also offered on the same 402, in WWW-Authenticate, for: ${mpp.routes.join(', ')}.`, ''] : []),
@@ -514,15 +535,16 @@ function buildLlmsTxt({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo, network }) {
     '',
     '## Free routes',
     '',
-    ...FREE_TOOLS.map((t) => `- GET ${freePath(t)} — free, not payment-gated`),
+    ...free.map((f) => `- GET ${f.path} — free, not payment-gated`),
     '',
-    `## Paid routes (${Object.keys(PRICES).length}, $${total.toFixed(3)} for one call of each)`,
-    ...catalogueLines({ PRICES, TAGS, META, bullet: { heading: '###', item: '- ', indent: '  ' } }),
+    `## Paid data routes (${data.length}, $${total.toFixed(3)} for one call of each)`,
+    ...catalogueLines({ PRICES: Object.fromEntries(data), TAGS, META, bullet: { heading: '###', item: '- ', indent: '  ' } }),
+    ...(keys.length ? ['', `## Prepaid key packs (${keys.length})`, '', 'Credit, not data: one x402 payment buys a key whose balance pays for calls at half the route price.', '', ...keys.map(([r, p]) => `- ${r} — $${p.usd}`)] : []),
     '',
     '## Notes',
     '',
     '- Path-parameter routes also accept the parameter as a query string: /api/token-risk?mint=<mint> is rewritten to the canonical path form before the paywall.',
-    '- HEAD on a paid route answers the 402 challenge headers with no body; it never pays and never reaches a handler. HEAD on a free route answers 405. The paid surface is GET-only.',
+    '- HEAD on a paid route answers the 402 challenge headers with no body; it never pays and never reaches a handler. HEAD on a free route answers like GET, with no body. The paid surface is GET-only.',
     `- Rate limit, per caller per minute: ${LIMIT_GET} for GET and POST /mcp, ${LIMIT_OTHER} for every other method. A 429 carries Retry-After.`,
     '- A route that cannot reach its upstream returns an error rather than a stale or invented value.',
     '',
@@ -530,16 +552,16 @@ function buildLlmsTxt({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo, network }) {
   return lines.join('\n');
 }
 
-function buildSkillMd({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo, network }) {
-  const routes = Object.entries(PRICES);
-  const total = routes.reduce((n, [, p]) => n + p.usd, 0);
+function buildSkillMd({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo }) {
+  const { data: routes, keys, total } = splitPaid(PRICES);
   const cheapest = Math.min(...routes.map(([, p]) => p.usd));
   const entry = routes.filter(([, p]) => p.usd === cheapest).map(([r]) => r.replace('GET ', ''));
-  const solana = network === 'mainnet' ? 'Solana mainnet' : `Solana ${network}`;
-  const freeCount = FREE_TOOLS.length + 2;
+  const rails = httpRails();
+  const free = freeHttp(FREE_TOOLS);
+  const freeCount = free.length;
 
   const table = [];
-  for (const [group, rs] of grouped({ PRICES, TAGS })) {
+  for (const [group, rs] of grouped({ PRICES: Object.fromEntries(routes), TAGS })) {
     table.push('', `### ${group}`, '', '| Question | Route | Price |', '|---|---|---|');
     for (const r of rs) {
       const m = META[r.pattern] || {};
@@ -555,12 +577,12 @@ function buildSkillMd({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo, network }) {
   return [
     '---',
     'name: agentfeed',
-    `description: ${require('./scope').SCOPE_SHORT.replace(/\.$/, '')}, paid per call in USDC over x402, no API key. Use when an agent needs perp funding, open interest, a liquidation tape, cascade detection or forecasting, orderbook depth, tokenized-stock peg deviation, lending-collateral exit liquidity, Solana on-chain reads or a spot price. ${routes.length} paid routes and ${freeCount} free ones at ${ORIGIN}.`,
+    `description: ${require('./scope').SCOPE_SHORT.replace(/\.$/, '')}, paid per call in USDC over x402, no API key. Use when an agent needs perp funding, open interest, a liquidation tape, cascade detection or forecasting, orderbook depth, tokenized-stock peg deviation, lending-collateral exit liquidity, Solana on-chain reads or a spot price. ${routes.length} paid data routes and ${freeCount} free ones at ${ORIGIN}.`,
     '---',
     '',
     '# AgentFeed',
     '',
-    `${routes.length} paid GET routes and ${freeCount} free ones at ${ORIGIN}. JSON in, JSON out. No API key, no account, no signup: payment happens per request.${keyLine(PRICES) ? ` ${keyLine(PRICES)}` : ''}`,
+    `${routes.length} paid data routes, ${keys.length} prepaid key packs and ${freeCount} free routes at ${ORIGIN}, all GET. JSON in, JSON out. No API key, no account, no signup: payment happens per request.${keyLine(PRICES) ? ` ${keyLine(PRICES)}` : ''}`,
     '',
     '## When to use AgentFeed',
     '',
@@ -580,7 +602,7 @@ function buildSkillMd({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo, network }) {
     '',
     'Call the route. Unpaid, it answers **402** with the x402 v2 challenge base64-encoded in the **`PAYMENT-REQUIRED` response header** (every rail); the JSON body is the same challenge as **x402 v1** (`{x402Version: 1, accepts}`, Base and Solana). Pay and repeat the request with a `PAYMENT-SIGNATURE` header (v2) or an `X-PAYMENT` header (v1; an `X-PAYMENT` carrying a v2 payload is read as `PAYMENT-SIGNATURE`).',
     '',
-    `${evmRails().length + 1} rails are accepted on every paid route: **USDC on ${solana}**${evmRails().map((r) => `, **USDC on ${r.name}** (\`${r.network}\`)`).join('')}.`,
+    `${rails.length} rails are accepted on every paid route: ${rails.map((r) => `**USDC on ${r.name}** (\`${r.network}\`)`).join(', ')}.`,
     '',
     `**${PAYTO_WARNING}**`,
     ...(tempo && tempo.active ? ['', `**MPP** (\`tempo/charge\`) is offered alongside x402 on every paid route: Tempo mainnet (chain 4217), OUSD or USDC.e, pull mode only, broadcast by the server after a response below 400.`] : []),
@@ -600,7 +622,7 @@ function buildSkillMd({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo, network }) {
     '|---|---|',
     `| \`GET ${ORIGIN}/openapi.json\` | Every route with its parameters, price and a real captured response example |`,
     `| \`GET ${ORIGIN}/.well-known/x402.json\` | The manifest every number on this page is generated from |`,
-    `| \`GET ${ORIGIN}/.well-known/x402\` | The resource list, one concrete URL per route |`,
+    `| \`GET ${ORIGIN}/.well-known/x402\` | The resource list, one URL per route (path parameters as {name}) |`,
     `| \`GET ${ORIGIN}/api/sample/<route>\` | A real response for one route, free, before you pay for it |`,
     '',
     `## Free routes (${freeCount})`,
@@ -609,14 +631,13 @@ function buildSkillMd({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo, network }) {
     '',
     '| Route | What you get |',
     '|---|---|',
-    ...FREE_TOOLS.map((t) => `| \`GET ${freePath(t)}\` | ${questionFor(t, '')} |`),
-    `| \`GET /api/sample\` | Which paid routes have a stored sample response |`,
-    `| \`GET /api/sample/<route>\` | One paid route's real captured response, with its price and input schema |`,
+    ...free.map((f) => `| \`GET ${f.path}\` | ${f.what} |`),
     '',
-    `## Paid routes (${routes.length})`,
+    `## Paid data routes (${routes.length})`,
     '',
-    `One call of every paid route costs $${total.toFixed(3)}. Prices are per call; there are no bundles, minimums or subscriptions.`,
+    `One call of every paid data route costs $${total.toFixed(3)}. Prices are per call; there are no bundles, minimums or subscriptions.`,
     ...table,
+    ...(keys.length ? ['', `## Prepaid key packs (${keys.length})`, '', 'Credit, not data: one x402 payment on an exact rail buys a key whose balance pays for calls at half the route price (minimum $0.0005).', '', '| Route | Price |', '|---|---|', ...keys.map(([r, p]) => `| \`${r}\` | $${p.usd} |`)] : []),
     '',
     '## Limits and error codes',
     '',
@@ -650,4 +671,4 @@ function buildSkillMd({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo, network }) {
   ].join('\n');
 }
 
-module.exports = { buildOpenApi, buildWellKnown, buildLlmsTxt, buildSkillMd, ORIGIN, freePath, grouped };
+module.exports = { buildOpenApi, buildWellKnown, buildLlmsTxt, buildSkillMd, ORIGIN, freePath, grouped, splitPaid, freeHttp, isKeyPack };

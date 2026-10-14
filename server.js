@@ -10,7 +10,7 @@ const { makeRefusalRecorder, sanitizeChallengeErrors, aliasXPayment, aliasAuthor
 const { makeDemand } = require('./lib/demand');
 const { makeV1 } = require('./lib/x402v1');
 const x402v1 = makeV1({ shapeOf: _headerShape });
-const { evmRails, railNames } = require('./lib/rails');
+const { railNames } = require('./lib/rails');
 const { getPrice } = require('./tools/prices');
 const { getFunding, getFundingRate } = require('./tools/funding');
 const { getFearGreed } = require('./tools/feargreed');
@@ -124,9 +124,12 @@ app.use((req, res, next) => {
   }
   // The HEAD guard below logs once per window off this same bucket.
   req.rateBucket = b;
-  // GET is the entire paid surface; POST /mcp is the MCP rail. Everything else
-  // is answered before any handler and is counted separately.
-  const metered = req.method === 'GET' || (req.method === 'POST' && req.path === '/mcp');
+  // GET is the entire paid surface; POST /mcp is the MCP rail. A HEAD on a free
+  // /api route runs that route's handler like a GET (R10 F7), so it is metered
+  // with GET. Everything else is answered before any handler and is counted
+  // separately, HEAD on a paid route included (it only ever gets the challenge).
+  const metered = req.method === 'GET' || (req.method === 'POST' && req.path === '/mcp')
+    || (req.method === 'HEAD' && req.path.startsWith('/api/') && !isPricedPath(req.path));
   const field = metered ? 'metered' : 'other';
   const limit = metered ? LIMIT : OTHER_LIMIT;
   const loggedFlag = metered ? 'meteredLogged' : 'otherLogged';
@@ -140,7 +143,7 @@ app.use((req, res, next) => {
     // Throttling was invisible: the 429 returned before anything reached the
     // database, so there was no record of how often callers get refused. Log
     // ONCE per key per window -- a flood must not become a write storm. Same
-    // shape as the head_probe entry below, and it reuses the existing
+    // shape as the head_probe rows written until R10, and it reuses the existing
     // `bad_request` status rather than inventing a value this table's readers
     // (afwatch, the solwatch MCP x402_revenue tool) do not know.
     if (!b[loggedFlag]) {
@@ -176,8 +179,12 @@ setInterval(() => {
 // nothing presented the layer can only answer its plain challenge, so a HEAD
 // can never settle and never reach a handler. Node drops the body by itself,
 // because it decided the response has none when the request arrived as HEAD.
-// A HEAD on a free /api route still answers 405: a 402 there would be a lie,
-// and running the handler for a discarded body would only cost us.
+// A HEAD on a free /api route is answered like a GET with no body (R10 F7):
+// Express runs the app.get handler for HEAD and Node drops the body, so the
+// status and headers are the GET's. It answered 405 until 2026-10-14, and 56
+// HEADs from directory and liveness checkers (agentexchange-bazaar,
+// hermes-contact-discovery, browsers) read that as a dead route. Such a HEAD is
+// metered with GET (the limiter above), because it does run the handler.
 // Matches /api/* only: /health, / and /.well-known are untouched.
 const PRICED_PATHS = Object.keys(PRICES).map((r) => new RegExp('^' + r.slice(4).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/:[A-Za-z0-9_]+/g, '[^/]+') + '$'));
 const isPricedPath = (p) => PRICED_PATHS.some((re) => re.test(p)) || QUERY_ALIASABLE.some((r) => r.base === p);
@@ -190,22 +197,8 @@ app.use((req, res, next) => {
     req.headOnly = true;
     return next();
   }
-  // ONE ROW PER CALLER PER WINDOW. HEAD used to be inside the 240 bucket, so a
-  // sweep was throttled long before it could flood this table. Now that HEAD
-  // has 2400 of its own, an unthrottled sweep would write a row per request --
-  // 233 rows in a day from nine callers before this change, and that was with
-  // the sweeps being cut short. Same log-once shape as rate_limited above.
-  const b = req.rateBucket;
-  if (b && !b.headLogged) {
-    b.headLogged = true;
-    logCall({
-      tool: 'head_probe', status: 'bad_request', ip: req.callerIp,
-      error_msg: 'HEAD rejected on a free /api route (a paid route answers HEAD with its 402 challenge)',
-      req_path: req.path, user_agent: req.headers['user-agent'], method: req.method,
-    });
-  }
-  res.set('Allow', 'GET');
-  res.status(405).end();
+  // A free /api route (or an unknown one, which 404s as a GET would): through, unchanged.
+  next();
 });
 
 // Paid routes are GET-only: any other verb on a priced path is a JSON 405 (lib/compat.js).
@@ -341,6 +334,13 @@ if (!mppWanted && mppLoadError) {
   console.log('[mpp] not loaded (MPP disabled):', mppLoadError.message);
 }
 const mppOn = Boolean(mpp && mpp.isEnabled());
+// solana/charge stays on these two routes, on purpose (R10 F9, 2026-10-14). mpp/index.js is route-generic, but @solana/mpp
+// 0.7.0 fetches a fresh blockhash for EVERY unpaid challenge it builds (dist/server/Charge.js request(): getLatestBlockhash
+// on rpcUrl, which is the shared Helius key, with no timeout and no cache). This service answers 20,000-42,000 unpaid 402s a
+// day (unpaid_402, Oct 11-14; one health checker alone sent 10,593 on Oct 13), so every paid route would turn that into as
+// many Helius calls and tie each 402's latency to Helius. Since Sep 23 the rail has settled 3 payments (mpp_claim). Tempo
+// has no such cost and is on every paid route. To widen it: give the challenge a cached blockhash (or none: it is optional,
+// the client fetches its own), then extend this list.
 const MPP_ROUTES = ['GET /api/sol-price', 'GET /api/btc-price'];
 let mppReady = null;
 // MPP tempo/charge on every paid route (mpp/tempo.js), same flag and secret as solana/charge.
@@ -612,7 +612,7 @@ function tempoInfo() {
 app.get('/', (_req, res) => res.json({
   service: 'agentfeed',
   description: `${require('./tools/scope').SCOPE} Paid per-call in USDC via x402 on ${require('./lib/rails').httpRailNames()}.${require('./lib/hf').hfSentence()} Every paid route also carries MPP tempo/charge challenges (Tempo mainnet, OUSD or USDC.e, pull mode) and /api/sol-price and /api/btc-price MPP solana/charge, on the same 402. No API key is needed to pay per call.${keySentence()} Copy payTo only from a fresh 402 response, never from transaction history.`,
-  x402: { active: paymentsOn, network: x402Network, chains: ['solana:mainnet', ...evmRails().map((r) => r.network)] },
+  x402: { active: paymentsOn, network: x402Network, chains: require('./lib/rails').httpRails().map((r) => r.network) },
   // DERIVED, not restated: whatever is actually mounted is what is advertised.
   mpp: { active: mppOn, intent: 'solana/charge', routes: mppOn ? MPP_ROUTES : [], tempo: tempoInfo() },
   // The three routes that are genuinely unpriced over HTTP. This used to read
@@ -654,8 +654,17 @@ app.get('/.well-known/glama.json', (_req, res) => res.json({
   maintainers: [{ email: 'ochinimus@gmail.com' }],
 }));
 
-// discovery manifest (x402 convention: /.well-known/x402.json)
-app.get('/.well-known/x402.json', (_req, res) => res.json({
+// discovery manifest (x402 convention: /.well-known/x402.json). Each resource's accepts are the 402's own (lib/manifest.js,
+// R10 F1): built by the payment layer from the same route config, so a rail in the 402 is in the manifest.
+const manifestAccepts = require('./lib/manifest').makeManifestAccepts({ getLayer: () => paymentLayer });
+app.get('/.well-known/x402.json', async (_req, res) => {
+  let acc;
+  try {
+    acc = await manifestAccepts();
+  } catch {
+    return res.set('Retry-After', '30').status(503).json({ error: 'catalog not ready yet', retry_after: 30 });
+  }
+  res.json({
   x402Version: 2,
   service: 'agentfeed',
   description: `${require('./tools/scope').SCOPE} Pay per call in USDC via x402 on ${require('./lib/rails').httpRailNames()}.${require('./lib/hf').hfSentence()} Every paid route also carries MPP tempo/charge challenges (Tempo mainnet, OUSD or USDC.e, pull mode) and /api/sol-price and /api/btc-price MPP solana/charge, on the same 402. No API key is needed to pay per call.${keySentence()} Copy payTo only from a fresh 402 response, never from transaction history.`,
@@ -671,12 +680,10 @@ app.get('/.well-known/x402.json', (_req, res) => res.json({
     description: p.desc,
     price_usd: p.usd,
     asset: 'USDC',
-    accepts: [
-      { scheme: 'exact', network: x402Network === 'mainnet' ? 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp' : 'solana:devnet', payTo: process.env.PAY_TO, asset: 'USDC', price_usd: p.usd },
-      ...evmRails().map((r) => ({ scheme: 'exact', network: r.network, payTo: r.payTo || process.env.PAY_TO_EVM, asset: 'USDC', asset_address: r.usdc, price_usd: p.usd })),
-    ],
+    accepts: acc.get(route) || [],
   })),
-}));
+  });
+});
 
 // ---- what the 404 log showed clients asking for (lib/compat.js, R2)
 // GET /mcp: no SSE stream here, so 405 per MCP Streamable HTTP. POST /mcp is mounted by initMcp.
@@ -692,11 +699,22 @@ app.get('/mcp', compat.mcpGet405);
   const handler = compat.makeDiscovery({ getLayer: () => paymentLayer, concreteUrl });
   for (const p of compat.DISCOVERY_PATHS) app.get(p, handler);
 }
-app.get('/.well-known/agent-card.json', compat.makeAgentCard({
+const agentCard = compat.makeAgentCard({
   PRICES, TAGS, TITLES: require('./tools/titles').TOOL_TITLES, questionFor: require('./tools/questions').questionFor,
   version: (() => { try { return require('./server.json').version; } catch { return '1.0.0'; } })(),
-  ORIGIN: discovery.ORIGIN, railNames, mpp: { get active() { return mppOn; }, get routes() { return mppOn ? MPP_ROUTES : []; } }, tempo: { get active() { return !!(tempo && tempo.isReady()); } },
-}));
+  ORIGIN: discovery.ORIGIN, railNames: () => require('./lib/rails').httpRailNames(), mpp: { get active() { return mppOn; }, get routes() { return mppOn ? MPP_ROUTES : []; } }, tempo: { get active() { return !!(tempo && tempo.isReady()); } },
+});
+app.get('/.well-known/agent-card.json', agentCard);
+// R10 F8: the older A2A path crawlers still ask for (24 requests from 11 IPs since Oct 13): the same card.
+app.get('/.well-known/agent.json', agentCard);
+// R10 F8: robots.txt, sitemap.xml and the MCP server card (lib/compat.js), all built from what is mounted.
+app.get('/robots.txt', compat.robotsTxt);
+app.get('/sitemap.xml', compat.sitemapXml);
+{
+  const card = compat.makeMcpServerCard({ serverJson: (() => { try { return require('./server.json'); } catch { return null; } })(), protocolVersions: require('@modelcontextprotocol/sdk/types.js').SUPPORTED_PROTOCOL_VERSIONS });
+  for (const p of compat.MCP_CARD_PATHS) app.get(p, card);
+  app.get('/.well-known/ai-catalog.json', compat.makeAiCatalog({ ORIGIN: discovery.ORIGIN }));
+}
 app.get('/api/sharp-move', compat.makeSharpMoveGone({ PRICES, ORIGIN: discovery.ORIGIN }));
 for (const p of compat.WITHDRAWN) app.all(p, compat.makeWithdrawn({ ORIGIN: discovery.ORIGIN }));
 app.get('/pricing', compat.makePricing({ PRICES, FREE_TOOLS, ORIGIN: discovery.ORIGIN, railNames, mpp: { get active() { return mppOn; }, get routes() { return mppOn ? MPP_ROUTES : []; } }, tempo: { get active() { return !!(tempo && tempo.isReady()); } } }));
@@ -729,6 +747,8 @@ const { initMcp } = require('./mcp');
   }
   app.listen(PORT, () => {
     console.log(`agentfeed up on :${PORT} (x402: ${x402Network})`);
+    // build the manifest's accepts (R10 F1) before the first crawler asks; a failure here only means the first request builds it
+    setTimeout(() => { manifestAccepts().then((m) => console.log(`[manifest] accepts built for ${m.size} routes`)).catch((e) => console.log(`[manifest] not built yet: ${e.message}`)); }, 5000).unref();
     // the first signal-board call per process scans seven days of the liquidation tape (~1 s, once); do it now, not on a paid call
     setTimeout(() => { require('./tools/signals').getSignalBoard({ n: 1 }).then(() => console.log('[signals] baseline warm')).catch((e) => console.log(`[signals] baseline not warm yet: ${e.message}`)); }, 3000).unref();
   });
