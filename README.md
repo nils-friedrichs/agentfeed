@@ -680,6 +680,10 @@ A bot that can set an HTTP header but cannot sign an x402 payment (n8n, Freqtrad
 - **Terms:** a prepaid balance is usage credit, non-refundable, with no expiry; the key is a bearer secret (anyone holding it spends the balance); abuse means revocation. Purchase routes offer the exact accepts only, because credit bought through the half-price batch or Gateway tier would be a free 50%.
 - **In the books:** a purchase is a settled payment (status `paid`); the calls it funds are rows of status `key`, consumption of credit already counted, never revenue.
 
+## No wallet? Use Apify Store
+
+The liquidation map is also an Apify Store actor, paid by card at $0.008 per coin: https://apify.com/ochinimus/crypto-liquidation-map-hyperliquid
+
 ## Use AgentFeed in NOFX
 
 [NOFX](https://github.com/NoFxAiOS/nofx) is an open-source AI trading terminal. `get_signal_board` and `get_coin_signal` are shaped for its External Data Sources: `data.coins` is an object keyed by coin in open-interest order, `data.ranked` is the list, `data.sources` names each source, and the board is about 10 KB for 30 coins. **Read this first:** at NOFX commit `ef476f2` nothing calls the function that fetches External Data Sources (`StrategyEngine.FetchExternalData`), so stock NOFX saves the two entries and never reads them into a prompt; they work on a NOFX build that calls it, and the same key works from anything else that sends a header. [docs/nofx.md](docs/nofx.md) ([中文](docs/nofx.zh-CN.md)) has the exact strategy JSON, how to buy a key from the wallet NOFX already pays claw402 with, the cost per trader (about $0.48 a day for the board and $0.19 a day per coin at NOFX's default 15-minute scan) and the proof harness that replays NOFX's fetch and `data_path` walk against the live routes.
