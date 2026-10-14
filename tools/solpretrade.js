@@ -517,8 +517,9 @@ async function tokenFlowRun(mint, swaps, deps) {
   const pct = (a, b) => (b ? Math.round(a / b * 1e4) / 100 : null);
   return {
     mint, market: { type: market.type, venue: market.type === 'pool' ? market.pool.venue : 'pump.fun bonding curve', address: market.state, quote_asset: QUOTES[market.quote].sym },
-    truncated, swaps_analyzed: rows.length,
-    window: { swaps_analyzed: rows.length, swaps_requested: swaps, from: new Date(Math.min(...ts) * 1000).toISOString(), to: new Date(Math.max(...ts) * 1000).toISOString(), transactions_unreadable: unreadable, truncated_by_time_budget: truncated, budget_seconds: (deps.budgetMs ?? 20e3) / 1000 },
+    // truncated means the budget ended the read with fewer swaps than asked; a read that reached the count is complete
+    truncated: truncated && rows.length < swaps, swaps_analyzed: rows.length,
+    window: { swaps_analyzed: rows.length, swaps_requested: swaps, from: new Date(Math.min(...ts) * 1000).toISOString(), to: new Date(Math.max(...ts) * 1000).toISOString(), transactions_unreadable: unreadable, truncated_by_time_budget: truncated && rows.length < swaps, budget_seconds: (deps.budgetMs ?? 20e3) / 1000 },
     volume_usd: Math.round(totalUsd), buys: rows.filter((r) => r.side === 'buy').length, sells: rows.filter((r) => r.side === 'sell').length,
     unique_traders: by.size, unique_buyers: buyers.length,
     top5_traders_volume_share_pct: pct(top5.reduce((a, e) => a + e.vol, 0), totalUsd),

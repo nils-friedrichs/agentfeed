@@ -76,8 +76,10 @@ test('derived amounts: MPP tempo charges the list price, a key debit is half, x4
     assert.equal(tempo._usdToUnits(PRICES[route].usd), String(Math.round(usd * 1e6)), `${route}: tempo at the list price`);
     assert.equal(hfUsd(PRICES[route].usd), HALF[usd], `${route}: a key pays half`);
   }
+  // x402 v1 has no table of its own: its body is built from the route's own v2 challenge (the accepts above), bound to the layer
   const v1src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'x402v1.js'), 'utf8');
-  assert.ok(/PRICES/.test(v1src), 'x402 v1 prices from the same table');
+  assert.ok(v1src.includes('built\n//      from the very challenge in its PAYMENT-REQUIRED header'), 'x402 v1 copies the v2 challenge');
+  assert.ok(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8').includes('x402v1.bind(layer)'), 'x402 v1 is bound to the same payment layer');
 });
 
 test('challenge: each new route opens with its title, keeps its question, fits 400 characters', { skip }, () => {
