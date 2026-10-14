@@ -306,7 +306,7 @@ async function getCoinSignal(p = {}, deps = {}) {
     let clusters = { above: null, below: null };
     try {
       const L = deps.liqdb || require('./liqdb');
-      clusters = clustersAround(await L.getLiqHeatmap({ symbol: sym, hours: 24, buckets: 20 }), r.mark);
+      clusters = clustersAround(await L.getLiqHeatmap({ symbol: sym, hours: 24, buckets: 20 }, { tapeCheck: false }), r.mark);
     } catch { /* a coin the tape never recorded has no clusters */ }
     src.liq_heatmap = { name: 'AgentFeed liquidation heatmap, 24 h, 20 price bands (tools/liqdb.js over the tape)', as_of: src.liq_tape.as_of };
 

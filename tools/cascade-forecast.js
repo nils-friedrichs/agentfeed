@@ -62,6 +62,8 @@ function getDb() {
 
 function normalise(sym) {
   if (!sym) return null;
+  const k = /^k([A-Z0-9]{2,16}?)(?:USDT)?$/.exec(String(sym).trim()); // R10 A2: Hyperliquid's kPEPE is the 1000PEPEUSDT perp
+  if (k) return `1000${k[1]}USDT`;
   const s = String(sym).trim().toUpperCase();
   return s.endsWith('USDT') ? s : `${s}USDT`;
 }
@@ -80,6 +82,11 @@ async function getCascadeForecast({ query = {} } = {}) {
   const requested = query.symbols
     ? String(query.symbols).split(',').map(normalise).filter(Boolean).slice(0, MAX_BATCH)
     : [normalise(query.symbol) || FREE_SYMBOL];
+  // R10 A1: a symbol our liquidation tape has never recorded is bad input: 400, never billed. One unknown symbol refuses the
+  // batch. A recorded symbol the model has too little evidence for still gets its 'unmeasured' answer: that refusal is the product.
+  const { tapeSymbol } = require('./liqdb');
+  const unknown = requested.filter((s) => { try { tapeSymbol(s); return false; } catch { return true; } });
+  if (unknown.length) throw Object.assign(new Error(`unknown symbol${unknown.length > 1 ? 's' : ''} ${unknown.map((s) => `"${s}"`).join(', ')}: our liquidation tape has never recorded ${unknown.length > 1 ? 'them' : 'it'}. Use USDT perps such as BTCUSDT or SOLUSDT. Not charged.`), { kind: 'bad_request' });
 
   let answerFn;
   let m;

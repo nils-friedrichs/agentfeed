@@ -64,8 +64,8 @@ async function getMarketState(p = {}, { now = Date.now() } = {}) {
       // aligned to the bucket size. The last 60 minutes come from 5-minute buckets so
       // the window is the real last hour, not the current partial clock hour.
       const sum = (xs, k) => Math.round(xs.reduce((t, x) => t + (x[k] || 0), 0));
-      const fine = (L.getLiqHistory({ symbol: sym, hours: 2, bucket_min: 5 }).buckets || []).filter((x) => x.bucket >= now - 3_600_000);
-      const h = L.getLiqHistory({ symbol: sym, hours: T.liq_spike_window_h, bucket_min: 60 });
+      const fine = (L.getLiqHistory({ symbol: sym, hours: 2, bucket_min: 5 }, { tapeCheck: false }).buckets || []).filter((x) => x.bucket >= now - 3_600_000);
+      const h = L.getLiqHistory({ symbol: sym, hours: T.liq_spike_window_h, bucket_min: 60 }, { tapeCheck: false });
       const b = h.buckets || [];
       const d24 = b.filter((x) => x.bucket >= now - 24 * 3_600_000);
       // completed clock hours only, zero-filled: a quiet hour is a real 0

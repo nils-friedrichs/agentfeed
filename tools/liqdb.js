@@ -20,12 +20,28 @@ function getDb() {
 }
 const clampInt = (v, lo, hi, d) => Math.min(Math.max(parseInt(v) || d, lo), hi);
 
+// R10 A1: a symbol our tape has never recorded is bad input, a 400 before anything settles (lib/tool.js): it used to answer
+// 200 with no rows, and the caller paid for nothing. A recorded symbol with no prints in the window still answers 200 (that is
+// the measurement). Uses idx_liq_sym_ts; only positives are cached, so a newly listed perp is accepted from its first print.
+// The check is for what a caller asked: internal callers (market-state, coin-signal) pass { tapeCheck: false } as the SECOND
+// argument, which no query string can reach, and keep reading an empty window as a measurement.
+const knownTape = new Set();
+function tapeSymbol(sym, opts = {}) {
+  if (opts.tapeCheck === false) return sym;
+  if (knownTape.has(sym)) return sym;
+  if (!getDb().prepare('SELECT 1 FROM liquidations WHERE symbol = ? LIMIT 1').get(sym)) {
+    throw Object.assign(new Error(`unknown symbol "${sym}": our liquidation tape has never recorded it (every USDT perp with a liquidation on Bybit, OKX or Binance since 2026-07-08). Use a USDT perp such as BTCUSDT, SOLUSDT or 1000PEPEUSDT. Not charged.`), { kind: 'bad_request' });
+  }
+  if (knownTape.size < 5000) knownTape.add(sym);
+  return sym;
+}
+
 // ---- get_liq_history ($0.05) — time-bucketed liq aggregates, any symbol or whole tape
-function getLiqHistory(p = {}) {
+function getLiqHistory(p = {}, opts = {}) {
   const hours = clampInt(p.hours, 1, 168, 24);
   const bucketMin = clampInt(p.bucket_min, 5, 1440, 60);
   const scopeAll = String(p.scope || '').toLowerCase() === 'all';
-  const sym = scopeAll ? null : normSym(p.symbol);
+  const sym = scopeAll ? null : tapeSymbol(normSym(p.symbol), opts);
   const since = Date.now() - hours * 3600_000;
   const bucketMs = bucketMin * 60_000;
   const rows = getDb().prepare(`
@@ -50,8 +66,8 @@ function getLiqHistory(p = {}) {
 }
 
 // ---- get_liq_heatmap ($0.02) — where leverage actually got flushed, by price level
-function getLiqHeatmap(p = {}) {
-  const sym = normSym(p.symbol); // heatmap is per-symbol by design (price axis)
+function getLiqHeatmap(p = {}, opts = {}) {
+  const sym = tapeSymbol(normSym(p.symbol), opts); // heatmap is per-symbol by design (price axis)
   const hours = clampInt(p.hours, 1, 168, 24);
   const nBuckets = clampInt(p.buckets, 5, 50, 20);
   const since = Date.now() - hours * 3600_000;
@@ -84,7 +100,7 @@ function getCascadeHistory(p = {}) {
   const hours = clampInt(p.hours, 1, 72, 24);
   const gapS = clampInt(p.gap_s, 10, 300, 60);
   const scopeAll = String(p.scope || '').toLowerCase() === 'all';
-  const sym = scopeAll ? null : normSym(p.symbol);
+  const sym = scopeAll ? null : tapeSymbol(normSym(p.symbol));
   const minUsd = Math.max(Number(p.min_usd) || (scopeAll ? 250_000 : 100_000), 10_000);
   const since = Date.now() - hours * 3600_000;
   const rows = getDb().prepare(`
@@ -205,7 +221,7 @@ async function getSqueezeScore(p = {}) {
 function getVenueLiqShare(p = {}) {
   const hours = clampInt(p.hours, 1, 168, 24);
   const scopeAll = !p.symbol || String(p.scope || '').toLowerCase() === 'all';
-  const sym = scopeAll ? null : normSym(p.symbol);
+  const sym = scopeAll ? null : tapeSymbol(normSym(p.symbol));
   const since = Date.now() - hours * 3600_000;
   const rows = getDb().prepare(`
     SELECT exchange, COUNT(*) prints, ROUND(SUM(usd)) usd_total,
@@ -248,4 +264,4 @@ function getPerpCoverage() {
   return value;
 }
 
-module.exports = { getLiqHistory, getLiqHeatmap, getCascadeHistory, getSqueezeScore, getVenueLiqShare, getPerpCoverage };
+module.exports = { getLiqHistory, getLiqHeatmap, getCascadeHistory, getSqueezeScore, getVenueLiqShare, getPerpCoverage, tapeSymbol };

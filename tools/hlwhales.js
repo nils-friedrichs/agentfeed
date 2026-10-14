@@ -199,11 +199,15 @@ async function getHlWhales(p = {}, { fetchImpl = fetch } = {}) {
     sources: ['Hyperliquid info API (clearinghouseState, metaAndAssetCtxs)', 'Hyperliquid leaderboard (stats-data.hyperliquid.xyz)'],
   };
   if (coinArg) {
-    const ps = s.positions.filter((x) => x.coin === coinArg);
-    if (!s.marks[coinArg]) throw bad(`unknown Hyperliquid perp ${coinArg}`);
+    // R10 A2: the name as Hyperliquid writes it (kPEPE), matched case-insensitively; 1000PEPE is the same bundle
+    const k = /^10{3,}([A-Z0-9]+)$/.exec(coinArg);
+    const coin = s.marks[coinArg] ? coinArg
+      : Object.keys(s.marks).find((c) => c.toUpperCase() === coinArg) || (k && s.marks['k' + k[1]] ? 'k' + k[1] : null);
+    if (!coin) throw bad(`unknown Hyperliquid perp ${coinArg}`);
+    const ps = s.positions.filter((x) => x.coin === coin);
     return {
-      ...base, coin: coinArg, ...coinSummary(coinArg, ps, s.marks[coinArg]),
-      liquidation_clusters: clusters(ps, s.marks[coinArg]),
+      ...base, coin, ...coinSummary(coin, ps, s.marks[coin]),
+      liquidation_clusters: clusters(ps, s.marks[coin]),
       top_positions: [...ps].sort((a, b) => b.notional_usd - a.notional_usd).slice(0, top).map((x) => ({ address: x.address, side: x.side, size: x.size, notional_usd: r2(x.notional_usd), entry_px: x.entry_px, liquidation_px: x.liquidation_px, liq_distance_pct: r2(x.liq_distance_pct), unrealized_pnl_usd: r2(x.unrealized_pnl_usd), leverage: x.leverage, margin_mode: x.margin_mode })),
     };
   }

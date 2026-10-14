@@ -14,6 +14,10 @@ const OI = require('../lib/hl-oi');
 
 const SYM_RE = /^[A-Z0-9]{2,20}USDT$/;
 function normSym(s) {
+  // R10 A2: Hyperliquid names a 1000x bundle with a lower-case k (kPEPE, kBONK, kSHIB); that is the 1000PEPEUSDT perp, which is
+  // also how our liquidation tape records it. Upper-casing turned kPEPE into KPEPEUSDT, which nothing lists.
+  const kcoin = /^k([A-Z0-9]{2,16}?)(?:USDT)?$/.exec(String(s || '').trim());
+  if (kcoin) return `1000${kcoin[1]}USDT`;
   const raw = String(s || 'SOLUSDT').trim().toUpperCase();
   if (!/^[A-Z0-9]{2,20}$/.test(raw)) throw Object.assign(new Error(`invalid symbol: ${String(s).slice(0, 40)}`), { kind: 'bad_request' }); // reject, never sanitize — '../etc' must not become ETCUSDT
   const sym = raw.endsWith('USDT') ? raw : raw + 'USDT';

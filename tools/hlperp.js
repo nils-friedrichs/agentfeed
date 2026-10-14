@@ -37,14 +37,26 @@ const contexts = () => cached('hl:ctx', 30_000, async () => {
   return out;
 });
 
-/** USDT perp symbol (SOLUSDT, 1000PEPEUSDT) -> Hyperliquid coin, or null if not listed there */
-async function coinFor(sym) {
-  const base = String(sym).replace(/USDT$/, '');
-  const ctx = await contexts();
+// R10 A2: Hyperliquid's own name for an upper-cased base (KPEPE -> kPEPE), read from its universe, never hard-coded
+const upperIndex = new WeakMap();
+function byUpper(ctx, base) {
+  let idx = upperIndex.get(ctx);
+  if (!idx) { idx = new Map(); for (const k of ctx.keys()) if (!idx.has(k.toUpperCase())) idx.set(k.toUpperCase(), k); upperIndex.set(ctx, idx); }
+  return idx.get(String(base).toUpperCase()) || null;
+}
+
+/** the Hyperliquid coin for a base: exact, a 1000x bundle (1000PEPE -> kPEPE), or the same name in another case */
+function canonical(ctx, base) {
   if (ctx.has(base)) return base;
   const m = /^10{3,}([A-Z0-9]+)$/.exec(base);
   if (m && ctx.has('k' + m[1])) return 'k' + m[1];
-  return null;
+  return byUpper(ctx, base);
+}
+
+/** USDT perp symbol (SOLUSDT, 1000PEPEUSDT) -> Hyperliquid coin, or null if not listed there */
+async function coinFor(sym) {
+  const ctx = await contexts();
+  return canonical(ctx, String(sym).replace(/USDT$/, ''));
 }
 
 const SRC = 'Hyperliquid info API (public chain state)';
@@ -58,10 +70,7 @@ const unavailable = (e) => ({ available: false, reason: `Hyperliquid read failed
 async function resolve(sym) {
   let ctx;
   try { ctx = await contexts(); } catch (e) { throw sourceDown(e); }
-  const base = String(sym).replace(/USDT$/, '');
-  let coin = ctx.has(base) ? base : null;
-  const m = /^10{3,}([A-Z0-9]+)$/.exec(base);
-  if (!coin && m && ctx.has('k' + m[1])) coin = 'k' + m[1];
+  const coin = canonical(ctx, String(sym).replace(/USDT$/, ''));
   if (!coin) throw badSymbol(sym);
   return { coin, ctx: ctx.get(coin) };
 }
@@ -104,4 +113,4 @@ async function universe({ minVolumeUsd = 0 } = {}) {
   }));
 }
 
-module.exports = { contexts, coinFor, block, resolve, only, l2Book, candles, fundingHistory, universe, sourceDown, badSymbol, SRC };
+module.exports = { contexts, coinFor, block, resolve, only, l2Book, candles, fundingHistory, universe, sourceDown, badSymbol, SRC, _canonical: canonical };
