@@ -25,7 +25,7 @@ if (!ok) { console.log('GUARD FAIL: no Base batch accept paying the treasury wit
 const pub = createPublicClient({ chain: base, transport: http('https://mainnet.base.org') });
 const bal = await pub.readContract({ address: USDC, abi: [{ type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] }], functionName: 'balanceOf', args: [account.address] });
 console.log(`payer ${account.address} Base USDC ${formatUnits(bal, 6)} | batch price ${Number(a.amount) / 1e6} USDC | min deposit ${Number(a.extra.minDeposit) / 1e6} USDC | withdrawDelay ${a.extra.withdrawDelay}s`);
-if (dry) { console.log(`dry run: would open a channel and pay ${n} calls; nothing signed`); process.exit(0); }
+if (dry) { console.log(`dry run: would pay ${n} call(s) on the payer's channel (the first call opens it if it does not exist); nothing signed`); process.exit(0); }
 const signer = Object.assign(account, { readContract: (args) => pub.readContract(args) });
 const pay = wrapFetchWithPaymentFromConfig(fetch, { schemes: [{ network: 'eip155:8453', client: new BatchSettlementEvmScheme(signer) }] });
 let paid = 0;

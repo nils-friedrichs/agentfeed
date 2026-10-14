@@ -1,6 +1,7 @@
 // db.js — SQLite via better-sqlite3 (sync, fast, zero config)
 const Database = require('better-sqlite3');
 const path = require('path');
+const { normPayer } = require('./lib/audit');
 
 // AGENTFEED_DB exists so a scratch instance cannot write to the live audit
 // table, the way tools/liqdb.js and tools/entry.js already take LIQ_DB.
@@ -71,7 +72,7 @@ function logCall(row) {
   queue.push({
     ts: Date.now(),
     tool: row.tool,
-    payer_wallet: row.payer_wallet || null,
+    payer_wallet: normPayer(row.payer_wallet), // one spelling per payer: lower-case for an EVM address (lib/audit.js)
     tx_sig: row.tx_sig || null,
     amount_usdc: row.amount_usdc ?? null,
     status: row.status,

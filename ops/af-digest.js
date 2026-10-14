@@ -10,6 +10,9 @@
 //                                           the last hour -> one alert, then quiet for that key 1 h;
 //                                           and a refused tempo payment (row with a tx hash, last
 //                                           24 h) whose transaction landed anyway -> one alert per row
+//                                           and ANY refused payment whose reason is a Circle authorisation refusal for the Arc rail
+//                                           (403 / forbidden / registration_required): one row is an alert, own wallets included,
+//                                           then quiet for an hour (a dead Circle key is seen on the first payment, not after a burst)
 //   --dry                                   print what would be sent; send nothing, write no state
 //
 // crons (root), under flock, no PM2 process:
@@ -19,6 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
+const { normPayer } = require('../lib/audit');
 
 const DB_PATH = process.env.AGENTFEED_DB || path.join(__dirname, '..', 'agentfeed.db');
 const ENV_PATH = '/opt/liqbot/.env';
@@ -30,20 +34,40 @@ const QUIET_AFTER_ALERT = 3600e3;
 const args = new Set(process.argv.slice(2));
 const DRY = args.has('--dry');
 
-// Our own traffic: tagged in the digest, never an alert. Same wallets as afwatch.js.
+// Our own traffic: tagged in the digest, never an alert. Same wallets as afwatch.js. EVM addresses are compared lower-case
+// (the audit table stores them that way from R8, older rows are migrated): one payer, one spelling.
 const OWN_WALLETS = new Set([
   'EqRNNpKVpu6jm8iRTNa17Rht2TRTzCtNNz37M9m2Di1',
   'Gack9UtqfeZxFA1LqeqjLgC3JGuD7rS6CsSHKoXsD4Tu',
   'TeStKWyNre9PW8XbLfvuBm9f6EnTBYqS5GXTzciCnHw',
   '0xFEfF369D5048b2Cf817d87467E48404b3ADfE4Ee',
-]);
+  '0x05b38ff795a2d750788157f1119e5d403d8ef47a', // the Circle Gateway proof payer (Arc, 13 Oct 2026)
+].map(normPayer));
 // The box itself, plus /opt/afwatch/own-ips.txt (one per line, # comments): the Mac's
 // addresses change, so they live in a file rather than here.
 const OWN_IPS = new Set(['167.233.69.154', '2a01:4f8:c015:eb5e::1', '127.0.0.1', '::1', '::ffff:127.0.0.1']);
 try { for (const l of fs.readFileSync(process.env.AF_OWN_IPS || '/opt/afwatch/own-ips.txt', 'utf8').split('\n')) { const ip = l.replace(/#.*/, '').trim(); if (ip) OWN_IPS.add(ip); } } catch { /* no file: box addresses only */ }
 // an own-ips.txt entry ending in ':' is an IPv6 prefix (the Mac's /64 rotates its suffix)
 const OWN_PREFIXES = [...OWN_IPS].filter((ip) => ip.endsWith(':'));
-const isOwn = (r) => OWN_WALLETS.has(r.payer_wallet) || OWN_IPS.has(r.ip) || OWN_PREFIXES.some((p) => String(r.ip || '').startsWith(p));
+const isOwn = (r) => OWN_WALLETS.has(normPayer(r.payer_wallet)) || OWN_IPS.has(r.ip) || OWN_PREFIXES.some((p) => String(r.ip || '').startsWith(p));
+
+// A batch-settlement client that has lost its channel context (a fresh process per call, a restart) rebuilds the base of its voucher
+// from the chain's claimed total, which is behind the server's charged total while vouchers are outstanding. The server answers with a
+// corrective 402 carrying its state and the client resyncs inside the same fetch(): the buyer is served. That is protocol, not a failed
+// payment, so it is neither a "buyer we failed" in the digest nor a refusal for the burst alert (13 Oct 2026: audit rows 11994, 11997;
+// test/batch-resync.test.js). Rows stay in the table; they are counted on their own line.
+const RESYNC_SQL = "(error_msg LIKE '%cumulative_amount_mismatch%' OR error_msg LIKE '%cumulative_amount_below_claimed%')";
+
+// Circle's Facilitator Service refusing the Arc rail on authorisation grounds (a key it rejects, an address or account it will not serve, a
+// registration the key lacks) reaches the audit table as a refused payment whose reason is lib/circle-arc.js's own text: "verification refused:
+// Circle /verify 403: forbidden", "settlement refused: Circle /settle 403 registration_required: ...". test/circle-auth-refusal.test.js drives the
+// real x402 middleware to pin that wording, so a library upgrade that changed it fails a test instead of silencing this alert. 13 Oct 2026: the
+// LIVE key answered 403 on every call for hours and nothing would have said so before a burst of five from one payer.
+const CIRCLE_AUTH_RE = /registration_required|Circle \/(?:verify|settle|status) (?:401|403)\b|Circle[^\n]*\b(?:forbidden|unauthori[sz]ed)\b/i;
+const CIRCLE_AUTH_COLS = 'id, ts, tool, payer_wallet, ip, error_msg';
+const circleAuthRowsSince = (db, afterId) => db.prepare(`SELECT ${CIRCLE_AUTH_COLS} FROM calls WHERE status='payment_refused' AND id > ? ORDER BY id`).all(afterId).filter((r) => CIRCLE_AUTH_RE.test(String(r.error_msg || '')));
+const circleAuthRowsBetween = (db, from, to) => db.prepare(`SELECT ${CIRCLE_AUTH_COLS} FROM calls WHERE status='payment_refused' AND ts >= ? AND ts < ? ORDER BY id`).all(from, to).filter((r) => CIRCLE_AUTH_RE.test(String(r.error_msg || '')));
+const stamp = (ms) => new Date(ms).toISOString().replace('T', ' ').replace(/\.\d+Z$/, 'Z');
 
 // ---- time: the box runs UTC; the digest's "yesterday" is a Chisinau calendar day
 function offsetMin(ms) {
@@ -89,6 +113,8 @@ function shapeOf(msg) {
   if (/^x402 v1 /.test(m)) return `v1: ${m.replace(/^x402 v1 /, '').split(/[:;]/)[0]}`;
   const mpp = m.match(/^(malformed-credential|invalid-challenge|[a-z-]+-credential|payment-[a-z-]+):/);
   if (mpp) return `MPP ${mpp[1]}`;
+  const circ = m.match(/Circle \/(verify|settle|status) (\d{3})(?: ([a-z_]+))?/);
+  if (circ) return `Circle ${circ[1]} ${circ[2]}${circ[3] ? ` ${circ[3]}` : ''}`;
   const code = m.match(/(invalid_[a-z0-9_]+|settle_[a-z0-9_]+|insufficient_[a-z_]+|No matching payment requirements)/);
   if (code) return `${/svm/.test(code[1]) ? 'v2 solana' : /evm/.test(code[1]) ? 'v2 evm' : 'v2'}: ${code[1]}`;
   return m.split(':')[0].slice(0, 60) || 'no reason';
@@ -130,33 +156,36 @@ const who = (r) => r.payer_wallet ? `payer ${r.payer_wallet.slice(0, 8)}…` : `
 
 function digestText(db, w, test) {
   const paid = db.prepare("SELECT tool, payer_wallet, ip, amount_usdc FROM calls WHERE status='paid' AND ts >= ? AND ts < ?").all(w.from, w.to);
-  const refused = db.prepare("SELECT tool, payer_wallet, ip, user_agent, error_msg FROM calls WHERE status='payment_refused' AND ts >= ? AND ts < ?").all(w.from, w.to);
+  const refused = db.prepare(`SELECT tool, payer_wallet, ip, user_agent, error_msg FROM calls WHERE status='payment_refused' AND NOT COALESCE(${RESYNC_SQL}, 0) AND ts >= ? AND ts < ?`).all(w.from, w.to);
+  const resyncs = db.prepare(`SELECT COUNT(*) n FROM calls WHERE status='payment_refused' AND ${RESYNC_SQL} AND ts >= ? AND ts < ?`).get(w.from, w.to).n;
   const ext = paid.filter((r) => !isOwn(r)), own = paid.filter(isOwn);
   const sum = (rows) => rows.reduce((s, r) => s + (r.amount_usdc || 0), 0);
   const L = [`AgentFeed digest${test ? ' (TEST)' : ''} for ${w.date} (${TZ})`, ''];
-  L.push(`Paid: ${ext.length} calls, ${usd(sum(ext))} from ${new Set(ext.map((r) => r.payer_wallet)).size} external payers` + (own.length ? `; own/test ${own.length} calls, ${usd(sum(own))}` : ''));
+  L.push(`Paid: ${ext.length} calls, ${usd(sum(ext))} from ${new Set(ext.map((r) => normPayer(r.payer_wallet))).size} external payers` + (own.length ? `; own/test ${own.length} calls, ${usd(sum(own))}` : ''));
   const byTool = {};
   for (const r of ext) { const t = byTool[r.tool] || (byTool[r.tool] = { n: 0, u: 0 }); t.n++; t.u += r.amount_usdc || 0; }
   const tools = Object.entries(byTool).sort((a, b) => b[1].u - a[1].u || b[1].n - a[1].n);
   for (const [t, v] of tools.slice(0, 15)) L.push(`  ${t}: ${v.n} = ${usd(v.u)}`);
   if (tools.length > 15) L.push(`  ... ${tools.length - 15} more routes, ${usd(tools.slice(15).reduce((s, [, v]) => s + v.u, 0))}`);
   if (!ext.length) L.push('  (no external paid calls)');
-  L.push('', `Refused payments: ${refused.length} (${refused.filter((r) => !isOwn(r)).length} external)`);
+  L.push('', `Refused payments: ${refused.length} (${refused.filter((r) => !isOwn(r)).length} external)` + (resyncs ? `; plus ${resyncs} batch-channel resync(s), served on the retry, not failures` : ''));
+  const circle = circleAuthRowsBetween(db, w.from, w.to);
+  if (circle.length) L.push(`Circle (Arc rail) authorisation refusals: ${circle.length}, first ${stamp(circle[0].ts)}, last ${stamp(circle[circle.length - 1].ts)} UTC (the key, its allow-list or the account at Circle; own wallets included)`);
   // Three sections. "No funds" is the payer's side; a probe is a challenge we never
   // issued, or a presenter whose every refusal is MPP-only and who has never paid.
-  const paidEver = new Set(db.prepare("SELECT DISTINCT payer_wallet k FROM calls WHERE status='paid' AND payer_wallet IS NOT NULL UNION SELECT DISTINCT ip FROM calls WHERE status='paid' AND ip IS NOT NULL").all().map((r) => r.k));
+  const paidEver = new Set(db.prepare("SELECT DISTINCT payer_wallet k FROM calls WHERE status='paid' AND payer_wallet IS NOT NULL UNION SELECT DISTINCT ip FROM calls WHERE status='paid' AND ip IS NOT NULL").all().map((r) => normPayer(r.k)));
   const NO_FUNDS = /execution reverted|InvalidAccountData|insufficient[_ ]funds/i;
   const NOT_ISSUED = /invalid-challenge|challenge was not issued/i;
   const mppOnlyRow = (m) => /^(malformed-credential|invalid-challenge|verification-failed|[a-z-]+-credential|MPP credential )/.test(m) || (/not a decodable x402 v2/.test(m) && !/; header /.test(m));
   const extR = refused.filter((r) => !isOwn(r));
-  const keyOf = (r) => r.payer_wallet || r.ip || '?';
+  const keyOf = (r) => normPayer(r.payer_wallet) || r.ip || '?';
   const mppOnlyKey = {};
   for (const r of extR) { const k = keyOf(r); mppOnlyKey[k] = (mppOnlyKey[k] !== false) && mppOnlyRow(String(r.error_msg || '')); }
   const sectionOf = (r) => {
     const m = String(r.error_msg || '');
     if (NOT_ISSUED.test(m)) return 'probe';
     if (NO_FUNDS.test(m)) return 'funds';
-    if (mppOnlyKey[keyOf(r)] && !paidEver.has(r.payer_wallet) && !paidEver.has(r.ip)) return 'probe';
+    if (mppOnlyKey[keyOf(r)] && !paidEver.has(normPayer(r.payer_wallet)) && !paidEver.has(r.ip)) return 'probe';
     return 'failed';
   };
   const routesOf = (rt) => Object.entries(rt).sort((a, b) => b[1] - a[1]).map(([t, n]) => (n > 1 ? `${t} x${n}` : t)).join(', ');
@@ -241,12 +270,46 @@ async function lateTempo(db, state, now) {
   for (const k of Object.keys(state.lateTempo)) if (now - state.lateTempo[k].at > 7 * 86400e3) delete state.lateTempo[k];
 }
 
+// ---- Circle refusing the Arc rail. The first matching row is an alert (the first payment after a key change is usually our own, so own wallets
+// count here, unlike the burst alert); further rows within the quiet hour are counted and folded into the next alert. State: the last audit row id
+// seen (ids only grow, a row logged late by a slow request still has a higher id than the ones before it), when we last alerted, rows held back.
+// A failed Telegram send leaves the state alone, so the next run (5 min later) tries again.
+async function circleAuthAlert(db, state, now, io = {}) {
+  const sendFn = io.send || send, log = io.log || console.log;
+  const baseline = () => db.prepare('SELECT COALESCE(MAX(id), 0) m FROM calls WHERE ts < ?').get(now - BURST_WINDOW).m;
+  const cs = state.circleAuth || (state.circleAuth = { lastId: baseline(), alertedAt: 0, held: 0 });
+  if (cs.lastId > db.prepare('SELECT COALESCE(MAX(id), 0) m FROM calls').get().m) cs.lastId = baseline(); // a restored or replaced table
+  const rows = circleAuthRowsSince(db, cs.lastId);
+  if (!rows.length) return 0;
+  const last = rows[rows.length - 1];
+  if (cs.alertedAt && now - cs.alertedAt < QUIET_AFTER_ALERT) { cs.held += rows.length; cs.lastId = last.id; return 0; }
+  const reasons = {};
+  for (const r of rows) { const k = String(r.error_msg).replace(/^(?:settlement|verification) refused: /i, '').replace(/\s+/g, ' ').slice(0, 160); reasons[k] = (reasons[k] || 0) + 1; }
+  const routes = {}; for (const r of rows) routes[r.tool] = (routes[r.tool] || 0) + 1;
+  const payers = [...new Set(rows.map((r) => `${r.payer_wallet ? `${r.payer_wallet.slice(0, 8)}…` : `ip ${r.ip || '?'}`}${isOwn(r) ? ' (own)' : ''}`))];
+  const n = rows.length + cs.held;
+  const text = [
+    `AgentFeed: Circle refused ${n} Arc payment${n === 1 ? '' : 's'} on authorisation grounds, the Arc rail is failing`,
+    ...Object.entries(reasons).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([m, c]) => `  ${c}x ${m}`),
+    `routes: ${Object.entries(routes).sort((a, b) => b[1] - a[1]).map(([t, c]) => (c > 1 ? `${t} x${c}` : t)).join(', ').slice(0, 300)}`,
+    `payers: ${payers.slice(0, 5).join(', ')}${payers.length > 5 ? ` and ${payers.length - 5} more` : ''}`,
+    `first ${stamp(rows[0].ts)}, last ${stamp(last.ts)} UTC${cs.held ? `; ${cs.held} more were held back during the last quiet hour` : ''}`,
+    'Usually the key, its IP allow-list or the account at Circle rather than the buyer; Arc payments keep failing until it is fixed.',
+    "check (prints the key TYPE and Circle's HTTP status, never the key): ssh root@167.233.69.154 'cd /opt/agentfeed && node ops/circle-key-check.js'",
+    "test a replacement key without touching .env: ssh -t root@167.233.69.154 'cd /opt/agentfeed && node ops/circle-key-check.js --stdin'",
+  ].join('\n');
+  if (!(await sendFn(text))) return 0;
+  cs.alertedAt = now; cs.held = 0; cs.lastId = last.id;
+  log(`${new Date(now).toISOString()} circle auth alert sent (${n} refusal${n === 1 ? '' : 's'}, last row ${last.id})`);
+  return n;
+}
+
 async function alert(db) {
   const now = Date.now();
-  const rows = db.prepare("SELECT ts, tool, payer_wallet, ip, user_agent, error_msg FROM calls WHERE status='payment_refused' AND ts >= ?").all(now - BURST_WINDOW);
+  const rows = db.prepare(`SELECT ts, tool, payer_wallet, ip, user_agent, error_msg FROM calls WHERE status='payment_refused' AND NOT COALESCE(${RESYNC_SQL}, 0) AND ts >= ?`).all(now - BURST_WINDOW);
   const state = loadState();
   const g = {};
-  for (const r of rows) { if (isOwn(r)) continue; const k = r.payer_wallet || r.ip || '?'; (g[k] = g[k] || []).push(r); }
+  for (const r of rows) { if (isOwn(r)) continue; const k = normPayer(r.payer_wallet) || r.ip || '?'; (g[k] = g[k] || []).push(r); }
   for (const [k, rs] of Object.entries(g)) {
     if (rs.length < BURST) continue;
     if (state.alerted[k] && now - state.alerted[k] < QUIET_AFTER_ALERT) continue;
@@ -261,6 +324,7 @@ async function alert(db) {
     if (await send(text)) { state.alerted[k] = now; console.log(`${new Date().toISOString()} alert sent for ${k.slice(0, 12)} (${rs.length})`); }
   }
   for (const k of Object.keys(state.alerted)) if (now - state.alerted[k] > 7 * 86400e3) delete state.alerted[k];
+  try { await circleAuthAlert(db, state, now); } catch (e) { console.log(`${new Date().toISOString()} circle auth alert failed: ${String(e && e.message).slice(0, 160)}`); }
   await lateTempo(db, state, now);
   saveState(state);
 }
@@ -272,4 +336,4 @@ if (require.main === module) (async () => {
   else { console.error('usage: node ops/af-digest.js --digest [--force] [--test] | --alert [--dry]'); process.exit(1); }
 })().catch((e) => { console.log(`${new Date().toISOString()} af-digest failed: ${String(e.message).slice(0, 200)}`); process.exit(1); });
 
-module.exports = { shapeOf, yesterday, offsetMin };
+module.exports = { shapeOf, yesterday, offsetMin, digestText, circleAuthAlert, circleAuthRowsBetween, CIRCLE_AUTH_RE };

@@ -28,8 +28,8 @@ Planning chat decision R1, executed on the code of origin/main f375f98. **No rou
 | /api/whale-trades | Bybit trade tape | Bybit §6.7/§6.9; Hyperliquid\'s public API serves its last 10 trades only | /api/hl-whales, /api/liquidations |
 | /api/options-summary | Deribit (collector) | Deribit cl. 2.10 / 32.3 name derived data too | /api/volatility |
 | /api/options-gex | Deribit (collector) | as above | /api/volatility |
-| /api/funding-cross | Bybit and Hyperliquid, with the cross-venue spread | the route was the comparison between venues; one clean venue is left, so it would answer what /api/funding-rate answers. **Taken by the executing session, not named in the planning chat\'s list; reversible** | /api/funding-rate |
-| /api/spread-arb | Bybit and Hyperliquid, with the best cross-venue edge | same: with one venue `best_cross` can never exist. **Taken by the executing session; reversible** | /api/orderbook-imbalance, /api/basis |
+| /api/funding-cross | Bybit and Hyperliquid, with the cross-venue spread | the route was the comparison between venues; one clean venue is left, so it would answer what /api/funding-rate answers. **Taken by the executing session, not named in the planning chat\'s list; reversible** | /api/funding-radar |
+| /api/spread-arb | Bybit and Hyperliquid, with the best cross-venue edge | same: with one venue `best_cross` can never exist. **Taken by the executing session; reversible** | /api/basis |
 
 **Single-venue (Hyperliquid) now:** funding-rate, funding-radar, funding-extremes, funding-pulse, funding-history, open-interest, basis, volatility, top-movers, orderbook-imbalance and orderbook-walls (the last two and volatility carried Bybit beside Hyperliquid and were not on the planning chat\'s list; R1\'s sentence covers them), perp, market-state (also without DVOL and without the retail ratio), trade-context, tradfi-radar, equity-24h, positioning.
 
@@ -371,3 +371,31 @@ Arbitrum, R5), Circle Facilitator Service (Arc), Circle Gateway (nanopayments on
 Arbitrum, Arc, R5), GoPlausible (Algorand, R5),
 Tempo RPC (MPP tempo/charge), Helius (MPP solana/charge verification). Their terms govern
 settlement, not data resale, and are out of scope here.
+
+### Batch-settlement in operation (R8, 13 Oct 2026; measured on Base, planning chat decision the same day)
+
+- **Two CDP steps, claim then settle.** `ops/batch-claim.js` claims the vouchers (channel balance to the receiver's claimed bucket) and then
+  settles the bucket to the treasury; it waits for the claim to show on-chain before settling, because CDP answers a claim before it is
+  mined and a settle sent in between is refused as `amount_too_low`. CDP's error table names `amount_too_low` and publishes no number.
+- **CDP's claim minimum lies in (0.0005, 0.0010] USDC.** Measured on 13 Oct: a claim of 0.0005 was refused three times, a claim of 0.0010
+  went through twice, and both settles of 0.0010 were accepted (tx hashes in AF-R8-report-20261013.md). Vouchers come in multiples of
+  0.0005, so a claim needs 0.001 owed.
+- **Exposure, accepted.** The batch price is half the list price with a floor of $0.0005 (`lib/hf.js`). Only the **four routes listed at
+  $0.001 (sol-price, btc-price, eth-price, spot)** have a batch price below the minimum; on every other route each voucher is claimable on
+  its own (fx-rates, at $0.002, is exactly 0.001). On those four a channel can be left holding **at most one 0.0005 voucher** that
+  cannot be claimed until another is added; a payer who then starts the timed withdrawal (24 h delay, `withdrawDelay` 86400 s) can take
+  that 0.0005 back. Claimed value is the receiver's and cannot be withdrawn; unclaimed vouchers are at risk only through
+  `initiateWithdraw`, the delay and `finalizeWithdraw`. **Decision (planning chat, 13 Oct 2026): no $0.001 floor on the batch tier**, and a
+  higher minimum deposit would not change this (it bounds a channel's total, not what is left under CDP's threshold). The claim job
+  records what CDP refused per channel and the watchdog stays quiet at or below it (state file `networks.<net>.claim_refused_atomic`).
+  What would reopen the decision: dust channels (each opens with a deposit transaction that counts against the CDP free tier).
+- **A client that lost its channel context meets one corrective 402, never a failure.** The server checks a voucher against one number,
+  the channel's `chargedCumulativeAmount`; a claim changes `totalClaimed` and never that number, and the channel store updates inside
+  `BEGIN IMMEDIATE`, so the claim cron and the server cannot desync a channel (proved by `test/batch-resync.test.js`: one client context
+  paying through claim runs from a second process, zero corrective 402s; a positive control that rewinds the charged total fails it). A
+  client with no stored context (a fresh process per call) rebuilds its base from the chain's claimed total, which is behind the
+  server's charged total whenever vouchers are outstanding; the server answers `invalid_batch_settlement_evm_cumulative_amount_mismatch`
+  with its state and its signed voucher, the standard client resyncs and retries inside the same `fetch()`, and the buyer gets a 200.
+  Those 402s are logged as `payment_refused` rows (13 Oct 06:41 UTC: ids 11994 and 11997, calls 2 and 4 of the top-up, the two calls that
+  began with a 0.0005 voucher that CDP would not claim); `ops/af-digest.js` counts them on their own line and neither lists the buyer as
+  failed nor alerts on them. A buyer who keeps its channel context in a long-lived process never sees one.

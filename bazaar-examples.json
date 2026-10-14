@@ -1790,6 +1790,65 @@
      }
     },
     "required": []
+   },
+   "output": {
+    "example": {
+     "tool": "get_squeeze_score",
+     "data": {
+      "symbol": "SOLUSDT",
+      "short_squeeze_score": 14,
+      "long_flush_score": 0,
+      "inputs": {
+       "funding_rate_8h": 0.0001,
+       "funding_rate_raw": 0.0000125,
+       "funding_interval_hours": 1,
+       "oi_change_24h_pct": 0.31,
+       "whale_net_long_share_pct": 33.71,
+       "whale_list": "the top 250 Hyperliquid accounts by account value (11 long and 17 short in SOL); whale crowding, not retail",
+       "liq_24h": {
+        "longs_usd": 2666813,
+        "shorts_usd": 4361342
+       }
+      },
+      "read": "no extreme setup",
+      "note": "heuristic composite 0-100 (funding 35 / whale crowding 25 / OI build 20 / liq-skew 20). Context, not financial advice."
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "symbol": {
+         "type": "string"
+        },
+        "short_squeeze_score": {
+         "type": "number"
+        },
+        "long_flush_score": {
+         "type": "number"
+        },
+        "inputs": {
+         "type": "object"
+        },
+        "read": {
+         "type": "string"
+        },
+        "note": {
+         "type": "string"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
    }
   },
   "GET /api/venue-liq-share": {
@@ -2761,6 +2820,100 @@
      }
     },
     "required": []
+   },
+   "output": {
+    "example": {
+     "tool": "get_oi_spike_scan",
+     "data": {
+      "source": "Hyperliquid info API (public chain state), sampled every 5 minutes by our own collector",
+      "as_of": "2026-10-14T04:05:01.000Z",
+      "window_hours": 24,
+      "samples": 292,
+      "coins_scanned": 178,
+      "min_oi_usd": 3000000,
+      "min_1h_change_pct": 1,
+      "method": "oi_change_* are changes in open interest in coin units (a price move is not new positions). spike_z is the latest 1h change measured in standard deviations of that coin's own 1h changes over the previous day (null with under 24 observations). Ranked by |spike_…",
+      "spikes": [
+       {
+        "coin": "CHIP",
+        "symbol": "CHIPUSDT",
+        "oi_usd": 14009544,
+        "oi_change_1h_pct": 1.48,
+        "oi_change_4h_pct": 1.33,
+        "oi_change_24h_pct": -3.06,
+        "spike_z": 7.01,
+        "price_change_1h_pct": 0.73,
+        "funding_rate_8h": 0.0001
+       },
+       {
+        "coin": "PENDLE",
+        "symbol": "PENDLEUSDT",
+        "oi_usd": 11315665,
+        "oi_change_1h_pct": 1.07,
+        "oi_change_4h_pct": 1.46,
+        "oi_change_24h_pct": -0.91,
+        "spike_z": 2.13,
+        "price_change_1h_pct": 0.74,
+        "funding_rate_8h": 0.0001
+       },
+       {
+        "coin": "CASHCAT",
+        "symbol": "CASHCATUSDT",
+        "oi_usd": 24512889,
+        "oi_change_1h_pct": 1.04,
+        "oi_change_4h_pct": 2.25,
+        "oi_change_24h_pct": -0.88,
+        "spike_z": 1.84,
+        "price_change_1h_pct": 3.49,
+        "funding_rate_8h": 0.0001
+       }
+      ]
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "source": {
+         "type": "string"
+        },
+        "as_of": {
+         "type": "string"
+        },
+        "window_hours": {
+         "type": "number"
+        },
+        "samples": {
+         "type": "number"
+        },
+        "coins_scanned": {
+         "type": "number"
+        },
+        "min_oi_usd": {
+         "type": "number"
+        },
+        "min_1h_change_pct": {
+         "type": "number"
+        },
+        "method": {
+         "type": "string"
+        },
+        "spikes": {
+         "type": "array"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
    }
   },
   "GET /api/basis": {
@@ -5867,7 +6020,7 @@
    }
   }
  },
- "_outputs_recaptured_at": "2026-10-13T04:50:35.038Z",
+ "_outputs_recaptured_at": "2026-10-14T04:06:06.590Z",
  "_pruned_at": "2026-10-13T04:50:31.410Z",
  "_schemas_regenerated_at": "2026-10-13T04:50:31.953Z",
  "_outputs_dropped_at": "2026-10-13T04:50:35.546Z"

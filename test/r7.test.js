@@ -232,8 +232,8 @@ test('withdrawn routes answer 410 with closest_live; the five of 12 Oct keep the
     assert.deepEqual((await get('/api/whale-trades', 'POST'))[1].closest_live, ['/api/hl-whales', '/api/liquidations']);
     assert.deepEqual((await get('/api/options-summary'))[1].closest_live, ['/api/volatility']);
     assert.deepEqual((await get('/api/options-gex'))[1].closest_live, ['/api/volatility']);
-    assert.deepEqual((await get('/api/funding-cross'))[1].closest_live, ['/api/funding-rate']);
-    assert.deepEqual((await get('/api/spread-arb'))[1].closest_live, ['/api/orderbook-imbalance', '/api/basis']);
+    assert.deepEqual((await get('/api/funding-cross'))[1].closest_live, ['/api/funding-radar']);
+    assert.deepEqual((await get('/api/spread-arb'))[1].closest_live, ['/api/basis']);
     const [c2, b2] = await get('/api/tvl');
     assert.equal(c2, 410);
     assert.deepEqual(b2, { error: 'gone', status: 'withdrawn', route: '/api/tvl', withdrawn: '2026-10-12', pricing: 'https://x/pricing' });

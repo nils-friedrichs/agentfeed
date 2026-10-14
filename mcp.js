@@ -9,6 +9,7 @@ const { ExactSvmScheme } = require('@x402/svm/exact/server');
 const { ExactEvmScheme } = require('@x402/evm/exact/server');
 const { SOLANA_MAINNET_CAIP2, SOLANA_DEVNET_CAIP2 } = require('@x402/svm');
 const { logCall } = require('./db');
+const { settledUsd } = require('./lib/audit');
 const { getPrice } = require('./tools/prices');
 const { getFunding, getFundingRate } = require('./tools/funding');
 const { getFearGreed } = require('./tools/feargreed');
@@ -222,7 +223,7 @@ async function initMcp(app) {
             tool: def.name, status: 'paid',
             payer_wallet: paymentPayload?.payer || settlement?.payer || null,
             tx_sig: settlement?.transaction || null,
-            amount_usdc: def.usd,
+            amount_usdc: settledUsd(paymentPayload?.accepted, def.usd), // what the payer accepted, not the list price
           });
         },
       },
