@@ -5,7 +5,9 @@
 // accepts[0].maxAmountRequired; our CDP Discovery records are v2 (accepts[].amount), so it yields price_usd null, and the
 // upsert in src/aggregators/bazaar.js writes `price_usd = excluded.price_usd` over the price an owner PATCH set, every poll
 // (hourly). The same upsert sets provider_deleted = 0, so a soft-deleted row returns while the CDP Bazaar still lists its URL.
-// This job reads our x402 rows, and PATCHes the price and rails of every wrong row back, and DELETEs withdrawn routes' rows again.
+// This job reads our x402 AND MPP rows, PATCHes the price (and rails, or MPP asset and network) of every wrong row back, sets
+// domain_verified on a row that lacks it (an owner PATCH does: 402index's editService), and DELETEs withdrawn routes' rows again.
+// MPP rows: price = the route's x402 price, payment_asset "USDC.e or OUSD", payment_network "Tempo" (as the hl-whales row reads).
 // It writes nothing while the listing is right. Upstream fix: ryanthegentry/402index PR #354 (unmerged); issue #346.
 //
 //   cd /opt/agentfeed && node ops/idx402-keeper.js           reads, then writes only what is wrong
@@ -24,15 +26,17 @@ const { WITHDRAWN } = require('../lib/compat.js');
 const DOMAIN = 'x402.ochinimus.app';
 const BASE = 'https://402index.io/api/v1';
 const RAILS = 'Solana, Base, Polygon, Arbitrum, Arc, Algorand'; // 46 characters, 402index's cap is 50
+const MPP_ASSET = 'USDC.e or OUSD';
+const MPP_NETWORK = 'Tempo';
 const OPENAPI = process.env.OPENAPI_URL || 'http://127.0.0.1:3006/openapi.json';
 const TOKEN_FILE = process.env.TOKEN_FILE || path.join(os.homedir(), '.config', '402index', `${DOMAIN}.token`);
 const DRY = process.env.DRY === '1';
 const MIN_PRICED = 80;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const stamp = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
-const out = { rows: 0, mapped: 0, wrong_before: 0, patched: 0, deleted: 0, failed: 0 };
+const out = { rows: 0, mpp_rows: 0, mapped: 0, wrong_before: 0, patched: 0, deleted: 0, failed: 0 };
 let note = '';
-const line = () => console.log(`${stamp()} rows=${out.rows} mapped=${out.mapped} wrong_before=${out.wrong_before} patched=${out.patched} deleted=${out.deleted} failed=${out.failed}${DRY ? ' DRY' : ''}${note ? ' ' + note : ''}`);
+const line = () => console.log(`${stamp()} rows=${out.rows} mpp_rows=${out.mpp_rows} mapped=${out.mapped} wrong_before=${out.wrong_before} patched=${out.patched} deleted=${out.deleted} failed=${out.failed}${DRY ? ' DRY' : ''}${note ? ' ' + note : ''}`);
 const skip = (why) => { note = `SKIP ${why}`; line(); process.exit(0); };
 
 async function http(method, url, body) {
@@ -65,7 +69,7 @@ async function livePrices() {
   return prices;
 }
 
-// our x402 rows on 402index: the same three searches as idx402-r11.py rows()
+// our x402 and MPP rows on 402index (every url on our own domain): the same three searches as idx402-r11.py rows()
 async function ourRows() {
   const found = new Map();
   for (const q of ['ochinimus', 'agentfeed', DOMAIN]) {
@@ -73,7 +77,7 @@ async function ourRows() {
       const r = await http('GET', `${BASE}/services?q=${encodeURIComponent(q)}&limit=100&offset=${off}`);
       if (r.status !== 200) return null;
       const svcs = Array.isArray(r.json.services) ? r.json.services : [];
-      for (const s of svcs) if (String(s.url || '').startsWith(`https://${DOMAIN}/`) && s.protocol === 'x402') found.set(s.id, s);
+      for (const s of svcs) if (String(s.url || '').startsWith(`https://${DOMAIN}/`) && (s.protocol === 'x402' || s.protocol === 'MPP')) found.set(s.id, s);
       if (svcs.length < 100) break;
     }
   }
@@ -92,7 +96,8 @@ const escapeRx = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   const rows = await ourRows();
   if (!rows) skip('402index-read (non-200)');
-  out.rows = rows.length;
+  out.rows = rows.filter((s) => s.protocol === 'x402').length;
+  out.mpp_rows = rows.filter((s) => s.protocol === 'MPP').length;
 
   let token = null;
   const tokenOf = () => { if (token === null) { try { token = fs.readFileSync(TOKEN_FILE, 'utf8').trim(); } catch { token = ''; } } return token; };
@@ -103,27 +108,33 @@ const escapeRx = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const m = patterns.find((x) => x.rx.test(p));
     if (!m) continue;
     out.mapped++;
+    const mpp = s.protocol === 'MPP';
     const priceOk = s.price_usd !== null && s.price_usd !== undefined && Math.abs(Number(s.price_usd) - m.price) < 1e-9;
-    if (!priceOk || s.payment_network !== RAILS) plan.push({ s, p, op: 'PATCH', price: m.price });
+    const wantAsset = mpp ? MPP_ASSET : null; // x402 rows: the asset is not judged (USDC as the Bazaar and register path write it)
+    const wantNetwork = mpp ? MPP_NETWORK : RAILS;
+    const assetOk = wantAsset === null || s.payment_asset === wantAsset;
+    if (!priceOk || !assetOk || s.payment_network !== wantNetwork || Number(s.domain_verified) !== 1) {
+      plan.push({ s, p, op: 'PATCH', price: m.price, asset: mpp ? MPP_ASSET : 'USDC', network: wantNetwork, mpp });
+    }
   }
   out.wrong_before = plan.filter((x) => x.op === 'PATCH').length;
 
   if (DRY) {
-    for (const x of plan) console.log(`DRY ${x.op} ${x.s.id} ${x.p}${x.op === 'PATCH' ? ' price_usd ' + x.price + ' payment_network ' + JSON.stringify(RAILS) : ''}`);
+    for (const x of plan) console.log(`DRY ${x.op} ${x.s.id} ${x.s.protocol} ${x.p}${x.op === 'PATCH' ? ' price_usd ' + x.price + ' payment_asset ' + JSON.stringify(x.asset) + ' payment_network ' + JSON.stringify(x.network) : ''}`);
     note = `would write ${plan.length}`; line(); return;
   }
   if (plan.length && !tokenOf()) skip(`no-token (${TOKEN_FILE} unreadable)`);
 
   for (const x of plan) {
     const body = x.op === 'PATCH'
-      ? { domain: DOMAIN, verification_token: tokenOf(), price_usd: x.price, payment_asset: 'USDC', payment_network: RAILS }
+      ? { domain: DOMAIN, verification_token: tokenOf(), price_usd: x.price, payment_asset: x.asset, payment_network: x.network }
       : { domain: DOMAIN, verification_token: tokenOf() };
     const r = await http(x.op, `${BASE}/services/${x.s.id}`, body);
     if (r.status === 429) { note = `STOP 429 Retry-After=${r.retryAfter || 'n/a'}`; line(); process.exit(0); }
     if (r.status === 403) { note = 'STOP TOKEN-REFUSED (403)'; line(); process.exit(0); }
     if (r.status === 200 || r.status === 204) {
-      if (x.op === 'PATCH') out.patched++; else { out.deleted++; console.log(`DELETE ${x.s.id} ${x.p} (withdrawn route re-listed)`); }
-    } else { out.failed++; console.log(`${x.op} ${x.s.id} ${x.p} HTTP ${r.status} ${String(r.json.error || r.json.message || '').slice(0, 120)}`); }
+      if (x.op === 'PATCH') out.patched++; else { out.deleted++; console.log(`DELETE ${x.s.id} ${x.s.protocol} ${x.p} (withdrawn route re-listed)`); }
+    } else { out.failed++; console.log(`${x.op} ${x.s.id} ${x.s.protocol} ${x.p} HTTP ${r.status} ${String(r.json.error || r.json.message || '').slice(0, 120)}`); }
     await sleep(1000);
   }
   line();
