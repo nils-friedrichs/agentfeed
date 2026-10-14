@@ -28,12 +28,14 @@ function landingHead(PRICES) {
   const keyPacks = routes.filter((r) => /^GET \/api\/keys\//.test(r)).length;
   const dataRoutes = routes.length - keyPacks;
   const title = 'AgentFeed — crypto market data, Solana pre-trade checks, sanctions screening and language tasks for AI agents, paid per call via x402';
-  // Every rail by name while that fits the 300 characters; past it (R10 Phase A added three networks) the count and the first
-  // four, and the page footer still names every one.
+  // Every rail by name while that fits the 300 characters; past it (R10 Phase A added three networks) the count and as many
+  // leading names as fit, and the page footer still names every one.
   const full = `${SCOPE_SHORT} Pay per call in USDC via x402 on ${httpRailNames()}. No API key is needed to pay per call.`;
   const rails = httpRails();
-  const description = full.length <= 300 ? full
-    : `${SCOPE_SHORT} Pay per call in USDC via x402 on ${rails.length} networks (${rails.slice(0, 4).map((r) => r.name).join(', ')} and more). No API key is needed to pay per call.`;
+  const counted = (k) => `${SCOPE_SHORT} Pay per call in USDC via x402 on ${rails.length} networks (${rails.slice(0, k).map((r) => r.name).join(', ')} and more). No API key is needed to pay per call.`;
+  let k = Math.min(4, rails.length);
+  while (k > 1 && counted(k).length > 300) k--;
+  const description = full.length <= 300 ? full : counted(k);
   return { title, description, dataRoutes, keyPacks };
 }
 
