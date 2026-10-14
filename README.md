@@ -682,7 +682,16 @@ A bot that can set an HTTP header but cannot sign an x402 payment (n8n, Freqtrad
 
 ## No wallet? Use Apify Store
 
-The liquidation map is also an Apify Store actor, paid by card at $0.008 per coin: https://apify.com/ochinimus/crypto-liquidation-map-hyperliquid
+Four AgentFeed data sets are also Apify Store actors. The Store bills in fiat through Apify, so no wallet is needed.
+
+| Actor | Returns | Price |
+|---|---|---|
+| [Crypto Liquidation Heatmap & Map: real Hyperliquid positions](https://apify.com/ochinimus/crypto-liquidation-map-hyperliquid) | Liquidation levels in 5% price bands from the open positions of the largest Hyperliquid accounts | $0.008 per coin |
+| [Scholarly Paper Search: OpenAlex, Google Scholar alternative](https://apify.com/ochinimus/scholarly-paper-search) | Papers from OpenAlex's CC0 data, by search or DOI | $0.003 per paper |
+| [US Company Filings by Ticker: 10-K, 10-Q, 8-K, Form 4](https://apify.com/ochinimus/us-company-filings) | Recent public filings from the SEC's EDGAR system, per ticker | $0.002 per filing |
+| [PDF to Markdown: clean text from any PDF URL](https://apify.com/ochinimus/pdf-to-markdown) | The text of a PDF as markdown, page by page | $0.01 per PDF |
+
+Prices are per result, plus Apify's $0.00005 start fee per run.
 
 ## Use AgentFeed in NOFX
 
