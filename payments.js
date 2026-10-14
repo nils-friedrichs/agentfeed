@@ -207,6 +207,37 @@ function bazaarConfig(pattern) {
   };
 }
 
+/**
+ * The accepts of one priced route, in the order the 402 lists them: the Solana exact accept, the EVM exact accepts, Algorand,
+ * then the high-frequency tier (batch-settlement and Gateway). A route with `noHf` (the prepaid-key purchase routes, R9) gets
+ * no high-frequency accept: credit bought at half price would be a free 50%.
+ */
+function routeAccepts(p, { network, payTo, EVM, ALGO, HF, railPrice, railPayTo, hfAccepts }) {
+  return [
+    {
+      scheme: 'exact',
+      price: `$${p.usd}`,      // SDK converts to USDC units for the network
+      network,
+      payTo,
+      // The token's name, as every EVM accept already carries ("USD Coin"). Directories
+      // that price a listing from its first accept read extra.name: on agent-tools.cloud
+      // all 9 Solana-first listings with extra {feePayer} only showed no price, the ones
+      // with extra.name "USDC" were priced (measured 2026-10-12). The facilitator adds
+      // feePayer beside it; CDP verify of v2 and v1 still reaches simulation with it.
+      extra: { name: 'USDC' },
+    },
+    ...EVM.map((r) => ({
+      scheme: 'exact',
+      price: railPrice(r, p.usd), // USDC auto-resolved per chain; Arc names its asset
+      network: r.network,
+      payTo: railPayTo(r),
+    })),
+    ...(ALGO ? [{ scheme: 'exact', price: `$${p.usd}`, network: ALGO.network, payTo: ALGO.payTo }] : []),
+    // after every exact accept of the same chain (Agent402 pays the first one)
+    ...(p.noHf ? [] : hfAccepts(HF, p.usd)),
+  ];
+}
+
 function buildPaymentLayer() {
   missingMeta.length = 0;
   // FAIL FAST, like mcp.js. These used to default to devnet and to
@@ -271,29 +302,7 @@ function buildPaymentLayer() {
   const routes = {};
   for (const [pattern, p] of Object.entries(PRICES)) {
     routes[pattern] = {
-      accepts: [
-        {
-          scheme: 'exact',
-          price: `$${p.usd}`,      // SDK converts to USDC units for the network
-          network,
-          payTo,
-          // The token's name, as every EVM accept already carries ("USD Coin"). Directories
-          // that price a listing from its first accept read extra.name: on agent-tools.cloud
-          // all 9 Solana-first listings with extra {feePayer} only showed no price, the ones
-          // with extra.name "USDC" were priced (measured 2026-10-12). The facilitator adds
-          // feePayer beside it; CDP verify of v2 and v1 still reaches simulation with it.
-          extra: { name: 'USDC' },
-        },
-        ...EVM.map((r) => ({
-          scheme: 'exact',
-          price: railPrice(r, p.usd), // USDC auto-resolved per chain; Arc names its asset
-          network: r.network,
-          payTo: railPayTo(r),
-        })),
-        ...(ALGO ? [{ scheme: 'exact', price: `$${p.usd}`, network: ALGO.network, payTo: ALGO.payTo }] : []),
-        // after every exact accept of the same chain (Agent402 pays the first one)
-        ...hfAccepts(HF, p.usd),
-      ],
+      accepts: routeAccepts(p, { network, payTo, EVM, ALGO, HF, railPrice, railPayTo, hfAccepts }),
       description: challengeDesc(challengeLead(p)), // challenge only; p.desc stays whole
       // NO errors key. MEASURED 2026-09-26: @x402/extensions strips unknown keys
       // from the discovery extension config, and sanitizeResourceServiceMetadata
@@ -334,4 +343,4 @@ function decodeSettlement(res) {
   }
 }
 
-module.exports = { buildPaymentLayer, decodeSettlement, PRICES, TAGS, BAZAAR_META, ICON_URL, CHALLENGE_DESC_MAX, challengeDesc, challengeLead, splitFirst };
+module.exports = { buildPaymentLayer, routeAccepts, decodeSettlement, PRICES, TAGS, BAZAAR_META, ICON_URL, CHALLENGE_DESC_MAX, challengeDesc, challengeLead, splitFirst };

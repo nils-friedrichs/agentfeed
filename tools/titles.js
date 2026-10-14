@@ -9,6 +9,7 @@
 'use strict';
 
 const TOOL_TITLES = {
+  get_signal_board: 'Perp signal board', get_coin_signal: 'Coin signal',
   get_sol_price: 'SOL spot price', get_btc_price: 'BTC spot price', get_eth_price: 'ETH spot price',
   get_spot: 'Spot price', get_funding_rate: 'Perp funding rate', get_fear_greed: 'Fear and Greed index',
   get_market_snapshot: 'Market snapshot', get_trade_context: 'Trade context', get_positioning: 'SOL and BTC positioning',

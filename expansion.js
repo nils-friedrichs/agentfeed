@@ -28,6 +28,16 @@ const SEC = require('./tools/sec');
 const H3 = require('./tools/hip3');
 const FX = require('./tools/fxrates');
 const BL = require('./tools/baselaunches');
+const SIG = require('./tools/signals');
+const KEYLIB = require('./lib/keys');
+
+// The prepaid-key handlers need the store, which server.js builds after this module is loaded (payments.js and
+// mcp.js read PRICES_ADD / MCP_DEFS_ADD from here first). server.js hands it over with setKeys().
+const KEYS = { current: null };
+const keys = () => {
+  if (!KEYS.current) throw Object.assign(new Error('key sales are not available on this instance'), { status: 503 });
+  return KEYS.current;
+};
 
 const sym = (d) => z.string().optional().describe(`USDT perp symbol e.g. SOLUSDT, BTCUSDT (default ${d})`);
 // Twelve routes -- liq-heatmap, squeeze-score, six derivatives and four
@@ -39,6 +49,22 @@ const sym = (d) => z.string().optional().describe(`USDT perp symbol e.g. SOLUSDT
 // schema and the handlers cannot disagree again.
 const SYM_DEFAULT = D._normSym(undefined);
 const symDefault = sym(SYM_DEFAULT);
+
+
+// ---- R9: the prepaid-key route descriptions and the optional query parameters of the buy routes
+const KEYSCHEMA = {
+  key_hash: z.string().optional().describe('sha256 hex (64 characters) of a key you generated yourself as afk_ + base58 of 32 random bytes: the server registers the hash and never sees the key'),
+  prefix: z.string().optional().describe('the 8 characters after afk_ in that key, so /api/keys/balance can show it before the first use'),
+};
+const money = (n) => `$${n}`;
+const KEYBUY = (k) => {
+  const usd = KEYLIB.PACKS[k];
+  return `${k === 'trial' ? 'Trial key' : 'Prepaid key'}: ${money(usd)} of credit for the AgentFeed routes, for bots that can set an HTTP header but cannot pay x402 per call (n8n, Freqtrade, Hummingbot, scripts, gateways). One payment on any exact rail returns an API key (afk_...) once, or, with key_hash=<sha256 hex of a key you generated>, registers your own key without the server ever seeing it. Send it as X-AgentFeed-Key (or Authorization: Bearer) on any paid GET: each call draws half the route's x402 price (minimum $0.0005) from the balance. GET /api/keys/balance reads it free. Usage credit, non-refundable, no expiry. Exact rails only: no half-price batch or Gateway accept on this route.`;
+};
+const KEYTOP = (k) => {
+  const usd = KEYLIB.TOPUPS[k];
+  return `Top up a prepaid key by ${money(usd)}: send the key as X-AgentFeed-Key and pay once on any exact rail; the balance grows when the payment settles, and the response is only delivered after it did. Needs an active key. Usage credit, non-refundable, no expiry. Exact rails only: no half-price batch or Gateway accept on this route.`;
+};
 
 const EXP = [
   { name: 'get_cascade_forecast', route: 'GET /api/cascade-forecast', usd: 0.02,
@@ -315,17 +341,63 @@ const EXP = [
     desc: 'Use when an agent needs a spot price without choosing a venue. Returns the on-chain DEX price for SOL, BTC or ETH, the median of deep USDC pools on Solana, Ethereum and Base read from chain state, and the pools that served it. Any other symbol answers 400 with the supported list and is never billed.',
     schema: { symbol: z.string().optional().describe('SOL, BTC or ETH (default SOL). Any other symbol answers 400 with the supported list') },
     run: (a) => EN.getSpot(a) },
+
+  // ---- R9 (2026-10-14): two routes for trading loops, and prepaid keys for bots that cannot pay x402 ----
+  // signal-board and coin-signal read only what this box already holds (tools/signals.js); the six key routes
+  // (lib/keys.js) sell credit. `noHf`: the key routes carry the exact accepts only, because credit bought at the
+  // high-frequency half price would be a free 50%. `mcp: false`: a key is bought over HTTP, never as an MCP tool.
+  { name: 'get_signal_board', route: 'GET /api/signal-board', usd: 0.01,
+    tags: ['signals', 'trading', 'bots', 'hyperliquid', 'funding', 'open-interest', 'liquidations', 'whales', 'exclusive'],
+    desc: 'Signal board for trading bots: the Hyperliquid perp market in one table, ranked by open interest in USD (30 coins by default, up to 60, or the coins you list). Per coin: mark, 1h and 24h price change, funding (hourly and annualised), open interest in USD with its 1h and 24h change, liquidations in the last hour by side with a z-score against the coin\'s own last 7 days, the whale net position and tilt of the top 250 Hyperliquid accounts, and flags: crowded_long (' + SIG.RULES.crowded_long + '), crowded_short (' + SIG.RULES.crowded_short + '), squeeze_risk (' + SIG.RULES.squeeze_risk + '), liq_spike (' + SIG.RULES.liq_spike + '). Poll every 1-5 minutes: one call is the whole market structure, answered from our own caches, each source named with its as_of. A source past its staleness limit answers 503 and is never billed.',
+    schema: { n: z.number().optional().describe('coins returned, ranked by open interest in USD, 1-60, default 30'),
+              coins: z.string().optional().describe('comma list of Hyperliquid coins instead of the top n, at most 20, e.g. BTC,ETH,SOL') },
+    run: (a) => SIG.getSignalBoard(a) },
+  { name: 'get_coin_signal', route: 'GET /api/coin-signal/:coin', usd: 0.004,
+    tags: ['signals', 'trading', 'bots', 'hyperliquid', 'funding', 'open-interest', 'liquidations', 'whales', 'exclusive'],
+    desc: 'Signal for one Hyperliquid perp, for trading bots: everything on the signal board for the coin (price changes, funding, open interest, liquidations with their z-score, whale net position and tilt, flags) plus the 15-minute liquidation cascade probability from our forecast model, the nearest liquidation cluster above and below price from the 24 h liquidation heatmap, and the top 3 whale positions (side, size, entry, liquidation price). BTC, ETH, SOL, HYPE or any other Hyperliquid perp. Poll every 1-5 minutes. An unknown coin answers 400 with the supported list and a stale source answers 503; neither is billed.',
+    schema: { coin: z.string().describe('a Hyperliquid perp, e.g. BTC, ETH, SOL, HYPE, kPEPE') },
+    run: (a) => SIG.getCoinSignal(a) },
+  { name: 'buy_key_trial', route: 'GET /api/keys/buy-trial', usd: 0.25, noHf: true, mcp: false,
+    tags: ['api-key', 'prepaid', 'bots', 'credit'],
+    desc: KEYBUY('trial'),
+    schema: KEYSCHEMA,
+    run: (a, req) => keys().buy(a, req, 0.25) },
+  { name: 'buy_key_1', route: 'GET /api/keys/buy-1', usd: 1, noHf: true, mcp: false,
+    tags: ['api-key', 'prepaid', 'bots', 'credit'],
+    desc: KEYBUY('1'),
+    schema: KEYSCHEMA,
+    run: (a, req) => keys().buy(a, req, 1) },
+  { name: 'buy_key_5', route: 'GET /api/keys/buy-5', usd: 5, noHf: true, mcp: false,
+    tags: ['api-key', 'prepaid', 'bots', 'credit'],
+    desc: KEYBUY('5'),
+    schema: KEYSCHEMA,
+    run: (a, req) => keys().buy(a, req, 5) },
+  { name: 'buy_key_20', route: 'GET /api/keys/buy-20', usd: 20, noHf: true, mcp: false,
+    tags: ['api-key', 'prepaid', 'bots', 'credit'],
+    desc: KEYBUY('20'),
+    schema: KEYSCHEMA,
+    run: (a, req) => keys().buy(a, req, 20) },
+  { name: 'topup_key_5', route: 'GET /api/keys/topup-5', usd: 5, noHf: true, mcp: false,
+    tags: ['api-key', 'prepaid', 'bots', 'credit'],
+    desc: KEYTOP('5'),
+    schema: {},
+    run: (a, req) => keys().topup(a, req, 5) },
+  { name: 'topup_key_20', route: 'GET /api/keys/topup-20', usd: 20, noHf: true, mcp: false,
+    tags: ['api-key', 'prepaid', 'bots', 'credit'],
+    desc: KEYTOP('20'),
+    schema: {},
+    run: (a, req) => keys().topup(a, req, 20) },
 ];
 
 // ---- derived exports ----
 const PRICES_ADD = {};
 const TAGS_ADD = {};
 for (const t of EXP) {
-  PRICES_ADD[t.route] = { usd: t.usd, tool: t.name, desc: t.desc };
+  PRICES_ADD[t.route] = { usd: t.usd, tool: t.name, desc: t.desc, ...(t.noHf ? { noHf: true } : {}) };
   TAGS_ADD[t.name] = t.tags;
 }
 
-const MCP_DEFS_ADD = EXP.map((t) => ({
+const MCP_DEFS_ADD = EXP.filter((t) => t.mcp !== false).map((t) => ({
   name: t.name, usd: t.usd, desc: t.desc, schema: t.schema,
   run: (a) => t.run(a || {}),
 }));
@@ -334,8 +406,9 @@ const MCP_DEFS_ADD = EXP.map((t) => ({
 function register(app, tool) {
   for (const t of EXP) {
     const path = t.route.replace('GET ', '');
-    app.get(path, tool(t.name, t.usd, (req) => t.run({ ...(req.query || {}), ...(req.params || {}) })));
+    // req rides along as the second argument: the key handlers reach the response (req.res) and the presented key (req.afKey) through it
+    app.get(path, tool(t.name, t.usd, (req) => t.run({ ...(req.query || {}), ...(req.params || {}) }, req)));
   }
 }
 
-module.exports = { EXP, PRICES_ADD, TAGS_ADD, MCP_DEFS_ADD, register };
+module.exports = { EXP, PRICES_ADD, TAGS_ADD, MCP_DEFS_ADD, register, setKeys: (k) => { KEYS.current = k; } };

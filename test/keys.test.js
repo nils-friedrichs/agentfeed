@@ -291,11 +291,20 @@ test('top-up: adds only after settlement; a failed settlement adds nothing; need
   assert.equal((await r.json()).data.balance_usd, 5.5);
   assert.equal(keyRow(s, k).balance_micro, 5_500_000);
   assert.equal(keyRow(s, k).sold_micro, 5_000_000);
-  // no key, unknown key: 401 before any payment
+  // an unknown key is refused before any payment; no key and no payment gets the plain 402 challenge (a crawler or validator must
+  // see a priced route), and no key WITH a payment is refused before it can settle
   const v = s.fac.calls.verify;
-  assert.equal((await s.get('/api/keys/topup-5')).status, 401);
   assert.equal((await s.get('/api/keys/topup-5', { 'x-agentfeed-key': newKey() })).status, 401);
-  assert.equal(s.fac.calls.verify, v);
+  assert.equal((await s.get('/api/keys/topup-5')).status, 402, 'unpaid, no key: the challenge, so validators and crawlers see a priced route');
+  assert.equal(s.fac.calls.verify, v, 'still nothing verified');
+  const ch = await s.get('/api/keys/topup-5');
+  const pr = unb64(ch.headers.get('payment-required'));
+  const sig = b64({ x402Version: 2, resource: pr.resource, accepted: pr.accepts[0], payload: { signature: '0x' + '11'.repeat(65), authorization: { from: PAYER, to: PAYTO, value: pr.accepts[0].amount, validAfter: '0', validBefore: '9999999999', nonce: '0x' + '22'.repeat(32) } } });
+  const st = s.fac.calls.settle;
+  const noKeyPaid = await s.get('/api/keys/topup-5', { 'payment-signature': sig });
+  assert.equal(noKeyPaid.status, 401, 'a payment without the key is refused before it can settle');
+  assert.equal(s.fac.calls.verify, v, 'and nothing reached the facilitator');
+  assert.equal(s.fac.calls.settle, st, 'and nothing settled');
 });
 
 test('a key cannot pay for a key: buy and top-up routes are never charged to a balance', async (t) => {
@@ -328,7 +337,9 @@ test('balance: free; 401 for none and unknown; shows status, never the key', asy
   const k = s.K.store.grant(0.05, 'bal');
   await s.get('/api/thing', { 'x-agentfeed-key': k });
   await flush();
-  const b = await (await s.get('/api/keys/balance', { 'x-agentfeed-key': k })).json();
+  const balRes = await s.get('/api/keys/balance', { 'x-agentfeed-key': k });
+  assert.equal(balRes.headers.get('cache-control'), 'no-store', 'an account answer is never cached');
+  const b = await balRes.json();
   assert.deepEqual(Object.keys(b).sort(), ['balance_usd', 'calls', 'last_used', 'prefix', 'rate_per_min', 'spent_usd', 'status']);
   assert.equal(b.balance_usd, 0.045);
   assert.equal(b.spent_usd, 0.005);

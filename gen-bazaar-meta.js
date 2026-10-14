@@ -118,6 +118,7 @@ function fixture(key, tool) {
     case 'url': return tool === 'get_pdf_markdown' ? 'https://bitcoin.org/bitcoin.pdf' : 'https://en.wikipedia.org/wiki/Stablecoin';
     case 'ticker': return tool === 'get_insider_trades' ? 'NVDA' : 'AAPL';
     case 'symbol': return SYMBOL_FOR[tool] || 'SOLUSDT';
+    case 'coin': return 'BTC';                 // get_coin_signal (R9): a Hyperliquid perp
     default: return undefined;                 // numeric/enum knobs stay out of the example
   }
 }
@@ -320,6 +321,11 @@ const BASE_RUN = {
   get_token_risk: (a) => getTokenRisk(a.mint),
 };
 
+// R9: the six prepaid-key routes cannot be CAPTURED (a capture would create a key and a pending row). Their example is built by
+// the same function the handler uses, with a placeholder key (lib/keys.js exampleBody), and the entry says so (`static: true`).
+const KEYLIB = require('./lib/keys');
+const isStatic = (tool) => KEYLIB.exampleBody(tool) !== null;
+
 const expByRoute = new Map(EXP.map((t) => [t.route, t]));
 const defByName = new Map(TOOL_DEFS.map((d) => [d.name, d]));
 
@@ -330,7 +336,7 @@ function buildRoutes() {
     const pathParamKeys = (httpPath.match(/:([A-Za-z0-9_]+)/g) || []).map((s) => s.slice(1));
     const exp = expByRoute.get(pattern);
     const zodSchema = exp ? exp.schema : (defByName.get(p.tool) || {}).schema;
-    const run = exp ? (a) => exp.run(a) : BASE_RUN[p.tool];
+    const run = exp ? (isStatic(p.tool) ? async () => KEYLIB.exampleBody(p.tool) : (a) => exp.run(a)) : BASE_RUN[p.tool];
     rows.push({ pattern, httpPath, tool: p.tool, usd: p.usd, pathParamKeys, zodSchema: zodSchema || {}, run, source: exp ? 'expansion' : 'server' });
   }
   return rows;
@@ -477,6 +483,7 @@ async function recapture(tools) {
     // R6: `redacted` marks a stored sample whose values were nulled (it lives on the entry, never inside `output`,
     // which payments.js spreads into the 402 challenge); /api/sample says so only for those routes
     if (JSON.stringify(redExample) !== JSON.stringify(c.example)) entryNext.redacted = true; else delete entryNext.redacted;
+    if (isStatic(r.tool)) entryNext.static = true; // a constructed example, never a capture (see KEYLIB above); /api/sample says so
     next.push([r.pattern, entryNext]);
   }
   for (const [pattern, entry] of next) prev.routes[pattern] = entry;
@@ -557,6 +564,7 @@ async function main() {
       const redExample = redactBanned(example, r.tool);
       entry.output = { example: redExample, schema: schemaOf(example) };
       if (JSON.stringify(redExample) !== JSON.stringify(example)) entry.redacted = true; // see --recapture: on the entry, not in `output`
+      if (isStatic(r.tool)) entry.static = true;
     }
 
     meta[r.pattern] = entry;

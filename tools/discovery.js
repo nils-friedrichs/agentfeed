@@ -237,6 +237,9 @@ const FREE_DESC = {
   get_last_liquidation: 'Free. Last liquidation for SOL, BTC, ETH, XRP and DOGE, delayed by 15 minutes. For real-time data, use /api/liquidations.',
 };
 
+// one derived sentence about prepaid keys (lib/keys.js), empty when the key routes are not in the price table
+const keyLine = (PRICES) => require('../lib/keys').keysSentence(PRICES);
+
 function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp, tempo }) {
   const paths = {};
 
@@ -365,13 +368,14 @@ function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp, tempo }) {
     info: {
       title: 'AgentFeed',
       version: '1.0.0',
-      description: `Live crypto market, liquidation, tokenized-equity and Solana on-chain data for AI agents. Paid per call in USDC over x402 on ${require('../lib/rails').httpRailNames()}.${require('../lib/hf').hfSentence()} No API keys, no accounts.`,
+      description: `Live crypto market, liquidation, tokenized-equity and Solana on-chain data for AI agents. Paid per call in USDC over x402 on ${require('../lib/rails').httpRailNames()}.${require('../lib/hf').hfSentence()} No API key or account is needed to pay per call. ${keyLine(PRICES)}`.trim(),
       'x-generated-from': 'payments.PRICES + bazaar-examples.json, at boot',
       // x402scan verifies ownership from info.contact; it names the operator, a
       // reachable address and the studio site, not the repository.
       contact: { name: 'ochinimus', email: 'ochinimus@gmail.com', url: 'https://ochinimus.app' },
       'x-guidance': [
-        'Every route is a GET that returns JSON. There are no API keys and no accounts.',
+        'Every route is a GET that returns JSON. No API key or account is needed to pay per call.',
+        ...(keyLine(PRICES) ? [keyLine(PRICES)] : []),
         `Paid routes answer 402 with the challenge twice: x402 v2, base64 JSON in the PAYMENT-REQUIRED response header, for every rail; and x402 v1, the JSON body {x402Version: 1, accepts}, for Base and Solana. Pay with a PAYMENT-SIGNATURE header (x402 v2) or an X-PAYMENT header (x402 v1, Base or Solana; an X-PAYMENT carrying a v2 payload is read as PAYMENT-SIGNATURE). USDC on ${railNames('Solana mainnet')}.`,
         PAYTO_WARNING,
         'Response shape is always { "tool": "<name>", "data": { ... }, "paid": true }.',
@@ -477,7 +481,8 @@ function buildLlmsTxt({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo, network }) {
     '',
     '## How to pay',
     '',
-    'There are no API keys and no accounts. Payment is per call, in USDC, over x402 v2 on every rail and x402 v1 on Base and Solana.',
+    'No API key or account is needed: payment is per call, in USDC, over x402 v2 on every rail and x402 v1 on Base and Solana.',
+    ...(keyLine(PRICES) ? [keyLine(PRICES)] : []),
     '',
     '1. GET the route. Unpaid, it answers 402. The x402 v2 challenge is in the PAYMENT-REQUIRED response header, base64-encoded JSON, for every rail. The body is the x402 v1 challenge, {x402Version: 1, accepts}, for Base and Solana.',
     '2. Pay and repeat the request with a PAYMENT-SIGNATURE header (x402 v2) or an X-PAYMENT header (x402 v1, Base or Solana). An X-PAYMENT carrying a v2 payload is read as PAYMENT-SIGNATURE.',
@@ -549,7 +554,7 @@ function buildSkillMd({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo, network }) {
     '',
     '# AgentFeed',
     '',
-    `${routes.length} paid GET routes and ${freeCount} free ones at ${ORIGIN}. JSON in, JSON out. No API key, no account, no signup: payment happens per request.`,
+    `${routes.length} paid GET routes and ${freeCount} free ones at ${ORIGIN}. JSON in, JSON out. No API key, no account, no signup: payment happens per request.${keyLine(PRICES) ? ` ${keyLine(PRICES)}` : ''}`,
     '',
     '## When to use AgentFeed',
     '',

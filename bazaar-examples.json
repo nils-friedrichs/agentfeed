@@ -6018,9 +6018,753 @@
      }
     }
    }
+  },
+  "GET /api/signal-board": {
+   "tool": "get_signal_board",
+   "price_usd": 0.01,
+   "input": {},
+   "inputSchema": {
+    "properties": {
+     "n": {
+      "description": "coins returned, ranked by open interest in USD, 1-60, default 30",
+      "type": "number"
+     },
+     "coins": {
+      "description": "comma list of Hyperliquid coins instead of the top n, at most 20, e.g. BTC,ETH,SOL",
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "output": {
+    "example": {
+     "tool": "get_signal_board",
+     "data": {
+      "as_of": "2026-10-14T04:45:01.000Z",
+      "universe": 178,
+      "ranked": [
+       "BTC"
+      ],
+      "coins": {
+       "BTC": {
+        "mark": 83695.8,
+        "chg_1h_pct": -0.11,
+        "chg_24h_pct": 0.32,
+        "funding_1h": 0.00001219,
+        "funding_ann_pct": 10.68,
+        "oi_usd": 3171379675,
+        "oi_chg_1h_pct": 0.19,
+        "oi_chg_24h_pct": 0.66,
+        "liq_1h_long_usd": 18888,
+        "liq_1h_short_usd": 23304,
+        "liq_z": -0.62,
+        "whale_net_usd": -396187027,
+        "whale_tilt": -0.39,
+        "flags": []
+       }
+      },
+      "sources": {
+       "hl_oi": {
+        "name": "AgentFeed Hyperliquid OI sampl…",
+        "as_of": "2026-10-14T04:45:01.000Z",
+        "stale_after_s": 900,
+        "fields": "mark, chg_*, funding_*, oi_*"
+       },
+       "liq_tape": {
+        "name": "AgentFeed liquidation tape (By…",
+        "as_of": "2026-10-14T04:49:48.085Z",
+        "stale_after_s": 1800,
+        "fields": "liq_*"
+       },
+       "hl_whales": {
+        "name": "AgentFeed whale snapshot (top…",
+        "as_of": "2026-10-14T04:45:09.861Z",
+        "stale_after_s": 900,
+        "fields": "whale_*"
+       }
+      },
+      "rules": {
+       "crowded_long": "funding_ann_pct >= 30 and oi_c…",
+       "crowded_short": "funding_ann_pct <= -10 and oi_…",
+       "squeeze_risk": "crowded_short and (chg_1h_pct…",
+       "liq_spike": "liq_z >= 3 and liq_1h_long_usd…"
+      }
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "as_of": {
+         "type": "string"
+        },
+        "universe": {
+         "type": "number"
+        },
+        "ranked": {
+         "type": "array"
+        },
+        "coins": {
+         "type": "object"
+        },
+        "sources": {
+         "type": "object"
+        },
+        "rules": {
+         "type": "object"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
+   }
+  },
+  "GET /api/coin-signal/:coin": {
+   "tool": "get_coin_signal",
+   "price_usd": 0.004,
+   "input": {},
+   "inputSchema": {
+    "properties": {},
+    "required": []
+   },
+   "pathParamsSchema": {
+    "properties": {
+     "coin": {
+      "type": "string",
+      "description": "a Hyperliquid perp, e.g. BTC, ETH, SOL, HYPE, kPEPE"
+     }
+    },
+    "required": [
+     "coin"
+    ]
+   },
+   "pathParams": {
+    "coin": "BTC"
+   },
+   "output": {
+    "example": {
+     "tool": "get_coin_signal",
+     "data": {
+      "coin": "BTC",
+      "oi_rank": 1,
+      "as_of": "2026-10-14T04:45:01.…",
+      "mark": 83695.8,
+      "chg_1h_pct": -0.11,
+      "chg_24h_pct": 0.32,
+      "funding_1h": 0.00001219,
+      "funding_ann_pct": 10.68,
+      "oi_usd": 3171379675,
+      "oi_chg_1h_pct": 0.19,
+      "oi_chg_24h_pct": 0.66,
+      "liq_1h_long_usd": 18888,
+      "liq_1h_short_usd": 23304,
+      "liq_z": -0.62,
+      "whale_net_usd": -396187027,
+      "whale_tilt": -0.39,
+      "flags": [],
+      "cascade_15m": {
+       "p": 0.0652,
+       "evidence": "measured",
+       "threshold_usd": 854813,
+       "window_end": "2026-10-14T04:45:00.…"
+      },
+      "liq_cluster_above": {
+       "price_low": 83801.7,
+       "price_high": 83889.3,
+       "usd": 6113618,
+       "longs_usd": 3747,
+       "shorts_usd": 6109871,
+       "distance_pct": 0.18
+      },
+      "liq_cluster_below": null,
+      "whale_top": [
+       {
+        "side": "short",
+        "size_usd": 230431269,
+        "entry_px": 76168.3,
+        "liquidation_px": 143319
+       }
+      ],
+      "sources": {
+       "hl_oi": {
+        "name": "AgentFeed Hyperliqui…",
+        "as_of": "2026-10-14T04:45:01.…",
+        "stale_after_s": 900,
+        "fields": "mark, chg_*, funding…"
+       },
+       "liq_tape": {
+        "name": "AgentFeed liquidatio…",
+        "as_of": "2026-10-14T04:49:57.…",
+        "stale_after_s": 1800,
+        "fields": "liq_*"
+       },
+       "hl_whales": {
+        "name": "AgentFeed whale snap…",
+        "as_of": "2026-10-14T04:45:09.…",
+        "stale_after_s": 900,
+        "fields": "whale_*"
+       },
+       "cascade_forecast": {
+        "name": "AgentFeed cascade fo…",
+        "as_of": "2026-10-14T04:49:58.…"
+       },
+       "liq_heatmap": {
+        "name": "AgentFeed liquidatio…",
+        "as_of": "2026-10-14T04:49:57.…"
+       }
+      }
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "coin": {
+         "type": "string"
+        },
+        "oi_rank": {
+         "type": "number"
+        },
+        "as_of": {
+         "type": "string"
+        },
+        "mark": {
+         "type": "number"
+        },
+        "chg_1h_pct": {
+         "type": "number"
+        },
+        "chg_24h_pct": {
+         "type": "number"
+        },
+        "funding_1h": {
+         "type": "number"
+        },
+        "funding_ann_pct": {
+         "type": "number"
+        },
+        "oi_usd": {
+         "type": "number"
+        },
+        "oi_chg_1h_pct": {
+         "type": "number"
+        },
+        "oi_chg_24h_pct": {
+         "type": "number"
+        },
+        "liq_1h_long_usd": {
+         "type": "number"
+        },
+        "liq_1h_short_usd": {
+         "type": "number"
+        },
+        "liq_z": {
+         "type": "number"
+        },
+        "whale_net_usd": {
+         "type": "number"
+        },
+        "whale_tilt": {
+         "type": "number"
+        },
+        "flags": {
+         "type": "array"
+        },
+        "cascade_15m": {
+         "type": "object"
+        },
+        "liq_cluster_above": {
+         "type": "object"
+        },
+        "liq_cluster_below": {},
+        "whale_top": {
+         "type": "array"
+        },
+        "sources": {
+         "type": "object"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
+   }
+  },
+  "GET /api/keys/buy-trial": {
+   "tool": "buy_key_trial",
+   "price_usd": 0.25,
+   "input": {},
+   "inputSchema": {
+    "properties": {
+     "key_hash": {
+      "description": "sha256 hex (64 characters) of a key you generated yourself as afk_ + base58 of 32 random bytes: the server registers the hash and never sees the key",
+      "type": "string"
+     },
+     "prefix": {
+      "description": "the 8 characters after afk_ in that key, so /api/keys/balance can show it before the first use",
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "output": {
+    "example": {
+     "tool": "buy_key_trial",
+     "data": {
+      "key": "afk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "prefix": "xxxxxxxx",
+      "credit_usd": 0.25,
+      "balance_usd": 0.25,
+      "status": "active",
+      "rate_per_min": 120,
+      "use": "send it on every call as the header X-AgentFeed-Key: <key> (or Authorization: Bearer <key>); each call costs half the route's x402 price, minimum $0.0005",
+      "balance": "GET /api/keys/balance with the same header (free)",
+      "topup": "GET /api/keys/topup-5 or /api/keys/topup-20 with the same header",
+      "terms": "usage credit, non-refundable, no expiry; the key is a bearer secret: anyone holding it spends the balance; abuse means revocation",
+      "note": "this is the only time the key is shown; it is not stored anywhere on our side, only its sha256"
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "key": {
+         "type": "string"
+        },
+        "prefix": {
+         "type": "string"
+        },
+        "credit_usd": {
+         "type": "number"
+        },
+        "balance_usd": {
+         "type": "number"
+        },
+        "status": {
+         "type": "string"
+        },
+        "rate_per_min": {
+         "type": "number"
+        },
+        "use": {
+         "type": "string"
+        },
+        "balance": {
+         "type": "string"
+        },
+        "topup": {
+         "type": "string"
+        },
+        "terms": {
+         "type": "string"
+        },
+        "note": {
+         "type": "string"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
+   },
+   "static": true
+  },
+  "GET /api/keys/buy-1": {
+   "tool": "buy_key_1",
+   "price_usd": 1,
+   "input": {},
+   "inputSchema": {
+    "properties": {
+     "key_hash": {
+      "description": "sha256 hex (64 characters) of a key you generated yourself as afk_ + base58 of 32 random bytes: the server registers the hash and never sees the key",
+      "type": "string"
+     },
+     "prefix": {
+      "description": "the 8 characters after afk_ in that key, so /api/keys/balance can show it before the first use",
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "output": {
+    "example": {
+     "tool": "buy_key_1",
+     "data": {
+      "key": "afk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "prefix": "xxxxxxxx",
+      "credit_usd": 1,
+      "balance_usd": 1,
+      "status": "active",
+      "rate_per_min": 120,
+      "use": "send it on every call as the header X-AgentFeed-Key: <key> (or Authorization: Bearer <key>); each call costs half the route's x402 price, minimum $0.0005",
+      "balance": "GET /api/keys/balance with the same header (free)",
+      "topup": "GET /api/keys/topup-5 or /api/keys/topup-20 with the same header",
+      "terms": "usage credit, non-refundable, no expiry; the key is a bearer secret: anyone holding it spends the balance; abuse means revocation",
+      "note": "this is the only time the key is shown; it is not stored anywhere on our side, only its sha256"
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "key": {
+         "type": "string"
+        },
+        "prefix": {
+         "type": "string"
+        },
+        "credit_usd": {
+         "type": "number"
+        },
+        "balance_usd": {
+         "type": "number"
+        },
+        "status": {
+         "type": "string"
+        },
+        "rate_per_min": {
+         "type": "number"
+        },
+        "use": {
+         "type": "string"
+        },
+        "balance": {
+         "type": "string"
+        },
+        "topup": {
+         "type": "string"
+        },
+        "terms": {
+         "type": "string"
+        },
+        "note": {
+         "type": "string"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
+   },
+   "static": true
+  },
+  "GET /api/keys/buy-5": {
+   "tool": "buy_key_5",
+   "price_usd": 5,
+   "input": {},
+   "inputSchema": {
+    "properties": {
+     "key_hash": {
+      "description": "sha256 hex (64 characters) of a key you generated yourself as afk_ + base58 of 32 random bytes: the server registers the hash and never sees the key",
+      "type": "string"
+     },
+     "prefix": {
+      "description": "the 8 characters after afk_ in that key, so /api/keys/balance can show it before the first use",
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "output": {
+    "example": {
+     "tool": "buy_key_5",
+     "data": {
+      "key": "afk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "prefix": "xxxxxxxx",
+      "credit_usd": 5,
+      "balance_usd": 5,
+      "status": "active",
+      "rate_per_min": 120,
+      "use": "send it on every call as the header X-AgentFeed-Key: <key> (or Authorization: Bearer <key>); each call costs half the route's x402 price, minimum $0.0005",
+      "balance": "GET /api/keys/balance with the same header (free)",
+      "topup": "GET /api/keys/topup-5 or /api/keys/topup-20 with the same header",
+      "terms": "usage credit, non-refundable, no expiry; the key is a bearer secret: anyone holding it spends the balance; abuse means revocation",
+      "note": "this is the only time the key is shown; it is not stored anywhere on our side, only its sha256"
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "key": {
+         "type": "string"
+        },
+        "prefix": {
+         "type": "string"
+        },
+        "credit_usd": {
+         "type": "number"
+        },
+        "balance_usd": {
+         "type": "number"
+        },
+        "status": {
+         "type": "string"
+        },
+        "rate_per_min": {
+         "type": "number"
+        },
+        "use": {
+         "type": "string"
+        },
+        "balance": {
+         "type": "string"
+        },
+        "topup": {
+         "type": "string"
+        },
+        "terms": {
+         "type": "string"
+        },
+        "note": {
+         "type": "string"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
+   },
+   "static": true
+  },
+  "GET /api/keys/buy-20": {
+   "tool": "buy_key_20",
+   "price_usd": 20,
+   "input": {},
+   "inputSchema": {
+    "properties": {
+     "key_hash": {
+      "description": "sha256 hex (64 characters) of a key you generated yourself as afk_ + base58 of 32 random bytes: the server registers the hash and never sees the key",
+      "type": "string"
+     },
+     "prefix": {
+      "description": "the 8 characters after afk_ in that key, so /api/keys/balance can show it before the first use",
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "output": {
+    "example": {
+     "tool": "buy_key_20",
+     "data": {
+      "key": "afk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "prefix": "xxxxxxxx",
+      "credit_usd": 20,
+      "balance_usd": 20,
+      "status": "active",
+      "rate_per_min": 120,
+      "use": "send it on every call as the header X-AgentFeed-Key: <key> (or Authorization: Bearer <key>); each call costs half the route's x402 price, minimum $0.0005",
+      "balance": "GET /api/keys/balance with the same header (free)",
+      "topup": "GET /api/keys/topup-5 or /api/keys/topup-20 with the same header",
+      "terms": "usage credit, non-refundable, no expiry; the key is a bearer secret: anyone holding it spends the balance; abuse means revocation",
+      "note": "this is the only time the key is shown; it is not stored anywhere on our side, only its sha256"
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "key": {
+         "type": "string"
+        },
+        "prefix": {
+         "type": "string"
+        },
+        "credit_usd": {
+         "type": "number"
+        },
+        "balance_usd": {
+         "type": "number"
+        },
+        "status": {
+         "type": "string"
+        },
+        "rate_per_min": {
+         "type": "number"
+        },
+        "use": {
+         "type": "string"
+        },
+        "balance": {
+         "type": "string"
+        },
+        "topup": {
+         "type": "string"
+        },
+        "terms": {
+         "type": "string"
+        },
+        "note": {
+         "type": "string"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
+   },
+   "static": true
+  },
+  "GET /api/keys/topup-5": {
+   "tool": "topup_key_5",
+   "price_usd": 5,
+   "input": {},
+   "inputSchema": {
+    "properties": {},
+    "required": []
+   },
+   "output": {
+    "example": {
+     "tool": "topup_key_5",
+     "data": {
+      "prefix": "Hk3mQ9xZ",
+      "credit_usd": 5,
+      "balance_usd": 5.043,
+      "status": "active",
+      "note": "credited when this payment settled; this response is only delivered after it did"
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "prefix": {
+         "type": "string"
+        },
+        "credit_usd": {
+         "type": "number"
+        },
+        "balance_usd": {
+         "type": "number"
+        },
+        "status": {
+         "type": "string"
+        },
+        "note": {
+         "type": "string"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
+   },
+   "static": true
+  },
+  "GET /api/keys/topup-20": {
+   "tool": "topup_key_20",
+   "price_usd": 20,
+   "input": {},
+   "inputSchema": {
+    "properties": {},
+    "required": []
+   },
+   "output": {
+    "example": {
+     "tool": "topup_key_20",
+     "data": {
+      "prefix": "Hk3mQ9xZ",
+      "credit_usd": 20,
+      "balance_usd": 20.043,
+      "status": "active",
+      "note": "credited when this payment settled; this response is only delivered after it did"
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "prefix": {
+         "type": "string"
+        },
+        "credit_usd": {
+         "type": "number"
+        },
+        "balance_usd": {
+         "type": "number"
+        },
+        "status": {
+         "type": "string"
+        },
+        "note": {
+         "type": "string"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
+   },
+   "static": true
   }
  },
- "_outputs_recaptured_at": "2026-10-14T04:06:06.590Z",
+ "_outputs_recaptured_at": "2026-10-14T04:49:58.910Z",
  "_pruned_at": "2026-10-13T04:50:31.410Z",
  "_schemas_regenerated_at": "2026-10-13T04:50:31.953Z",
  "_outputs_dropped_at": "2026-10-13T04:50:35.546Z"

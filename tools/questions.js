@@ -15,6 +15,14 @@
 // the table -- it just gets a rougher question until someone writes one.
 const QUESTIONS = {
   get_exit_quote: 'What can this seized collateral actually be sold for, at size?',
+  get_signal_board: 'Which Hyperliquid perps are crowded, squeezing or being liquidated right now?',
+  get_coin_signal: 'What is the positioning, liquidation and cascade picture for one coin right now?',
+  buy_key_trial: 'How can a bot that cannot pay x402 try AgentFeed for $0.25?',
+  buy_key_1: 'How can a bot that cannot pay x402 buy $1 of AgentFeed credit?',
+  buy_key_5: 'How can a bot that cannot pay x402 buy $5 of AgentFeed credit?',
+  buy_key_20: 'How can a bot that cannot pay x402 buy $20 of AgentFeed credit?',
+  topup_key_5: 'How do I add $5 to an AgentFeed prepaid key?',
+  topup_key_20: 'How do I add $20 to an AgentFeed prepaid key?',
   get_peg_deviation: 'How far is a tokenized stock trading from its underlying?',
   get_peg_sessions: 'When in the trading day does the peg break worst?',
   get_peg_universe: 'Which tokenized stocks carry the worst off-hours peg risk?',

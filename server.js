@@ -22,6 +22,17 @@ app.disable('x-powered-by');
 // /api/<route>|eip155:<id> (raw or %7C) is served as /api/<route>; see lib/compat.js.
 const compat = require('./lib/compat');
 app.use(compat.stripNetworkSuffix);
+
+// ---- prepaid API keys (R9, lib/keys.js): bought with one x402 payment, spent per call at the high-frequency price.
+// identify() runs FIRST: it reads and removes the key header (so nothing downstream can log it), looks the hash up (no
+// reserve) and applies the key's own per-minute bucket. charge() sits further down, after the HEAD guard, GET-only, the
+// https fix and the query canonicalisation, and BEFORE the refusal recorder, the alias middlewares, x402 v1, tempo, MPP and
+// the x402 gate, all of which skip a request with req.keyPaid.
+const paymentsOn = (process.env.X402_MODE || 'on').toLowerCase() !== 'off';
+const keys = require('./lib/keys').makeKeys({ db, PRICES, logCall, hfUsd: require('./lib/hf').hfUsd, paymentsOn });
+require('./expansion').setKeys(keys);
+app.use(keys.identify);
+const skipForKey = (mw) => (req, res, next) => (req.keyPaid ? next() : mw(req, res, next));
 const PORT = process.env.PORT || 3006;
 
 if (!process.env.HELIUS_API_KEY) {
@@ -96,6 +107,10 @@ app.use((req, res, next) => {
   // Assigned before any early return: the HEAD guard and every logCall read
   // req.callerIp, including on the throttled path.
   req.callerIp = ip;
+  // A request with an ACTIVE prepaid key is metered by that key's own bucket (keys.identify, rate_per_min), not by the
+  // address, so a partner gateway behind one IP can be given more with ops/key-admin.mjs set-rate. Unkeyed requests, and
+  // every method keys.identify does not meter, keep this bucket exactly as before.
+  if (req.afKey && req.afKey.active && (req.method === 'GET' || (req.method === 'POST' && req.path === '/mcp'))) return next();
   const now = Date.now();
   let b = buckets.get(ip);
   if (!b || now - b.windowStart > WINDOW_MS) {
@@ -251,35 +266,41 @@ app.use((req, _res, next) => {
   next();
 });
 
+// ---- prepaid keys: refusals that must come before anyone pays (a duplicate key_hash is a 409, a top-up needs its key),
+// then the atomic reserve for a call that carries a valid key. A key never reaches x402: an unknown, pending or revoked
+// key is a 401 here. The key routes themselves are excluded from charge (credit cannot buy credit).
+app.use(keys.purchaseGuard);
+app.use(keys.charge);
+
 // ---- refused payments (mounted BEFORE both payment layers)
 // A request that presents a payment and still ends in 402 writes one calls row,
 // status payment_refused, with the facilitator's or the middleware's reason.
 // A plain unpaid challenge writes nothing. See lib/refusals.js. `mpp` is read
 // at request time, after the MPP block below has set it.
-app.use(makeRefusalRecorder({ logCall, PRICES, mppPayer: (req) => (mpp && mpp.credentialSource ? mpp.credentialSource(req) : null) }));
+app.use(skipForKey(makeRefusalRecorder({ logCall, PRICES, mppPayer: (req) => (mpp && mpp.credentialSource ? mpp.credentialSource(req) : null) })));
 // Demand telemetry (lib/demand.js): unknown GET paths and unpaid 402s, observed on 'finish'.
-app.use(makeDemand({ db, logCall, PRICES }));
+app.use(skipForKey(makeDemand({ db, logCall, PRICES })));
 // An x402 payment sent as "Authorization: Payment <base64 JSON>" is read as X-PAYMENT and
 // the MPP header dropped for that request. Before the sanitizer, which then sees it.
-app.use(aliasAuthorizationPayment);
+app.use(skipForKey(aliasAuthorizationPayment));
 // Rewrites at setHeader time, so the recorder above -- which reads the header
 // when the response finishes -- records the reason the buyer was actually sent.
-app.use(sanitizeChallengeErrors);
+app.use(skipForKey(sanitizeChallengeErrors));
 // X-PAYMENT with a v2 payload counts as PAYMENT-SIGNATURE; see lib/refusals.js.
 // After the recorder (which already counts either header as presented) and the
 // sanitizer (which explains a refused v1 payload), before both payment layers.
-app.use(aliasXPayment);
+app.use(skipForKey(aliasXPayment));
 // x402 v1 buyers (lib/x402v1.js): the v1 body on every 402, and X-PAYMENT v1 paid on
 // base and solana. Here, before the MPP gates and the x402 layer; bound to that layer
 // once it is built below, and inert until then.
-app.use(x402v1.challengeBody);
-app.use(x402v1.payments);
+app.use(skipForKey(x402v1.challengeBody));
+app.use(skipForKey(x402v1.payments));
 // An MPP credential on a route with no MPP gate gets that said in the challenge's error.
 // mppOn and MPP_ROUTES are read at request time, after the MPP block below has set them.
 // MPP tempo/charge (mpp/tempo.js): adds its challenge to every paid 402 and takes pull credentials.
 // Here, before the solana gates and the x402 layer; inert until the MPP block below loads it.
-app.use((req, res, next) => (tempo && tempo.isReady() ? tempo.gate(req, res, next).catch(next) : next()));
-app.use(makeMppOnX402Only({ mppPaths: () => (mppOn ? MPP_ROUTES.map((r) => r.replace(/^GET /, '')) : []), isTempo: (req) => !!(tempo && tempo.isReady() && tempo.isTempoCredential(req)) }));
+app.use((req, res, next) => (!req.keyPaid && tempo && tempo.isReady() ? tempo.gate(req, res, next).catch(next) : next()));
+app.use(skipForKey(makeMppOnX402Only({ mppPaths: () => (mppOn ? MPP_ROUTES.map((r) => r.replace(/^GET /, '')) : []), isTempo: (req) => !!(tempo && tempo.isReady() && tempo.isTempoCredential(req)) })));
 
 // ---- MPP solana/charge layer (additive, MPP_ENABLED-gated)
 // Mounted BEFORE the x402 layer so that a 402 can carry both challenges: MPP's
@@ -328,8 +349,8 @@ if (mppOn) {
       .then(() => { _docs = null; }) // the catalog documents tempo once it is up
       .catch((e) => { console.error('[mpp] tempo DISABLED:', e.message); tempo = null; _docs = null; });
   } catch (e) { console.error('[mpp] tempo DISABLED (load):', e.message); tempo = null; }
-  app.get('/api/sol-price', mpp.gate('GET /api/sol-price'));
-  app.get('/api/btc-price', mpp.gate('GET /api/btc-price'));
+  app.get('/api/sol-price', skipForKey(mpp.gate('GET /api/sol-price')));
+  app.get('/api/btc-price', skipForKey(mpp.gate('GET /api/btc-price')));
 }
 
 // ---- free discovery surface (mounted BEFORE the payment layer)
@@ -420,7 +441,9 @@ app.get('/api/sample/:route', (req, res) => {
     ...(m.pathParams ? { path_params_example: m.pathParams } : {}),
     input_schema: m.inputSchema || { properties: {} },
     sample_response: m.output ? m.output.example : null,
-    captured: 'a real response from this service, trimmed; field names and types are exactly what the paid route returns',
+    captured: m.static
+      ? 'built by the same code that builds the real response, with a placeholder key (a capture would create a key); field names and types are exactly what the paid route returns'
+      : 'a real response from this service, trimmed; field names and types are exactly what the paid route returns',
     ...(m.redacted ? { redacted: 'values from OKX and Binance (the liquidation tape\'s prints) are null in this stored sample: their terms forbid redistributing that data' } : {}),
   });
 });
@@ -440,6 +463,11 @@ app.get('/api/forecast-record', async (req, res) => {
     res.status(502).json({ tool: 'get_forecast_record', error: e.message });
   }
 });
+
+// ---- prepaid keys: the balance check is free, and /keys is a static buy page (tools/keys-page.js: no library, no CDN,
+// a strict CSP). Both are mounted above the payment layer; neither is in PRICES.
+app.get('/api/keys/balance', keys.balance);
+app.get('/keys', require('./tools/keys-page').keysPage);
 
 app.get('/openapi.json', (_req, res) => res.json(docs().openapi));
 app.get('/.well-known/x402', (_req, res) => res.json(docs().wellKnown));
@@ -475,7 +503,6 @@ app.get('/favicon.png', (_req, res) => sendIcon(res, 'image/png'));
 
 // ---- x402 payment layer (mounted BEFORE the /api routes)
 let paymentLayer = null; // read by the discovery routes (lib/compat.js)
-const paymentsOn = (process.env.X402_MODE || 'on').toLowerCase() !== 'off';
 let x402Network = 'off';
 if (paymentsOn) {
   const layer = buildPaymentLayer();
@@ -483,7 +510,7 @@ if (paymentsOn) {
   x402Network = layer.network;
   const gate = mppOn ? mpp.wrapX402(layer.middleware) : layer.middleware;
   // A request lib/x402v1.js has verified is paid for; it settles after the handler.
-  app.use((req, res, next) => (req.x402v1 || req.tempoPending ? next() : gate(req, res, next)));
+  app.use((req, res, next) => (req.x402v1 || req.tempoPending || req.keyPaid ? next() : gate(req, res, next)));
   x402v1.bind(layer)
     .then((nets) => console.log(`[x402v1] active on ${nets.join(', ') || 'no network (facilitator lists no v1 kind)'}`))
     .catch((e) => console.error('[x402v1] DISABLED: facilitator /supported failed:', e.message));
@@ -568,6 +595,9 @@ app.get('/', (req, res, next) => {
   next();
 });
 
+// One derived sentence about prepaid keys for every text surface (lib/keys.js keysSentence reads the price table).
+const keySentence = () => { const t = require('./lib/keys').keysSentence(PRICES); return t ? ` ${t}` : ''; };
+
 // MPP tempo/charge as mounted right now (mpp/tempo.js): every paid route, or nothing.
 function tempoInfo() {
   const on = !!(tempo && tempo.isReady());
@@ -576,7 +606,7 @@ function tempoInfo() {
 
 app.get('/', (_req, res) => res.json({
   service: 'agentfeed',
-  description: `Live crypto market data for AI agents - liquidations, positioning, funding, prices, token risk. Paid per-call in USDC via x402 on ${require('./lib/rails').httpRailNames()}.${require('./lib/hf').hfSentence()} Every paid route also carries MPP tempo/charge challenges (Tempo mainnet, OUSD or USDC.e, pull mode) and /api/sol-price and /api/btc-price MPP solana/charge, on the same 402. No API keys. Copy payTo only from a fresh 402 response, never from transaction history.`,
+  description: `Live crypto market data for AI agents - liquidations, positioning, funding, prices, token risk. Paid per-call in USDC via x402 on ${require('./lib/rails').httpRailNames()}.${require('./lib/hf').hfSentence()} Every paid route also carries MPP tempo/charge challenges (Tempo mainnet, OUSD or USDC.e, pull mode) and /api/sol-price and /api/btc-price MPP solana/charge, on the same 402. No API key is needed to pay per call.${keySentence()} Copy payTo only from a fresh 402 response, never from transaction history.`,
   x402: { active: paymentsOn, network: x402Network, chains: ['solana:mainnet', ...evmRails().map((r) => r.network)] },
   // DERIVED, not restated: whatever is actually mounted is what is advertised.
   mpp: { active: mppOn, intent: 'solana/charge', routes: mppOn ? MPP_ROUTES : [], tempo: tempoInfo() },
@@ -623,7 +653,7 @@ app.get('/.well-known/glama.json', (_req, res) => res.json({
 app.get('/.well-known/x402.json', (_req, res) => res.json({
   x402Version: 2,
   service: 'agentfeed',
-  description: `Crypto market, liquidations, and Solana on-chain data for AI agents. Pay per call in USDC via x402 on ${require('./lib/rails').httpRailNames()}.${require('./lib/hf').hfSentence()} Every paid route also carries MPP tempo/charge challenges (Tempo mainnet, OUSD or USDC.e, pull mode) and /api/sol-price and /api/btc-price MPP solana/charge, on the same 402. No API keys. Copy payTo only from a fresh 402 response, never from transaction history.`,
+  description: `Crypto market, liquidations, and Solana on-chain data for AI agents. Pay per call in USDC via x402 on ${require('./lib/rails').httpRailNames()}.${require('./lib/hf').hfSentence()} Every paid route also carries MPP tempo/charge challenges (Tempo mainnet, OUSD or USDC.e, pull mode) and /api/sol-price and /api/btc-price MPP solana/charge, on the same 402. No API key is needed to pay per call.${keySentence()} Copy payTo only from a fresh 402 response, never from transaction history.`,
   website: 'https://x402.ochinimus.app',
   // Derived from what is mounted, so the manifest cannot advertise a protocol
   // the service is not actually speaking.
@@ -684,7 +714,7 @@ const { initMcp } = require('./mcp');
   }
   if (paymentsOn) {
     try {
-      await initMcp(app);
+      await initMcp(app, keys);
     } catch (e) {
       console.error('FATAL: MCP rail init failed:', e.message);
       process.exit(1);
@@ -692,5 +722,9 @@ const { initMcp } = require('./mcp');
   } else {
     console.log('[mcp] skipped (X402_MODE=off)');
   }
-  app.listen(PORT, () => console.log(`agentfeed up on :${PORT} (x402: ${x402Network})`));
+  app.listen(PORT, () => {
+    console.log(`agentfeed up on :${PORT} (x402: ${x402Network})`);
+    // the first signal-board call per process scans seven days of the liquidation tape (~1 s, once); do it now, not on a paid call
+    setTimeout(() => { require('./tools/signals').getSignalBoard({ n: 1 }).then(() => console.log('[signals] baseline warm')).catch((e) => console.log(`[signals] baseline not warm yet: ${e.message}`)); }, 3000).unref();
+  });
 })();

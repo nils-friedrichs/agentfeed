@@ -154,6 +154,19 @@ const saveState = (s) => { if (!DRY) { fs.writeFileSync(STATE + '.tmp', JSON.str
 const usd = (n) => `$${(Math.round(n * 1000) / 1000).toFixed(3)}`;
 const who = (r) => r.payer_wallet ? `payer ${r.payer_wallet.slice(0, 8)}…` : `ip ${r.ip || '?'}`;
 
+// ---- prepaid keys (R9): what was sold, what was drawn, what is still owed to key holders. Revenue is unchanged: a purchase is a
+// 'paid' row (counted above, tool buy_key_* / topup_key_*); the calls it funds are 'key' rows = consumption of credit already counted,
+// never added to revenue. No alert. The table is created at boot by lib/keys.js; before that (or on an old copy) the section is absent.
+function keysLines(db, w) {
+  try { db.prepare('SELECT 1 FROM api_keys LIMIT 1').get(); } catch { return []; }
+  const sold = db.prepare("SELECT tool, COUNT(*) n, COALESCE(SUM(amount_usdc), 0) u FROM calls WHERE status = 'paid' AND (tool LIKE 'buy\\_key\\_%' ESCAPE '\\' OR tool LIKE 'topup\\_key\\_%' ESCAPE '\\') AND ts >= ? AND ts < ? GROUP BY tool ORDER BY tool").all(w.from, w.to);
+  const use = db.prepare("SELECT COUNT(*) n, COALESCE(SUM(amount_usdc), 0) u, COUNT(DISTINCT payer_wallet) k FROM calls WHERE status = 'key' AND ts >= ? AND ts < ?").get(w.from, w.to);
+  const comp = db.prepare("SELECT COUNT(*) n FROM calls WHERE status = 'key' AND ts >= ? AND ts < ? AND payer_wallet IN (SELECT 'key:' || prefix FROM api_keys WHERE buyer = 'grant')").get(w.from, w.to).n;
+  const owed = db.prepare("SELECT COUNT(*) n, COALESCE(SUM(balance_micro), 0) b FROM api_keys WHERE status = 'active'").get();
+  const soldN = sold.reduce((n, r) => n + r.n, 0), soldU = sold.reduce((n, r) => n + r.u, 0);
+  return [`Prepaid keys: sold ${soldN} (${usd(soldU)}${sold.length ? `: ${sold.map((r) => `${r.tool} x${r.n}`).join(', ')}` : ''}); drawn ${use.n} calls = ${usd(use.u)} from ${use.k} key${use.k === 1 ? '' : 's'}${comp ? ` (${comp} on comp keys, not sales)` : ''}; still owed to ${owed.n} active key${owed.n === 1 ? '' : 's'}: ${usd(owed.b / 1e6)}`];
+}
+
 function digestText(db, w, test) {
   const paid = db.prepare("SELECT tool, payer_wallet, ip, amount_usdc FROM calls WHERE status='paid' AND ts >= ? AND ts < ?").all(w.from, w.to);
   const refused = db.prepare(`SELECT tool, payer_wallet, ip, user_agent, error_msg FROM calls WHERE status='payment_refused' AND NOT COALESCE(${RESYNC_SQL}, 0) AND ts >= ? AND ts < ?`).all(w.from, w.to);
@@ -169,6 +182,7 @@ function digestText(db, w, test) {
   if (tools.length > 15) L.push(`  ... ${tools.length - 15} more routes, ${usd(tools.slice(15).reduce((s, [, v]) => s + v.u, 0))}`);
   if (!ext.length) L.push('  (no external paid calls)');
   L.push('', `Refused payments: ${refused.length} (${refused.filter((r) => !isOwn(r)).length} external)` + (resyncs ? `; plus ${resyncs} batch-channel resync(s), served on the retry, not failures` : ''));
+  for (const l of keysLines(db, w)) L.push(l);
   const circle = circleAuthRowsBetween(db, w.from, w.to);
   if (circle.length) L.push(`Circle (Arc rail) authorisation refusals: ${circle.length}, first ${stamp(circle[0].ts)}, last ${stamp(circle[circle.length - 1].ts)} UTC (the key, its allow-list or the account at Circle; own wallets included)`);
   // Three sections. "No funds" is the payer's side; a probe is a challenge we never
@@ -336,4 +350,4 @@ if (require.main === module) (async () => {
   else { console.error('usage: node ops/af-digest.js --digest [--force] [--test] | --alert [--dry]'); process.exit(1); }
 })().catch((e) => { console.log(`${new Date().toISOString()} af-digest failed: ${String(e.message).slice(0, 200)}`); process.exit(1); });
 
-module.exports = { shapeOf, yesterday, offsetMin, digestText, circleAuthAlert, circleAuthRowsBetween, CIRCLE_AUTH_RE };
+module.exports = { shapeOf, yesterday, offsetMin, digestText, keysLines, circleAuthAlert, circleAuthRowsBetween, CIRCLE_AUTH_RE };

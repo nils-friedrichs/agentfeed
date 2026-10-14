@@ -3,7 +3,7 @@
 
 [![smithery badge](https://smithery.ai/badge/ochinimus/agentfeed)](https://smithery.ai/servers/ochinimus/agentfeed)
 
-**Crypto liquidations, cascade detection, positioning and market data for AI agents. Pay per call in USDC. No API keys, no accounts, no subscriptions.**
+**Crypto liquidations, cascade detection, positioning and market data for AI agents. Pay per call in USDC. No accounts, no subscriptions, and no API key needed (prepaid keys are optional, for bots that cannot pay x402).**
 
 AgentFeed sells live trading data through the [x402 payment protocol](https://solana.com/x402) on Solana, Base, Polygon and Arbitrum. An agent hits an endpoint, gets a `402 Payment Required` with the price, pays a fraction of a cent in USDC from its own wallet, and receives the data — in about two seconds, gas sponsored by the facilitator.
 
@@ -83,13 +83,19 @@ Notional uses `filled_qty × avg_fill_price` — what actually executed — not 
 
 Every paid route, cheapest question last. Generated from
 [`/.well-known/x402.json`](https://x402.ochinimus.app/.well-known/x402.json),
-read 2026-10-13 — names, prices and routes are the manifest's, not a copy kept
+read 2026-10-14 — names, prices and routes are the manifest's, not a copy kept
 in sync by hand. What each one returns is under
-[67 tools](#67-tools-60-paid-http-routes--7-free--pricing), word for word as
+[69 tools](#69-tools-62-paid-data-routes--7-free--pricing), word for word as
 the service publishes it.
 
 | Tool | Price | Route |
 |---|---|---|
+| `buy_key_20` | $20 | `/api/keys/buy-20` |
+| `topup_key_20` | $20 | `/api/keys/topup-20` |
+| `buy_key_5` | $5 | `/api/keys/buy-5` |
+| `topup_key_5` | $5 | `/api/keys/topup-5` |
+| `buy_key_1` | $1 | `/api/keys/buy-1` |
+| `buy_key_trial` | $0.25 | `/api/keys/buy-trial` |
 | `get_squeeze_score` | $0.1 | `/api/squeeze-score` |
 | `get_cascade_scan` | $0.05 | `/api/cascade-scan` |
 | `get_liq_history` | $0.05 | `/api/liq-history` |
@@ -122,6 +128,7 @@ the service publishes it.
 | `get_orderbook_walls` | $0.01 | `/api/orderbook-walls` |
 | `get_pdf_markdown` | $0.01 | `/api/pdf-markdown` |
 | `get_sec_8k` | $0.01 | `/api/sec-8k` |
+| `get_signal_board` | $0.01 | `/api/signal-board` |
 | `get_token_risk` | $0.01 | `/api/token-risk/:mint` |
 | `get_top_movers` | $0.01 | `/api/top-movers` |
 | `get_trade_context` | $0.01 | `/api/trade-context` |
@@ -145,6 +152,7 @@ the service publishes it.
 | `get_token_metadata` | $0.005 | `/api/token-metadata/:mint` |
 | `get_tradfi_perps` | $0.005 | `/api/tradfi-perps` |
 | `get_web_markdown` | $0.005 | `/api/web-markdown` |
+| `get_coin_signal` | $0.004 | `/api/coin-signal/:coin` |
 | `get_fx_rates` | $0.002 | `/api/fx-rates` |
 | `get_btc_price` | $0.001 | `/api/btc-price` |
 | `get_eth_price` | $0.001 | `/api/eth-price` |
@@ -226,12 +234,12 @@ The pay-kit fix ships here as `mpp/patches/@solana+mpp+0.7.0.patch`, applied by
 dependency, not a dev one, because a `--omit=dev` install would otherwise complete silently
 *unpatched*.
 
-## 67 tools (60 paid HTTP routes + 7 free) & pricing
+## 69 tools (62 paid data routes + 7 free) & pricing
 
-**60 paid + 7 free**, 67 total on the MCP rail. Every call is metered individually in USDC over
-x402 — no bundles, no minimums. Calling all 60 paid tools once costs **$0.864** — the entire
-market read for 86 cents. Counts and prices are summed from
-[the live manifest](https://x402.ochinimus.app/.well-known/x402.json), read 2026-10-13.
+**62 paid + 7 free**, 69 total on the MCP rail (the six prepaid-key routes below are HTTP only). Every call is metered individually in USDC over
+x402 — no bundles, no minimums. Calling all 62 paid data tools once costs **$0.878** — the entire
+market read for 88 cents. Counts and prices are summed from
+[the live manifest](https://x402.ochinimus.app/.well-known/x402.json), read 2026-10-14.
 
 The flagship is [`get_squeeze_score`](#the-moat--our-own-liquidation-tape) — a 0-100 short-squeeze / long-flush composite built from funding, crowding, OI build and the liq-skew of our exclusive tape. One number, one dime, answers "is this trade crowded and about to hurt someone."
 
@@ -359,6 +367,15 @@ Sampled every 5 minutes since 19 July 2026. Deviation is measured against the un
 | `get_equity_24h` | $0.01 | `/api/equity-24h` | Weekend price for US stocks: an indicative 24/7 price for a stock or index (TSLA, NVDA, S&P 500, Nasdaq) from stock perps on Hyperliquid and our tokenized stocks DEX price, with the last regular-session price, its time and source, the implied gap in %, each source's liquidity and the session (open, pre, after, overnight, weekend). Indicative, never an exchange quote; 503 when no source has liquidity. |
 | `get_tradfi_perps` | $0.005 | `/api/tradfi-perps` | Use when an agent needs a 24/7 price for a stock, index, commodity or currency outside market hours. Returns Hyperliquid HIP-3 perp markets: oracle and mark price, premium, hourly and 8h funding, open interest, 24h change and the dex. With symbol (TSLA, GOLD, EUR or xyz:TSLA): every live market for it. Without: the whole list. Prices are each market's own HIP-3 oracle and mark. |
 
+### Signals for trading bots
+
+| Tool | Price | Route | What you get |
+|---|---|---|---|
+| `get_signal_board` | $0.01 | `/api/signal-board` | The Hyperliquid perp market in one table, ranked by open interest: price change, funding, OI and its change, last-hour liquidations with a z-score against the coin's own 7 days, whale net position and tilt, and the flags crowded_long, crowded_short, squeeze_risk, liq_spike (rules in the description). Poll every 1-5 minutes. |
+| `get_coin_signal` | $0.004 | `/api/coin-signal/:coin` | The same row for one coin plus the 15-minute cascade probability, the nearest liquidation clusters above and below price and the top 3 whale positions. |
+
+Both read only data this service records itself (the Hyperliquid OI sampler, the liquidation tape, the whale snapshot) and name every source with its `as_of`; a stale source answers 503 and is never billed. With a [prepaid key](#prepaid-keys-for-bots-that-cannot-pay-x402) they cost $0.005 and $0.002.
+
 ### Free tasters
 
 Seven, of which four have an HTTP route — those four are the ones published at `/` under
@@ -379,7 +396,7 @@ Two more free HTTP endpoints carry no tool of their own:
 | Endpoint | What you get |
 |---|---|
 | `GET /api/sample` | Lists every paid route that has a stored sample response |
-| `GET /api/sample/<route>` | The real captured response for one of the 60 paid routes — the same example its Bazaar listing carries — with its price, input schema and paid URL. See what a route returns before paying for it. |
+| `GET /api/sample/<route>` | The real captured response for one of the paid routes — the same example its Bazaar listing carries — with its price, input schema and paid URL. See what a route returns before paying for it. |
 
 A free route answers `"paid": false`, and a paid one `"paid": true`, because that field is
 per-request: it reports whether the route you called is priced. `curl`ing either of the two
@@ -404,6 +421,21 @@ curl https://x402.ochinimus.app/api/cascade-scan    # returns 402 + payment term
 ```
 
 x402 clients pay and retry automatically.
+
+## Prepaid keys (for bots that cannot pay x402)
+
+A bot that can set an HTTP header but cannot sign an x402 payment (n8n, Freqtrade, Hummingbot, a plain script, a gateway such as claw402) buys a key once and spends it per call.
+
+- **Buy once**, with any x402 client, on any exact rail the route offers: `GET /api/keys/buy-trial` ($0.25), `buy-1`, `buy-5`, `buy-20`. Top up with `topup-5` or `topup-20`, sending the key as the header. Or in a browser at [/keys](https://x402.ochinimus.app/keys) with a Base wallet: the page loads no library and sends nothing but the key's hash.
+- **Spend per call:** send `X-AgentFeed-Key: afk_...` (or `Authorization: Bearer afk_...`) on any paid GET or on `POST /mcp`. Each call draws **half the route's x402 price, minimum $0.0005**, from the balance; a 400, 404, 500 or 503 is never drawn. 120 requests per minute per key.
+- **Bring your own key:** generate `afk_` + base58 of 32 random bytes yourself and buy with `?key_hash=<sha256 hex>&prefix=<8 characters after afk_>`; the server registers the hash and never sees the key, and a dropped connection after payment loses nothing. Without `key_hash` the server generates the key and returns it once.
+- **Balance:** `GET /api/keys/balance` with the header, free.
+- **Terms:** a prepaid balance is usage credit, non-refundable, with no expiry; the key is a bearer secret (anyone holding it spends the balance); abuse means revocation. Purchase routes offer the exact accepts only, because credit bought through the half-price batch or Gateway tier would be a free 50%.
+- **In the books:** a purchase is a settled payment (status `paid`); the calls it funds are rows of status `key`, consumption of credit already counted, never revenue.
+
+## Use AgentFeed in NOFX
+
+[NOFX](https://github.com/NoFxAiOS/nofx) is an open-source AI trading terminal. `get_signal_board` and `get_coin_signal` are shaped for its External Data Sources: `data.coins` is an object keyed by coin in open-interest order, `data.ranked` is the list, `data.sources` names each source, and the board is about 10 KB for 30 coins. **Read this first:** at NOFX commit `ef476f2` nothing calls the function that fetches External Data Sources (`StrategyEngine.FetchExternalData`), so stock NOFX saves the two entries and never reads them into a prompt; they work on a NOFX build that calls it, and the same key works from anything else that sends a header. [docs/nofx.md](docs/nofx.md) ([中文](docs/nofx.zh-CN.md)) has the exact strategy JSON, how to buy a key from the wallet NOFX already pays claw402 with, the cost per trader (about $0.48 a day for the board and $0.19 a day per coin at NOFX's default 15-minute scan) and the proof harness that replays NOFX's fetch and `data_path` walk against the live routes.
 
 ## Pay for a call
 

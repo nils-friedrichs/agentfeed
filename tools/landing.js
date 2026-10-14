@@ -44,7 +44,7 @@ function renderLanding(PRICES, network, coverage) {
   .foot{margin-top:36px;color:var(--dim);font-size:12px;border-top:1px solid var(--line);padding-top:14px}
 </style></head><body>
 <h1>AgentFeed</h1>
-<p class="tag">Live liquidations, cascade detection, positioning, funding and prices for AI trading agents — <b>${perpsPhrase}</b> across Bybit, OKX and Binance. Pay per call in USDC via x402 on ${railNames()}. No API keys, no accounts, no subscriptions.</p>
+<p class="tag">Live liquidations, cascade detection, positioning, funding and prices for AI trading agents — <b>${perpsPhrase}</b> across Bybit, OKX and Binance. Pay per call in USDC via x402 on ${railNames()}. No accounts, no subscriptions, and no API key needed to pay per call.${(() => { const t = require('../lib/keys').keysSentence(PRICES); return t ? ' ' + t.replace('page at /keys', 'page at <a href="/keys">/keys</a>') : ''; })()}</p>
 <span class="badge">x402 ${network}</span><span class="badge">${["Solana", ...evmRails().map((r) => r.name)].join(" + ")}</span><span class="badge">elizaOS plugin</span><span class="badge">MCP + REST</span><span class="badge">${perps} perps, 3 exchanges</span><span class="badge">full-universe cascades</span>
 
 <p style="color:var(--dim);font-size:13px;margin-top:18px;border-left:2px solid var(--gold);padding-left:12px">

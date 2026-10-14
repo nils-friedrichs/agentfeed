@@ -364,6 +364,21 @@ Two judgment calls shift these numbers:
 - **POST /mcp.** This mirrors the same tool functions, plus MCP-only free tools: `get_cascade_forecast_free` (computed) and `get_forecast_question` (metadata). It inherits the classifications above.
 - **Prose in the published descriptions.** Some route descriptions name venues that should not appear in them. The `PRICES.desc` of `/api/eth-price` still advertises "Coinbase, Kraken, Binance, OKX, Gemini", and the A2A agent card (`lib/compat.js:77`) still says "Bybit/OKX/Binance liquidation tape". Both match what the code actually fetches.
 
+## R9 (14 Oct 2026): signal-board and coin-signal
+
+Two routes for trading loops. Neither calls an upstream: every number is read from data this service already records, and
+every answer names its sources and their `as_of` times (`data.sources`). No new venue, none from the banned or unclear list.
+
+| route | price | sources | verdict | raw value still passed (venue) |
+|---|---|---|---|---|
+| /api/signal-board | $0.01 | our Hyperliquid OI sampler (hl-oi.db, written every 5 min from Hyperliquid's public info API: mark, funding, open interest); our liquidation tape (Bybit, OKX, Binance prints) as hourly SUMS per symbol and a 7-day hourly median for the z-score; the top-250-accounts snapshot (Hyperliquid clearinghouse state, every 5 min) as per-coin net position | computed | — (no single liquidation print, no account address) |
+| /api/coin-signal/:coin | $0.004 | the same three, plus our cascade forecast (caliper model over the tape) and the 24 h liquidation heatmap (price bands over the tape) | computed | — (heatmap bands are sums; whale positions are side, size, entry and liquidation price without addresses) |
+
+- **Staleness (each gives 503 + Retry-After, never billed):** the OI sampler older than 15 minutes, the tape older than 30 minutes, the whale snapshot older than 15 minutes.
+- **24 h fields** (price and OI change over a day) are null until the sampler holds a day of samples (it did from 14 Oct 03:51 UTC).
+- **Universe:** the 178 Hyperliquid main-dex perps the sampler records (HIP-3 markets are not in the sampler).
+- **The tape is a banned-or-unclear input on the CEX side (C7 above):** these two routes use it only as sums and as heatmap bands, like /api/liq-pulse and /api/squeeze-score, never a single print.
+
 ## Payment infrastructure (not data sources)
 
 CDP facilitator (x402 exact on Base, Polygon, Arbitrum, Solana; batch-settlement on Base, Polygon,
@@ -371,6 +386,10 @@ Arbitrum, R5), Circle Facilitator Service (Arc), Circle Gateway (nanopayments on
 Arbitrum, Arc, R5), GoPlausible (Algorand, R5),
 Tempo RPC (MPP tempo/charge), Helius (MPP solana/charge verification). Their terms govern
 settlement, not data resale, and are out of scope here.
+
+### Prepaid keys (R9, 14 Oct 2026)
+
+Not a data source and not a new payment protocol: a key is a balance stored in agentfeed.db (`api_keys`, only the sha256 of the key), bought with one ordinary x402 payment on the exact rails and spent per call at the route's high-frequency price (half the x402 price, minimum $0.0005). The purchase routes (`/api/keys/buy-trial`, `buy-1`, `buy-5`, `buy-20`, `topup-5`, `topup-20`) carry no batch-settlement and no Gateway accept, so credit cannot be bought at half price. Revenue is the settled purchase (status `paid`); the calls it funds are rows of status `key` and are never added to revenue. Credit is non-refundable and has no expiry (terms at /terms).
 
 ### Batch-settlement in operation (R8, 13 Oct 2026; measured on Base, planning chat decision the same day)
 
