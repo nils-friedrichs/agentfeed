@@ -514,6 +514,9 @@ if (paymentsOn) {
   paymentLayer = layer;
   x402Network = layer.network;
   const gate = mppOn ? mpp.wrapX402(layer.middleware) : layer.middleware;
+  // R10 Phase A: which accepts this request's 402 carries (lib/rail-ctx.js): the default list, or one network asked for with
+  // /api/<route>|<network> or chosen by the payer. After every alias middleware, so the payment header is the one core reads.
+  app.use(require('./lib/rail-ctx').railContext);
   // A request lib/x402v1.js has verified is paid for; it settles after the handler.
   app.use((req, res, next) => (req.x402v1 || req.tempoPending || req.keyPaid ? next() : gate(req, res, next)));
   x402v1.bind(layer)
@@ -611,8 +614,8 @@ function tempoInfo() {
 
 app.get('/', (_req, res) => res.json({
   service: 'agentfeed',
-  description: `${require('./tools/scope').SCOPE} Paid per-call in USDC via x402 on ${require('./lib/rails').httpRailNames()}.${require('./lib/hf').hfSentence()} Every paid route also carries MPP tempo/charge challenges (Tempo mainnet, OUSD or USDC.e, pull mode) and /api/sol-price and /api/btc-price MPP solana/charge, on the same 402. No API key is needed to pay per call.${keySentence()} Copy payTo only from a fresh 402 response, never from transaction history.`,
-  x402: { active: paymentsOn, network: x402Network, chains: require('./lib/rails').httpRails().map((r) => r.network) },
+  description: `${require('./tools/scope').SCOPE} Paid per-call in USDC via x402 on ${require('./lib/rails').httpRailNames()}.${require('./lib/rails').onRequestSentence() ? ` ${require('./lib/rails').onRequestSentence()}` : ''}${require('./lib/hf').hfSentence()} Every paid route also carries MPP tempo/charge challenges (Tempo mainnet, OUSD or USDC.e, pull mode) and /api/sol-price and /api/btc-price MPP solana/charge, on the same 402. No API key is needed to pay per call.${keySentence()} Copy payTo only from a fresh 402 response, never from transaction history.`,
+  x402: { active: paymentsOn, network: x402Network, chains: require('./lib/rails').httpRails().map((r) => r.network), chains_on_request: require('./lib/rails').onRequestRails().map((r) => r.network) },
   // DERIVED, not restated: whatever is actually mounted is what is advertised.
   mpp: { active: mppOn, intent: 'solana/charge', routes: mppOn ? MPP_ROUTES : [], tempo: tempoInfo() },
   // The three routes that are genuinely unpriced over HTTP. This used to read
@@ -667,7 +670,7 @@ app.get('/.well-known/x402.json', async (_req, res) => {
   res.json({
   x402Version: 2,
   service: 'agentfeed',
-  description: `${require('./tools/scope').SCOPE} Pay per call in USDC via x402 on ${require('./lib/rails').httpRailNames()}.${require('./lib/hf').hfSentence()} Every paid route also carries MPP tempo/charge challenges (Tempo mainnet, OUSD or USDC.e, pull mode) and /api/sol-price and /api/btc-price MPP solana/charge, on the same 402. No API key is needed to pay per call.${keySentence()} Copy payTo only from a fresh 402 response, never from transaction history.`,
+  description: `${require('./tools/scope').SCOPE} Pay per call in USDC via x402 on ${require('./lib/rails').httpRailNames()}.${require('./lib/rails').onRequestSentence() ? ` ${require('./lib/rails').onRequestSentence()}` : ''}${require('./lib/hf').hfSentence()} Every paid route also carries MPP tempo/charge challenges (Tempo mainnet, OUSD or USDC.e, pull mode) and /api/sol-price and /api/btc-price MPP solana/charge, on the same 402. No API key is needed to pay per call.${keySentence()} Copy payTo only from a fresh 402 response, never from transaction history.`,
   website: 'https://x402.ochinimus.app',
   // Derived from what is mounted, so the manifest cannot advertise a protocol
   // the service is not actually speaking.

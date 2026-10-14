@@ -26,6 +26,8 @@ const hf = require('../lib/hf');
 const discovery = require('../tools/discovery');
 const compat = require('../lib/compat');
 const { makeManifestAccepts } = require('../lib/manifest');
+const { extRails, extAccept, extAllowed } = require('../lib/ext-rails');
+const { railContext, acceptsFor } = require('../lib/rail-ctx');
 
 const PAY_TO = 'Gack9UtqfeZxFA1LqeqjLgC3JGuD7rS6CsSHKoXsD4Tu';
 const PAY_TO_EVM = '0x22DB3A9686EE5261e7Bf3ed4f91277232E8076e6';
@@ -38,7 +40,8 @@ async function layer() {
   const ALGO = rails.algoRail(ENV);
   const authorizer = privateKeyToAccount(generatePrivateKey());
   const HF = { batch: { networks: hf.BATCH_NETWORKS, receiver: PAY_TO_EVM, authorizer }, gateway: { networks: hf.GATEWAY_NETWORKS, payTo: '0x00000000000000000000000000000000000000a1' } };
-  const evmNets = [...new Set([...EVM.map((r) => r.network), ...hf.GATEWAY_NETWORKS])];
+  const EXT = extRails(ENV);
+  const evmNets = [...new Set([...EVM.map((r) => r.network), ...hf.GATEWAY_NETWORKS, ...EXT.map((r) => r.network)])];
   const kinds = [
     { x402Version: 2, scheme: 'exact', network: SOLANA_MAINNET_CAIP2, extra: { feePayer: 'BFK9TLC3edb13K6v4YyH3DwPb5DSUpkWvb7XnqCL9b4F' } },
     ...evmNets.map((network) => ({ x402Version: 2, scheme: 'exact', network })),
@@ -51,8 +54,11 @@ async function layer() {
   rs.register(ALGO.network, new ExactAvmScheme());
   for (const { network, scheme } of hf.batchSchemes(HF.batch, new Database(':memory:'))) rs.register(network, scheme);
   const routes = {};
+  const inDefault = new Set(EXT.filter((r) => r.inDefault).map((r) => r.network));
   for (const [pattern, p] of Object.entries(PRICES)) {
-    routes[pattern] = { accepts: routeAccepts(p, { network: SOLANA_MAINNET_CAIP2, payTo: PAY_TO, EVM, ALGO, HF, railPrice: rails.railPrice, railPayTo: (r) => rails.railPayTo(r, ENV), hfAccepts: hf.hfAccepts }), description: p.tool, mimeType: 'application/json' };
+    const base = routeAccepts(p, { network: SOLANA_MAINNET_CAIP2, payTo: PAY_TO, EVM, ALGO, HF, railPrice: rails.railPrice, railPayTo: (r) => rails.railPayTo(r, ENV), hfAccepts: hf.hfAccepts });
+    const ext = EXT.filter((r) => extAllowed(r, p.usd)).map((r) => extAccept(r, p.usd, PAY_TO_EVM));
+    routes[pattern] = { get accepts() { return acceptsFor(base, ext, (n) => inDefault.has(n)); }, description: p.tool, mimeType: 'application/json' };
   }
   await rs.initialize();
   return { routes, resourceServer: rs };
@@ -64,6 +70,8 @@ const five = (a) => ({ scheme: a.scheme, network: a.network, amount: a.amount, a
 test('F1: for every priced route the manifest accepts equal the 402 accepts (scheme, network, amount, asset, payTo), in order', async (t) => {
   const L = await layer();
   const app = express();
+  app.use(compat.stripNetworkSuffix);
+  app.use(railContext);
   app.use(paymentMiddleware(L.routes, L.resourceServer));
   const srv = app.listen(0); t.after(() => srv.close());
   await new Promise((r) => srv.once('listening', r));
@@ -75,8 +83,16 @@ test('F1: for every priced route the manifest accepts equal the 402 accepts (sch
     const r = await fetch(base + concrete(pattern));
     assert.equal(r.status, 402, pattern);
     const challenge = JSON.parse(Buffer.from(r.headers.get('payment-required'), 'base64').toString('utf8'));
-    assert.deepEqual(manifest.get(pattern).map(five), challenge.accepts.map(five), pattern);
+    // the default 402 = the manifest's accepts without an on_request marker, same order
+    assert.deepEqual(manifest.get(pattern).filter((a) => !a.on_request).map(five), challenge.accepts.map(five), pattern);
     compared += challenge.accepts.length;
+    // each on-request accept = the last accept of the 402 at its suffix (R10 Phase A)
+    for (const a of manifest.get(pattern).filter((x) => x.on_request)) {
+      const s = await fetch(base + concrete(pattern) + a.on_request);
+      const sc = JSON.parse(Buffer.from(s.headers.get('payment-required'), 'base64').toString('utf8'));
+      assert.deepEqual(five(sc.accepts[sc.accepts.length - 1]), five(a), `${pattern}${a.on_request}`);
+      compared++;
+    }
   }
   // the rails the 402 offers today, Algorand among them, are all in the manifest (the defect F1 fixes)
   const nets = new Set(manifest.get('GET /api/sol-price').map((a) => a.network));

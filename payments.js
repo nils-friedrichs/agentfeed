@@ -238,7 +238,30 @@ function routeAccepts(p, { network, payTo, EVM, ALGO, HF, railPrice, railPayTo, 
   ];
 }
 
-function buildPaymentLayer() {
+/**
+ * A facilitator client that advertises only the kinds `keep` allows (R10 Phase A). @x402/core gives each (version, network,
+ * scheme) to the first client whose /supported lists it, so filtering /supported is what decides routing: each new
+ * facilitator sees only its own networks, and CDP never sees theirs. verify/settle pass through untouched.
+ */
+function onlyKinds(client, keep) {
+  return new Proxy(client, {
+    get(target, prop) {
+      if (prop === 'getSupported') {
+        return async (...a) => {
+          const s = await target.getSupported(...a);
+          return { ...s, kinds: (s.kinds || []).filter((k) => keep(k)) };
+        };
+      }
+      const v = target[prop];
+      return typeof v === 'function' ? v.bind(target) : v;
+    },
+  });
+}
+
+// deps.makeClient(config) builds each HTTP facilitator client (default: HTTPFacilitatorClient). Tests pass stubs here, so the
+// routing below is tested as written rather than re-implemented in a test.
+function buildPaymentLayer(deps = {}) {
+  const makeClient = deps.makeClient || ((cfg) => new HTTPFacilitatorClient(cfg));
   missingMeta.length = 0;
   // FAIL FAST, like mcp.js. These used to default to devnet and to
   // https://facilitator.x402.org -- a host that no longer resolves (checked
@@ -253,7 +276,7 @@ function buildPaymentLayer() {
   const payTo = process.env.PAY_TO;
   if (!payTo) throw new Error('PAY_TO missing from .env (treasury address)');
 
-  const facilitator = new HTTPFacilitatorClient(
+  const facilitator = makeClient(
     facilitatorUrl.includes('api.cdp.coinbase.com')
       ? require('@coinbase/x402').facilitator
       : { url: facilitatorUrl },
@@ -263,10 +286,17 @@ function buildPaymentLayer() {
   // facilitator. One list (lib/rails.js) for every surface that names a rail.
   const { evmRails, railPrice, railPayTo } = require('./lib/rails');
   const EVM = evmRails();
-  // CDP first: it keeps every network it supports. Circle is added only for Arc, and its
-  // client advertises Arc alone (lib/circle-arc.js).
+  // R10 Phase A: the networks added after the first thirteen accepts (lib/ext-rails.js), each with its own facilitator.
+  const { extRails, extAccept, extAllowed, FACILITATOR_URLS, UV, CDP, PAYAI } = require('./lib/ext-rails');
+  const EXT = extRails();
+  const extNets = (f) => new Set(EXT.filter((r) => r.facilitator === f).map((r) => r.network));
+  // CDP first: it keeps every network it supports, minus the networks another facilitator owns (Arc: Circle; Algorand:
+  // GoPlausible; the Ultravioleta and PayAI rows). CDP lists none of them today, so this changes no routing; it makes sure a
+  // later CDP addition cannot take one over. Circle is added only for Arc, and its client advertises Arc alone (lib/circle-arc.js).
   const arc = EVM.find((r) => r.facilitator === 'circle');
-  const facilitators = [facilitator];
+  const algoOwned = require('./lib/rails').algoRail();
+  const notCdp = new Set([...EXT.filter((r) => r.facilitator !== CDP).map((r) => r.network), ...(arc ? [arc.network] : []), ...(algoOwned ? [algoOwned.network] : [])]);
+  const facilitators = [notCdp.size ? onlyKinds(facilitator, (k) => !notCdp.has(k.network)) : facilitator];
   if (arc) {
     const { CircleArcFacilitator } = require('./lib/circle-arc');
     const c = new CircleArcFacilitator();
@@ -287,10 +317,20 @@ function buildPaymentLayer() {
   // R5 A4: Algorand mainnet through GoPlausible, after CDP and Circle (no overlap).
   const { algoRail } = require('./lib/rails');
   const ALGO = algoRail();
-  if (ALGO) facs = [...facs, new HTTPFacilitatorClient({ url: ALGO.facilitator })];
+  // GoPlausible also lists Base and Solana (its /supported on 2026-10-14); CDP comes first and keeps them, and this filter keeps
+  // GoPlausible to Algorand whatever it lists later.
+  if (ALGO) facs = [...facs, onlyKinds(makeClient({ url: ALGO.facilitator }), (k) => k.network === ALGO.network)];
+  // R10 Phase A: Ultravioleta and PayAI, after every existing facilitator, each advertising exact v2 on its own networks only.
+  for (const f of [UV, PAYAI]) {
+    const nets = extNets(f);
+    if (!nets.size) continue;
+    facs = [...facs, onlyKinds(makeClient({ url: FACILITATOR_URLS[f] }), (k) => k.x402Version === 2 && k.scheme === 'exact' && nets.has(k.network))];
+    console.log(`[payments] ${f}: ${[...nets].join(',')}`);
+  }
   const resourceServer = new x402ResourceServer(facs)
     .register(network, new ExactSvmScheme());
   for (const r of EVM) resourceServer.register(r.network, new ExactEvmScheme());
+  for (const r of EXT) resourceServer.register(r.network, new ExactEvmScheme());
   if (ALGO) resourceServer.register(ALGO.network, new ExactAvmScheme());
   if (HF.batch) {
     for (const { network: n, scheme } of batchSchemes(HF.batch, require('./db').db)) resourceServer.register(n, scheme);
@@ -300,9 +340,16 @@ function buildPaymentLayer() {
     .registerExtension(bazaarResourceServerExtension);
 
   const routes = {};
+  const { acceptsFor } = require('./lib/rail-ctx');
+  const inDefault = new Set(EXT.filter((r) => r.inDefault).map((r) => r.network));
+  const isDefault = (n) => inDefault.has(n);
   for (const [pattern, p] of Object.entries(PRICES)) {
+    // Today's accepts stay first and in the same order (Agent402 pays the first exact accept on a chain); the ext rows follow.
+    const base = routeAccepts(p, { network, payTo, EVM, ALGO, HF, railPrice, railPayTo, hfAccepts });
+    const ext = EXT.filter((r) => extAllowed(r, p.usd)).map((r) => extAccept(r, p.usd, payToEvm));
     routes[pattern] = {
-      accepts: routeAccepts(p, { network, payTo, EVM, ALGO, HF, railPrice, railPayTo, hfAccepts }),
+      // read per request (lib/rail-ctx.js): every accept outside a request, the default list or one asked-for network inside one
+      get accepts() { return acceptsFor(base, ext, isDefault); },
       description: challengeDesc(challengeLead(p)), // challenge only; p.desc stays whole
       // NO errors key. MEASURED 2026-09-26: @x402/extensions strips unknown keys
       // from the discovery extension config, and sanitizeResourceServiceMetadata
@@ -327,9 +374,9 @@ function buildPaymentLayer() {
   const middleware = paymentMiddleware(routes, resourceServer);
 
   const withOutput = Object.keys(routes).filter((r) => BAZAAR_META[r] && BAZAAR_META[r].output).length;
-  console.log(`[payments] x402 active: network=${networkName} facilitator=${facilitatorUrl} payTo=${payTo} evm=${EVM.map((r) => r.name).join(',') || 'none'}${ALGO ? ' algorand=GoPlausible' : ''}`);
+  console.log(`[payments] x402 active: network=${networkName} facilitator=${facilitatorUrl} payTo=${payTo} evm=${EVM.map((r) => r.name).join(',') || 'none'}${ALGO ? ' algorand=GoPlausible' : ''} ext=${EXT.length} (${EXT.filter((r) => r.inDefault).map((r) => r.name).join(',')} in every 402, ${EXT.filter((r) => !r.inDefault).length} on request)`);
   console.log(`[payments] bazaar: ${Object.keys(routes).length} routes declared, ${withOutput} with an output example, icon=${ICON_URL}`);
-  return { middleware, PRICES, network: networkName, resourceServer, routes, facilitator, HF, ALGO };
+  return { middleware, PRICES, network: networkName, resourceServer, routes, facilitator, HF, ALGO, EXT };
 }
 
 // decode X-PAYMENT-RESPONSE / PAYMENT-RESPONSE header (base64 JSON) for audit logging
@@ -343,4 +390,4 @@ function decodeSettlement(res) {
   }
 }
 
-module.exports = { buildPaymentLayer, routeAccepts, decodeSettlement, PRICES, TAGS, BAZAAR_META, ICON_URL, CHALLENGE_DESC_MAX, challengeDesc, challengeLead, splitFirst };
+module.exports = { buildPaymentLayer, routeAccepts, onlyKinds, decodeSettlement, PRICES, TAGS, BAZAAR_META, ICON_URL, CHALLENGE_DESC_MAX, challengeDesc, challengeLead, splitFirst };

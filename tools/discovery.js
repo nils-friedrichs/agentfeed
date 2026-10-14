@@ -19,7 +19,7 @@
 'use strict';
 
 const ORIGIN = 'https://x402.ochinimus.app';
-const { httpRails, httpRailNames } = require('../lib/rails');
+const { httpRails, httpRailNames, onRequestSentence } = require('../lib/rails');
 // Address poisoning: on 2026-07-31 a lookalike of the Base treasury (same first
 // and last characters as 0x22DB...76e6) sent zero-value transfers to this
 // service's biggest buyer, so a wallet's history now shows a fake payee next to
@@ -419,7 +419,7 @@ function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp, tempo }) {
       'x-guidance': [
         'Every route is a GET that returns JSON. No API key or account is needed to pay per call.',
         ...(keyLine(PRICES) ? [keyLine(PRICES)] : []),
-        `Paid routes answer 402 with the challenge twice: x402 v2, base64 JSON in the PAYMENT-REQUIRED response header, for every rail; and x402 v1, the JSON body {x402Version: 1, accepts}, for Base and Solana. Pay with a PAYMENT-SIGNATURE header (x402 v2) or an X-PAYMENT header (x402 v1, Base or Solana; an X-PAYMENT carrying a v2 payload is read as PAYMENT-SIGNATURE). USDC on ${httpRailNames('Solana mainnet')}.`,
+        `Paid routes answer 402 with the challenge twice: x402 v2, base64 JSON in the PAYMENT-REQUIRED response header, for every rail; and x402 v1, the JSON body {x402Version: 1, accepts}, for Base and Solana. Pay with a PAYMENT-SIGNATURE header (x402 v2) or an X-PAYMENT header (x402 v1, Base or Solana; an X-PAYMENT carrying a v2 payload is read as PAYMENT-SIGNATURE). USDC on ${httpRailNames('Solana mainnet')}.${onRequestSentence() ? ` ${onRequestSentence()}` : ''}`,
         PAYTO_WARNING,
         'Response shape is always { "tool": "<name>", "data": { ... }, "paid": true }.',
         'Before paying, GET /api/sample/<route> for that route\'s real captured response, free. GET /api/sample lists them.',
@@ -519,7 +519,8 @@ function buildLlmsTxt({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo }) {
     '',
     `${rails.length} rails are accepted on every paid route:`,
     '',
-    ...rails.map((r) => `- ${r.name} (${r.network}) — USDC`),
+    ...rails.map((r) => `- ${r.name} (${r.network}) — ${r.symbol}`),
+    ...(onRequestSentence() ? ['', onRequestSentence()] : []),
     '',
     ...(tempo && tempo.active ? [`MPP tempo/charge is offered on every paid route, in WWW-Authenticate of the same 402: Tempo mainnet (chain 4217), OUSD or USDC.e at the route's price, pull mode only (sign the transfer, the server broadcasts it after a response below 400, so a failed call is never charged; no fee payer).`, ''] : []),
     ...(mpp && mpp.active ? [`MPP (solana/charge) is also offered on the same 402, in WWW-Authenticate, for: ${mpp.routes.join(', ')}.`, ''] : []),
@@ -602,7 +603,7 @@ function buildSkillMd({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo }) {
     '',
     'Call the route. Unpaid, it answers **402** with the x402 v2 challenge base64-encoded in the **`PAYMENT-REQUIRED` response header** (every rail); the JSON body is the same challenge as **x402 v1** (`{x402Version: 1, accepts}`, Base and Solana). Pay and repeat the request with a `PAYMENT-SIGNATURE` header (v2) or an `X-PAYMENT` header (v1; an `X-PAYMENT` carrying a v2 payload is read as `PAYMENT-SIGNATURE`).',
     '',
-    `${rails.length} rails are accepted on every paid route: ${rails.map((r) => `**USDC on ${r.name}** (\`${r.network}\`)`).join(', ')}.`,
+    `${rails.length} rails are accepted on every paid route: ${rails.map((r) => `**${r.symbol} on ${r.name}** (\`${r.network}\`)`).join(', ')}.${onRequestSentence() ? ` ${onRequestSentence()}` : ''}`,
     '',
     `**${PAYTO_WARNING}**`,
     ...(tempo && tempo.active ? ['', `**MPP** (\`tempo/charge\`) is offered alongside x402 on every paid route: Tempo mainnet (chain 4217), OUSD or USDC.e, pull mode only, broadcast by the server after a response below 400.`] : []),
