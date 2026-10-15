@@ -7,8 +7,8 @@
 // machine-readable; docs/SOURCES.md). HTML goes through Mozilla Readability on a linkedom DOM,
 // then turndown; a page Readability cannot isolate falls back to its whole body. PDFs are
 // parsed by unpdf in a child process capped at 128 MB heap and 20 s.
-// A blocked, malformed or non-HTML/PDF URL is a 400; the target failing is a 503; neither is
-// billed. A page that converts is billed even when it says little.
+// A blocked, malformed or non-HTML/PDF URL, or a PDF with no text layer, is a 400; the target failing is a 503;
+// neither is billed. A page that converts is billed even when it says little.
 'use strict';
 const path = require('path');
 const { spawn } = require('child_process');
@@ -113,6 +113,8 @@ async function getPdfMarkdown(p = {}) {
   const r = await safeFetch(u.href, { maxBytes: MAX_PDF, userAgent: UA, accept: 'application/pdf', okTypes: ['application/pdf', 'application/octet-stream', 'binary/octet-stream', 'application/x-pdf'] });
   if (r.body.subarray(0, 5).toString('latin1') !== '%PDF-') throw bad('the document is not a PDF (no %PDF- header)');
   const doc = await pdfText(r.body);
+  // A scan or image-only export has pages but no text layer: nothing to convert, so a 400 (the settlement is cancelled) and not a charged empty answer.
+  if (!(doc.text || []).some((t) => /\S/.test(String(t)))) throw bad('this PDF has no text layer (for example a scanned image), so there is no text to convert');
   const pages = (doc.text || []).map((t, i) => `## Page ${i + 1}\n\n${String(t).replace(/[ \t]+\n/g, '\n').trim()}`);
   let md = pages.join('\n\n').trim();
   const truncated = md.length > MAX_MD;

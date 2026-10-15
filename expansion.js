@@ -298,7 +298,7 @@ const EXP = [
     run: (a) => WM.getWebMarkdown(a) },
   { name: 'get_pdf_markdown', route: 'GET /api/pdf-markdown', usd: 0.01,
     tags: ['pdf', 'markdown', 'documents', 'research', 'rag'],
-    desc: 'Use when an agent needs the text of a PDF as markdown. Returns the text of the one PDF URL you pass, page by page as markdown, with title, page count and word count. http or https, 10 MB, 10 s; robots.txt honoured and private addresses refused. A file that is not a PDF, or an unreachable URL, is never charged.',
+    desc: 'Use when an agent needs the text of a PDF as markdown. Returns the text of the one PDF URL you pass, page by page as markdown, with title, page count and word count. http or https, 10 MB, 10 s; robots.txt honoured and private addresses refused. A file that is not a PDF, a PDF with no text layer (a scan), or an unreachable URL, is never charged.',
     schema: { url: z.string().describe('the PDF to convert: an absolute http or https URL') },
     run: (a) => WM.getPdfMarkdown(a) },
   { name: 'get_sec_filings', route: 'GET /api/sec-filings', usd: 0.005,
