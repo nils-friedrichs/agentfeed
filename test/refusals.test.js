@@ -53,6 +53,10 @@ async function run(mode, { path = '/api/priced', headers = {} } = {}) {
       res.status(402).setHeader('PAYMENT-RESPONSE', b64({ success: false, errorReason: 'insufficient_funds', payer: EVM_FROM, transaction: '', network: 'eip155:8453' }));
       return res.json({});
     }
+    if (mode === 'nomatch') { // @x402/core findMatchingRequirements: nothing we offer equals the client's `accepted`
+      res.status(402).setHeader('PAYMENT-REQUIRED', b64({ x402Version: 2, error: 'No matching payment requirements', accepts: [] }));
+      return res.json({});
+    }
     if (mode === 'threw') return res.status(402).json({}); // the catch in paymentMiddleware
     if (mode === 'unread') { // extractPayment() returned null: the plain challenge
       res.status(402).setHeader('PAYMENT-REQUIRED', b64({ x402Version: 2, error: 'Payment required', accepts: [] }));
@@ -88,7 +92,7 @@ test('x402 verify refusal: one row, the verifier reason, the payer from the auth
   assert.equal(r.status, 'payment_refused');
   assert.equal(r.tool, 'get_priced');
   assert.equal(r.payer_wallet, EVM_FROM);
-  assert.equal(r.error_msg, 'verification refused: invalid_exact_evm_payload_signature');
+  assert.equal(r.error_msg, 'verification refused: invalid_exact_evm_payload_signature; offered x402Version=2 scheme=exact network=eip155:8453 asset=- amount=- payTo=- maxTimeoutSeconds=- resource=-');
   assert.equal(r.req_path, '/api/priced');
   assert.equal(r.method, 'GET');
   assert.equal(r.ip, '203.0.113.7');
@@ -100,7 +104,7 @@ test('x402 verify refusal: one row, the verifier reason, the payer from the auth
 test('x402 settle refusal: the settlement reason', async () => {
   const { rows } = await run('settle', { headers: { 'payment-signature': evmPayment } });
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].error_msg, 'settlement refused: insufficient_funds');
+  assert.equal(rows[0].error_msg, 'settlement refused: insufficient_funds; offered x402Version=2 scheme=exact network=eip155:8453 asset=- amount=- payTo=- maxTimeoutSeconds=- resource=-');
 });
 
 test('a settlement that threw is still one row, and says it has no reason', async () => {
@@ -135,6 +139,50 @@ test('the plain challenge answered to an unreadable payment says so', async () =
   const { rows } = await run('unread', { headers: { 'payment-signature': 'bm90LWEtcGF5bWVudA==' } });
   assert.equal(rows.length, 1);
   assert.match(rows[0].error_msg, /^verification refused: Payment required \(the payment header was not a decodable x402 v2 PAYMENT-SIGNATURE/);
+});
+
+// R13 item 2 (15 Oct 2026): wallet 0xbd5308... was refused "No matching payment requirements" twice (rows 13442 and 13844) and the row
+// kept only that sentence. The recorder now also logs what the client says it is paying, by named public fields only.
+const TESTNET_PAYMENT = (over = {}) => b64({
+  x402Version: 2,
+  resource: { url: 'https://x402.ochinimus.app/api/token-risk/%7Bmint%7D?secret=1#frag', description: 'x', mimeType: 'application/json' },
+  accepted: { scheme: 'exact', network: 'eip155:84532', asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', amount: '10000', payTo: '0x1111111111111111111111111111111111111111', maxTimeoutSeconds: 60, extra: { name: 'USDC', version: '2' }, ...over },
+  payload: { signature: `0x${'cd'.repeat(65)}`, authorization: { from: EVM_FROM, to: '0x1111111111111111111111111111111111111111', value: '10000', validAfter: '0', validBefore: '1792080000', nonce: `0x${'ef'.repeat(32)}` } },
+});
+
+test('a refused payment records what the client offered: network, asset, amount, payTo, timeout, resource path', async () => {
+  const { rows } = await run('nomatch', { headers: { 'payment-signature': TESTNET_PAYMENT() } });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].error_msg,
+    'verification refused: No matching payment requirements; offered x402Version=2 scheme=exact network=eip155:84532 asset=0x036CbD53842c5426634e7929541eC2318f3dCF7e amount=10000 payTo=0x1111111111111111111111111111111111111111 maxTimeoutSeconds=60 resource=/api/token-risk/%7Bmint%7D');
+});
+
+test('the offered fields never carry the signature, the authorization or the resource query', async () => {
+  for (const mode of ['nomatch', 'verify', 'settle', 'threw']) {
+    const { rows } = await run(mode, { headers: { 'payment-signature': TESTNET_PAYMENT() } });
+    assert.equal(rows.length, 1, mode);
+    const all = JSON.stringify(rows[0]);
+    assert.match(rows[0].error_msg, /offered x402Version=2 scheme=exact network=eip155:84532 /, mode);
+    for (const secret of ['cdcdcdcd', 'efefefef', '1792080000', 'validBefore', 'nonce', 'secret=1', 'frag']) assert.ok(!all.includes(secret), `${mode}: ${secret}`);
+  }
+});
+
+test('a field the client did not send reads "-", hostile values are cut and stripped, a v1 payment shows scheme and network only', async () => {
+  const hostile = TESTNET_PAYMENT({ network: 'eip155:1\n"; DROP TABLE', amount: 'x'.repeat(500), payTo: { not: 'a string' }, maxTimeoutSeconds: undefined });
+  const { rows } = await run('verify', { headers: { 'payment-signature': hostile } });
+  const m = rows[0].error_msg;
+  assert.ok(!/[\n"]/.test(m), 'no newline or quote');
+  assert.match(m, /payTo=- maxTimeoutSeconds=- /);
+  assert.ok(m.length < 700, `bounded: ${m.length}`);
+  const v1 = b64({ x402Version: 1, scheme: 'exact', network: 'base-sepolia', payload: { signature: '0xdead', authorization: { from: EVM_FROM, value: '10000' } } });
+  const r1 = await run('verify', { headers: { 'x-payment': v1 } });
+  assert.match(r1.rows[0].error_msg, /offered x402Version=1 scheme=exact network=base-sepolia asset=- amount=- payTo=- maxTimeoutSeconds=- resource=-$/);
+});
+
+test('an unreadable header adds no offered fields (its shape is already logged)', async () => {
+  const { rows } = await run('nomatch', { headers: { 'payment-signature': 'not base64 json' } });
+  assert.equal(rows.length, 1);
+  assert.ok(!/offered /.test(rows[0].error_msg));
 });
 
 test('a payment that is accepted writes no refusal row', async () => {
