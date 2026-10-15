@@ -206,7 +206,8 @@ test('F7: the HEAD guard lets a free /api route through and meters it with GET; 
   assert.ok(guard.includes('req.headOnly = true;') && guard.includes("req.method = 'GET';"), 'a paid HEAD still becomes the plain challenge');
   assert.ok(!/status\(405\)/.test(guard) && !guard.includes('head_probe'), 'no 405, no head_probe row');
   assert.ok(/\n  next\(\);\n\}\);/.test(guard), 'a free or unknown /api HEAD goes on');
-  assert.ok(src.includes("(req.method === 'HEAD' && req.path.startsWith('/api/') && !isPricedPath(req.path))"), 'metered with GET');
+  const limiter = fs.readFileSync(path.join(ROOT, 'lib', 'ratelimit.js'), 'utf8'); // the limiter moved out of server.js in R13
+  assert.ok(limiter.includes("(req.method === 'HEAD' && req.path.startsWith('/api/') && !isPricedPath(req.path))"), 'metered with GET');
   const err = require('../error-responses.json').shared.find((e) => e.status === 405);
   assert.ok(/HEAD on a free route answers like GET/.test(err.when));
 });

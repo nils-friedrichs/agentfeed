@@ -45,124 +45,13 @@ if (!process.env.HELIUS_API_KEY) {
   process.exit(1);
 }
 
-// ---- rate limit: fixed window, keyed on the Cloudflare-observed client
-//
-// NOT per-IP, despite what this comment used to say. The key below is the
-// LEFTMOST element of X-Forwarded-For, which is whatever the caller sent:
-// Cloudflare appends the observed client address rather than replacing the
-// header, so the leftmost value is attacker-controlled. Measured: rotating
-// that header returns 200 for every request at any limit, while a fixed value
-// throttles normally. A caller who rotates it is unthrottled today, and that
-// is true at 60 as it is at 240 -- this raise does not widen that hole, and
-// does not close it either. Fixing the key needs to know which of
-// CF-Connecting-IP / X-Forwarded-For / X-Real-IP actually survives the
-// cloudflared tunnel; guessing risks collapsing every caller into one bucket
-// and throttling the world together. That measurement ships first, then the
-// fix, as a separate deploy.
-//
-// TWO BUCKETS, BECAUSE A DISCOVERY PROBER IS NOT A CUSTOMER.
-//
-// Why 240 on the metered bucket: one `pay catalog check` probe is one request
-// per manifest route, and pay-skills CI probes on PR and again on merge. Two
-// probes in one minute exceeded 60, and the second came back 429 -- which their
-// prober classifies as `not_paywalled`, so the endpoint reads as broken rather
-// than busy.
-//
-// Why a SECOND bucket: a registry prober walks every route across every verb.
-// Measured on 2026-09-25, x402scan's register prober from 18.207.201.85 and
-// 100.61.166.111 (UA "node") fanned out over GET, HEAD, OPTIONS, DELETE and the
-// rest in two to three seconds. Only the HEADs left a row -- a 402 never
-// reaches a handler, so an unpaid GET writes nothing -- but the bucket counted
-// every one of them, and the run tripped the limit on `DELETE
-// /api/orderbook-walls`. x402scan then recorded every route it had not reached
-// yet as "did not return a 402", which is why it registered 30 of the 52 paid
-// routes and skipped orderbook-walls onward, liq-pulse, perp, funding-pulse and
-// price among them.
-//
-// A verb sweep is cheap for us and valuable to us: HEAD is answered by a 405
-// before any handler, and OPTIONS, PUT, PATCH and DELETE match no route at all.
-// None of them can reach a paid tool or an upstream. So they get their own,
-// much wider bucket, and the narrow one guards only what actually costs
-// something to serve: GET, which is the whole paid surface, and POST /mcp,
-// which is the MCP rail. Both still 429 with Retry-After, and both still log
-// once per window rather than turning a flood into a write storm.
-//
-// The /telegraph mirror was removed on 2026-09-19, so there is no longer a
-// second, unmetered surface to meter separately. telegraph.js stays on disk;
-// only its mount is gone.
-const buckets = new Map();
-const LIMIT = 240;           // GET, and POST /mcp: the surface that costs us work
-const OTHER_LIMIT = 2400;    // HEAD/OPTIONS/PUT/PATCH/DELETE: cannot reach a handler
-const WINDOW_MS = 60_000;
-app.use((req, res, next) => {
-  // Key on CF-Connecting-IP. Cloudflare sets it from the connection it
-  // terminated, a caller cannot forge it through the edge, and it is the only
-  // address header that survives the tunnel -- measured on this box:
-  //
-  //   cf-connecting-ip : present
-  //   x-forwarded-for  : present, but APPENDED to whatever the caller sent, so
-  //                      its leftmost element is attacker-controlled
-  //   x-real-ip        : absent
-  //
-  // Fallback is the raw socket peer, NOT req.ip: `trust proxy` makes req.ip
-  // derive from X-Forwarded-For, so req.ip is spoofable by exactly the header
-  // this stops trusting. Measured -- with a req.ip fallback, rotating
-  // X-Forwarded-For still won a fresh bucket every request.
-  const ip = req.headers['cf-connecting-ip'] || req.socket.remoteAddress || req.ip;
-  // Assigned before any early return: the HEAD guard and every logCall read
-  // req.callerIp, including on the throttled path.
-  req.callerIp = ip;
-  // A request with an ACTIVE prepaid key is metered by that key's own bucket (keys.identify, rate_per_min), not by the
-  // address, so a partner gateway behind one IP can be given more with ops/key-admin.mjs set-rate. Unkeyed requests, and
-  // every method keys.identify does not meter, keep this bucket exactly as before.
-  if (req.afKey && req.afKey.active && (req.method === 'GET' || (req.method === 'POST' && req.path === '/mcp'))) return next();
-  const now = Date.now();
-  let b = buckets.get(ip);
-  if (!b || now - b.windowStart > WINDOW_MS) {
-    b = { windowStart: now, metered: 0, other: 0, meteredLogged: false, otherLogged: false, headLogged: false };
-    buckets.set(ip, b);
-  }
-  // The HEAD guard below logs once per window off this same bucket.
-  req.rateBucket = b;
-  // GET is the entire paid surface; POST /mcp is the MCP rail. A HEAD on a free
-  // /api route runs that route's handler like a GET (R10 F7), so it is metered
-  // with GET. Everything else is answered before any handler and is counted
-  // separately, HEAD on a paid route included (it only ever gets the challenge).
-  const metered = req.method === 'GET' || (req.method === 'POST' && req.path === '/mcp')
-    || (req.method === 'HEAD' && req.path.startsWith('/api/') && !isPricedPath(req.path));
-  const field = metered ? 'metered' : 'other';
-  const limit = metered ? LIMIT : OTHER_LIMIT;
-  const loggedFlag = metered ? 'meteredLogged' : 'otherLogged';
-  b[field]++;
-  if (b[field] > limit) {
-    // Tell a well-behaved caller when to come back. Without this a prober has
-    // nothing to back off on and reads the 429 as a verdict about the endpoint
-    // rather than about its own pace.
-    const retryAfter = Math.max(1, Math.ceil((b.windowStart + WINDOW_MS - now) / 1000));
-    res.set('Retry-After', String(retryAfter));
-    // Throttling was invisible: the 429 returned before anything reached the
-    // database, so there was no record of how often callers get refused. Log
-    // ONCE per key per window -- a flood must not become a write storm. Same
-    // shape as the head_probe rows written until R10, and it reuses the existing
-    // `bad_request` status rather than inventing a value this table's readers
-    // (afwatch, the solwatch MCP x402_revenue tool) do not know.
-    if (!b[loggedFlag]) {
-      b[loggedFlag] = true;
-      logCall({
-        tool: 'rate_limited', status: 'bad_request', ip,
-        error_msg: `rate limit: ${limit} req/min exceeded on the ${metered ? 'GET + POST /mcp' : 'other-method'} bucket (retry after ${retryAfter}s)`,
-        req_path: req.path, user_agent: req.headers['user-agent'], method: req.method,
-      });
-    }
-    return res.status(429).json({ error: `rate limit: ${limit} req/min`, retry_after: retryAfter });
-  }
-  next();
-});
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, b] of buckets) if (now - b.windowStart > WINDOW_MS * 2) buckets.delete(ip);
-}, 120_000).unref();
+// ---- rate limit: lib/ratelimit.js. Fixed one-minute window per Cloudflare-observed address, four buckets: GET + POST /mcp (240),
+// other verbs (2400), discovery documents (120) and unpaid challenges on priced paths (1200); the reasons and the numbers are
+// there. isPricedPath is defined below, and read at request time.
+const { makeRateLimiter } = require('./lib/ratelimit');
+const rateLimiter = makeRateLimiter({ logCall, isPricedPath: (p) => isPricedPath(p), presentsPayment: require('./lib/keys').presentsPayment });
+app.use(rateLimiter.middleware);
+setInterval(rateLimiter.sweep, 120_000).unref();
 
 // ---- HEAD guard (must sit BEFORE the x402 layer)
 // @x402 route matching is verb-exact: a pattern 'GET /api/x' never matches a

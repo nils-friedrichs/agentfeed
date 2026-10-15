@@ -167,7 +167,7 @@ test('server.js: the middleware order the key rail depends on', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   const at = (s) => { const i = src.indexOf(s); assert.ok(i >= 0, `server.js lost: ${s}`); return i; };
   const identify = at('app.use(keys.identify);');
-  const limiter = at('const buckets = new Map();');
+  const limiter = at('app.use(rateLimiter.middleware);'); // lib/ratelimit.js (R13); the buckets themselves moved with it
   const headGuard = at("if (req.method !== 'HEAD' || !req.path.startsWith('/api/')) return next();");
   const getOnly = at('app.use(compat.makeGetOnly({ PRICES }));');
   const canon = at('const QUERY_ALIASABLE');
@@ -185,7 +185,7 @@ test('server.js: the middleware order the key rail depends on', () => {
     assert.ok(new RegExp(`skipForKey\\(\\s*${mw.replace('.', '\\.')}`).test(src), `${mw} skips a key-paid request`);
   }
   assert.ok(/skipForKey\(mpp\.gate\('GET \/api\/sol-price'\)\)/.test(src) && /skipForKey\(mpp\.gate\('GET \/api\/btc-price'\)\)/.test(src), 'the MPP solana gates skip a key-paid request');
-  assert.ok(/req\.afKey && req\.afKey\.active/.test(src), 'a valid key skips the IP bucket');
+  assert.ok(/req\.afKey && req\.afKey\.active/.test(fs.readFileSync(path.join(__dirname, '..', 'lib', 'ratelimit.js'), 'utf8')), 'a valid key skips the IP bucket (lib/ratelimit.js)');
   assert.ok(src.indexOf("app.get('/api/keys/balance', keys.balance);") < src.indexOf('const paymentLayer') || src.indexOf("app.get('/api/keys/balance', keys.balance);") < at('let paymentLayer = null;'), 'the free balance route is mounted above the payment layer');
   assert.ok(src.indexOf("app.get('/keys',") > 0, 'the buy page is mounted');
   assert.ok(src.includes('await initMcp(app, keys);'), 'MCP receives the key store');
