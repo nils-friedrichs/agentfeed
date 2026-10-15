@@ -56,7 +56,8 @@ const key = 'afk_' + b58(crypto.randomBytes(32));
 fs.writeFileSync('agentfeed.key', key + '\n', { mode: 0o600 });           // saved BEFORE paying
 const hash = crypto.createHash('sha256').update(key).digest('hex');
 
-const pay = wrapFetchWithPaymentFromConfig(fetch, { schemes: [{ network: 'eip155:8453', client: new ExactEvmScheme(privateKeyToAccount(process.argv[2])) }] });
+// @x402/fetch refuses any payment over $1 by default; raise the cap to the pack you buy ($20 here, $25 for the bot pass)
+const pay = wrapFetchWithPaymentFromConfig(fetch, { schemes: [{ network: 'eip155:8453', client: new ExactEvmScheme(privateKeyToAccount(process.argv[2])) }], spendControls: { maxAmountPerPayment: '$25' } });
 const res = await pay(`https://x402.ochinimus.app/api/keys/buy-trial?key_hash=${hash}&prefix=${key.slice(4, 12)}`);
 console.log(res.status, (await res.json()).data);                         // { prefix, credit_usd, balance_usd, status: 'active', ... }
 ```
@@ -69,6 +70,53 @@ and returns it **once** in `data.key`; store it then, it is never shown again.
 NOFX's beginner onboarding creates a Base USDC wallet for claw402 and shows its private key once ("Private key, back it
 up now"; `POST /api/onboarding/beginner` returns it again, and NOFX writes it to its `.env` as `CLAW402_WALLET_KEY`).
 If you hold that key, pass it to the script in (a): the same USDC that pays claw402 buys the AgentFeed key.
+
+### (c) From a Solana wallet, or another rail
+
+The 402 of every purchase route lists the same price on Solana, Base, Polygon, Arbitrum, Arc, Algorand, Optimism, Monad and
+Avalanche, so a Solana-only buyer pays in USDC on Solana (the facilitator pays the network fee: the wallet needs USDC, no SOL).
+The same script as (a), with the Solana scheme; `pass` is the bot pass below, or use `trial`, `1`, `5` or `20`:
+
+```bash
+npm i @x402/fetch @x402/svm @solana/kit
+```
+
+```js
+// buy-agentfeed-key-solana.mjs: node buy-agentfeed-key-solana.mjs ./solana-keypair.json pass
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+import { createKeyPairSignerFromBytes } from '@solana/kit';
+import { toClientSvmSigner } from '@x402/svm';
+import { ExactSvmScheme } from '@x402/svm/exact/client';
+import { wrapFetchWithPaymentFromConfig } from '@x402/fetch';
+
+const [keypairPath, pack = 'pass'] = process.argv.slice(2);
+const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const b58 = (b) => { let x = BigInt('0x' + b.toString('hex')), s = ''; while (x > 0n) { s = B58[Number(x % 58n)] + s; x /= 58n; } return s; };
+const key = 'afk_' + b58(crypto.randomBytes(32));
+fs.writeFileSync('agentfeed.key', key + '\n', { mode: 0o600 });           // saved BEFORE paying
+const hash = crypto.createHash('sha256').update(key).digest('hex');
+
+const keypair = await createKeyPairSignerFromBytes(Uint8Array.from(JSON.parse(fs.readFileSync(keypairPath, 'utf8'))));
+// @x402/fetch refuses any payment over $1 by default; raise the cap to the pack you buy ($20 here, $25 for the bot pass)
+const pay = wrapFetchWithPaymentFromConfig(fetch, { schemes: [{ network: 'solana:*', client: new ExactSvmScheme(toClientSvmSigner(keypair)) }], spendControls: { maxAmountPerPayment: '$25' } });
+const res = await pay(`https://x402.ochinimus.app/api/keys/buy-${pack}?key_hash=${hash}&prefix=${key.slice(4, 12)}`);
+console.log(res.status, (await res.json()).data);                         // { prefix, status: 'active', ... }
+```
+
+A payment client with a spend cap has to allow the price of the pack. `@x402/fetch` 2.28 does by default only up to **$1** per
+payment, so without the `spendControls` line above it throws `All payment requirements were rejected by
+spendControls.maxAmountPerPayment` before sending anything: that is the $5 and $20 packs and the $25 pass, on every rail. Its
+default list of assets also leaves out USDC on Optimism (`eip155:10`): to pay there, add it under `spendControls.allowedAssets`.
+
+### The bot pass
+
+`GET /api/keys/buy-pass` is **$25 flat for 30 days**, good only on `/api/liq-feed` (and the MCP tool `get_liq_feed`), nothing
+drawn per call, one call per 10 seconds. The 30 days start when the payment settles. `GET /api/keys/balance` with the key
+shows the expiry (`status`, `pass.expires_at`, `pass.days_left`). After that the key answers 401 `this bot pass expired on
+<date>` with `buy: /api/keys/buy-pass`; on any other route it answers 403 naming `/api/liq-feed`; a call inside the 10 seconds
+is a 429 with `Retry-After`, never billed. A pass cannot be topped up: buy another when it ends. The same two scripts buy it
+(`pass` / `buy-pass`); the browser page at <https://x402.ochinimus.app/keys> buys it from an EVM wallet on Base.
 
 ## 2. Add the two External Data Sources
 

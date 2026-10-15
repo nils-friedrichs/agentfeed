@@ -219,6 +219,10 @@ test('text: the keys sentence mentions the pass only when the pass route is in t
   assert.match(s, /30-day bot pass for \/api\/liq-feed is \$25 flat/);
   assert.match(s, /\$1\)|\(\$1[;,)]/);
   assert.doesNotMatch(s, /\$25[,;]/, 'the pass is not listed as a pack');
+  // R13: a stock @x402/fetch 2.28 client refuses any payment over $1 (spendControls.maxAmountPerPayment), so the sentence says so for the dearer purchases only
+  assert.match(s, /refuses a payment over \$1 until its spend cap is raised \(spendControls\.maxAmountPerPayment\), which the \$25 purchase needs\.$/);
+  assert.match(keysSentence({ 'GET /api/keys/buy-1': { usd: 1 }, 'GET /api/keys/buy-5': { usd: 5 }, 'GET /api/keys/buy-20': { usd: 20 }, 'GET /api/keys/buy-pass': { usd: 25 } }), /which the \$5, \$20, \$25 purchases need\.$/);
+  assert.doesNotMatch(keysSentence({ 'GET /api/keys/buy-1': { usd: 1 } }), /spend cap/, 'nothing over $1 is sold: nothing to warn about');
   const ex = exampleBody('buy_key_pass');
   assert.match(ex.key, /^afk_x+$/);
   assert.deepEqual(ex.pass.routes, ['/api/liq-feed']);
