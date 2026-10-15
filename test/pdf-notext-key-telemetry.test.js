@@ -4,6 +4,7 @@
 //        facilitator, so settle calls can be counted), the prepaid-key rail and the real lib/tool.js wrapper. Only the network
 //        fetch (lib/safe-fetch.js) is stubbed; the PDF parse is the real unpdf child process.
 //   #94: a call paid with a prepaid key now records user_agent and req_path on its 'key' row.
+//   item 3 (15 Oct, round 2): a call paid over x402 records them on its 'paid' row the same way (path as asked, no query).
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -47,6 +48,7 @@ const WM = require('../tools/webmd');
 const { makeKeys } = require('../lib/keys');
 const { makeTool } = require('../lib/tool');
 const { hfUsd } = require('../lib/hf');
+const compat = require('../lib/compat');
 
 const NET = 'eip155:8453';
 const PAYTO = '0x' + '22'.repeat(20);
@@ -56,6 +58,7 @@ const unb64 = (s) => JSON.parse(Buffer.from(String(s), 'base64').toString('utf8'
 const PRICES = {
   'GET /api/pdf-markdown': { usd: 0.01, tool: 'get_pdf_markdown' },
   'GET /api/thing': { usd: 0.01, tool: 'get_thing' },
+  'GET /api/p/:id': { usd: 0.01, tool: 'get_p' },
 };
 
 async function boot() {
@@ -78,10 +81,17 @@ async function boot() {
   app.use(K.identify);
   app.use(K.purchaseGuard);
   app.use(K.charge);
+  app.use(compat.stripNetworkSuffix); // the real |network suffix handler, as in server.js
+  app.use((req, _res, next) => { // the shape of server.js's query alias: /api/p?id=x is routed as /api/p/x
+    if (req.method === 'GET' && req.path === '/api/p' && typeof req.query.id === 'string') req.url = `/api/p/${encodeURIComponent(req.query.id)}`;
+    next();
+  });
   app.use((req, res, next) => { if (req.keyPaid) return next(); return gate(req, res, next); });
   const { tool } = makeTool({ paymentsOn: true, PRICES, decodeSettlement: (res) => { const raw = res.getHeader('payment-response'); return raw ? unb64(raw) : null; }, logCall });
   app.get('/api/pdf-markdown', tool('get_pdf_markdown', 0.01, (req) => WM.getPdfMarkdown(req.query))); // the same call expansion.js makes
   app.get('/api/thing', tool('get_thing', 0.01, () => ({ ok: true })));
+  app.get('/api/p/:id', tool('get_p', 0.01, (req) => ({ id: req.params.id })));
+  app.get('/api/freebie', tool('get_freebie', 0, () => ({ free: true })));
   const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const get = (p, headers = {}) => fetch(base + p, { headers });
@@ -169,12 +179,35 @@ test('#94 key rail: the calls row records user_agent and req_path (path only, no
   assert.ok(!JSON.stringify(s.rows).includes('secret-query'), 'the query string is not recorded');
 });
 
-test('#94 the x402 rail rows are untouched: no user_agent or req_path added on a paid call', async (t) => {
+test('item 3: x402 rail: a paid row records user_agent and req_path (path only, no query); the query string and the payment signature appear in no row', async (t) => {
   const s = await boot(); t.after(s.close);
-  assert.equal((await s.pay('/api/thing')).status, 200);
+  const r = await s.pay('/api/thing?token=secret-q', { 'user-agent': 'agent-x402/2.0 (+https://example.test)' });
+  assert.equal(r.status, 200);
   await flush();
   const paid = s.rows.filter((x) => x.status === 'paid');
   assert.equal(paid.length, 1);
-  assert.equal('user_agent' in paid[0], false);
-  assert.equal('req_path' in paid[0], false);
+  assert.equal(paid[0].tool, 'get_thing');
+  assert.equal(paid[0].req_path, '/api/thing');
+  assert.equal(paid[0].user_agent, 'agent-x402/2.0 (+https://example.test)');
+  assert.ok(!JSON.stringify(s.rows).includes('secret-q'), 'the query string is not recorded');
+  assert.ok(paid[0].tx_sig && paid[0].payer_wallet, 'the settlement fields are still there');
+});
+
+test('item 3: x402 rail: the path is the one asked for, before an alias rewrite; a |network suffix keeps the suffixed path as before', async (t) => {
+  const s = await boot(); t.after(s.close);
+  assert.equal((await s.pay('/api/p?id=xyz')).status, 200); // routed internally as /api/p/xyz
+  assert.equal((await s.pay('/api/thing|eip155:8453')).status, 200);
+  await flush();
+  const paid = s.rows.filter((x) => x.status === 'paid');
+  assert.deepEqual(paid.map((x) => [x.tool, x.req_path]), [['get_p', '/api/p'], ['get_thing', '/api/thing|eip155:8453']]);
+});
+
+test('item 3: a free row is unchanged, no user_agent and no req_path', async (t) => {
+  const s = await boot(); t.after(s.close);
+  assert.equal((await s.get('/api/freebie', { 'user-agent': 'free-caller/1' })).status, 200);
+  await flush();
+  const free = s.rows.filter((x) => x.status === 'free');
+  assert.equal(free.length, 1);
+  assert.equal('user_agent' in free[0], false);
+  assert.equal('req_path' in free[0], false);
 });

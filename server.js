@@ -750,8 +750,10 @@ const { initMcp } = require('./mcp');
   }
   app.listen(PORT, () => {
     console.log(`agentfeed up on :${PORT} (x402: ${x402Network})`);
-    // build the manifest's accepts (R10 F1) before the first crawler asks; a failure here only means the first request builds it
-    setTimeout(() => { manifestAccepts().then((m) => console.log(`[manifest] accepts built for ${m.size} routes`)).catch((e) => console.log(`[manifest] not built yet: ${e.message}`)); }, 5000).unref();
+    // build the manifest's accepts (R10 F1) before the first crawler asks, once every facilitator has reported its /supported
+    // (lib/manifest.js startupManifest: polls the resource server, never calls initialize() again, 60 s cap). Not reporting only
+    // means the first discovery request builds it.
+    require('./lib/manifest').startupManifest({ getLayer: () => paymentLayer, manifestAccepts }).catch((e) => console.log(`[manifest] startup build crashed: ${e.message}`));
     // the first signal-board call per process scans seven days of the liquidation tape (~1 s, once); do it now, not on a paid call
     setTimeout(() => { require('./tools/signals').getSignalBoard({ n: 1 }).then(() => console.log('[signals] baseline warm')).catch((e) => console.log(`[signals] baseline not warm yet: ${e.message}`)); }, 3000).unref();
   });

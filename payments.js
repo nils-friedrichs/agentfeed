@@ -376,7 +376,15 @@ function buildPaymentLayer(deps = {}) {
   const withOutput = Object.keys(routes).filter((r) => BAZAAR_META[r] && BAZAAR_META[r].output).length;
   console.log(`[payments] x402 active: network=${networkName} facilitator=${facilitatorUrl} payTo=${payTo} evm=${EVM.map((r) => r.name).join(',') || 'none'}${ALGO ? ' algorand=GoPlausible' : ''} ext=${EXT.length} (${EXT.filter((r) => r.inDefault).map((r) => r.name).join(',')} in every 402, ${EXT.filter((r) => !r.inDefault).length} on request)`);
   console.log(`[payments] bazaar: ${Object.keys(routes).length} routes declared, ${withOutput} with an output example, icon=${ICON_URL}`);
-  return { middleware, PRICES, network: networkName, resourceServer, routes, facilitator, HF, ALGO, EXT };
+  // One probe per facilitator in `facs`, with a network only it serves: lib/manifest.js waitForFacilitators reads the resource
+  // server for these before the startup manifest build, so the build waits for every facilitator's /supported without a second initialize().
+  const facilitatorProbes = [
+    { name: 'cdp', network },
+    ...(arc ? [{ name: 'circle', network: arc.network }] : []),
+    ...(ALGO ? [{ name: 'goplausible', network: ALGO.network }] : []),
+    ...[UV, PAYAI].filter((f) => extNets(f).size).map((f) => ({ name: f, network: [...extNets(f)][0] })),
+  ];
+  return { middleware, PRICES, network: networkName, resourceServer, routes, facilitator, HF, ALGO, EXT, facilitatorProbes };
 }
 
 // decode X-PAYMENT-RESPONSE / PAYMENT-RESPONSE header (base64 JSON) for audit logging
