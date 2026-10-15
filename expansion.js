@@ -77,6 +77,10 @@ const KEYBUY = (k) => {
   const usd = KEYLIB.PACKS[k];
   return `${k === 'trial' ? 'Trial key' : 'Prepaid key'}: ${money(usd)} of credit for the AgentFeed routes, for bots that can set an HTTP header but cannot pay x402 per call (n8n, Freqtrade, Hummingbot, scripts, gateways). One payment on any exact rail returns an API key (afk_...) once, or, with key_hash=<sha256 hex of a key you generated>, registers your own key without the server ever seeing it. Send it as X-AgentFeed-Key (or Authorization: Bearer) on any paid GET: each call draws half the route's x402 price (minimum $0.0005) from the balance. GET /api/keys/balance reads it free. Usage credit, non-refundable, no expiry. Exact rails only: no half-price batch or Gateway accept on this route.`;
 };
+const KEYPASS = () => {
+  const P = KEYLIB.PASS;
+  return `Bot pass: ${money(P.usd)} flat for ${P.days} days of unlimited calls to ${P.allow.join(', ')} (cross-venue liquidation pressure in 5-second buckets, one call every 10 seconds), for bots that can set an HTTP header but cannot pay x402 per call (Hummingbot, Freqtrade, n8n, scripts, gateways). One payment on any exact rail returns an API key (afk_...) once, or, with key_hash=<sha256 hex of a key you generated>, registers your own key without the server ever seeing it. Send it as X-AgentFeed-Key (or Authorization: Bearer) on ${P.allow.join(', ')}: nothing is drawn per call, and the pass is refused on every other route. It starts when the payment settles and ends ${P.days} days later; GET /api/keys/balance shows the expiry, free. Non-refundable, cannot be topped up. Exact rails only: no half-price batch or Gateway accept on this route.`;
+};
 const KEYTOP = (k) => {
   const usd = KEYLIB.TOPUPS[k];
   return `Top up a prepaid key by ${money(usd)}: send the key as X-AgentFeed-Key and pay once on any exact rail; the balance grows when the payment settles, and the response is only delivered after it did. Needs an active key. Usage credit, non-refundable, no expiry. Exact rails only: no half-price batch or Gateway accept on this route.`;
@@ -401,6 +405,11 @@ const EXP = [
     desc: KEYBUY('20'),
     schema: KEYSCHEMA,
     run: (a, req) => keys().buy(a, req, 20) },
+  { name: 'buy_key_pass', route: 'GET /api/keys/buy-pass', usd: KEYLIB.PASS.usd, noHf: true, mcp: false,
+    tags: ['api-key', 'prepaid', 'bots', 'pass', 'liquidations'],
+    desc: KEYPASS(),
+    schema: KEYSCHEMA,
+    run: (a, req) => keys().buy(a, req, KEYLIB.PASS.usd, { pass: KEYLIB.PASS }) },
   { name: 'topup_key_5', route: 'GET /api/keys/topup-5', usd: 5, noHf: true, mcp: false,
     tags: ['api-key', 'prepaid', 'bots', 'credit'],
     desc: KEYTOP('5'),

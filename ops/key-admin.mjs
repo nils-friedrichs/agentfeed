@@ -5,6 +5,7 @@
 //   node ops/key-admin.mjs revoke <prefix>
 //   node ops/key-admin.mjs set-rate <prefix> <n>            requests per minute, 1-6000
 //   node ops/key-admin.mjs grant <usd> --label <x> [--out <file>]
+//   node ops/key-admin.mjs grant-pass <days> --label <x> [--out <file>]     a comp bot pass: good only on /api/liq-feed, no balance
 //
 // grant makes a comp or partner key (a gateway such as claw402, or a proof run), active at once, sold_micro 0, so it
 // never reads as revenue. The key is printed ONCE to this terminal; with --out it is written to <file> (mode 600) and
@@ -18,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const Database = require('better-sqlite3');
-const { makeKeyStore, toUsd } = require('../lib/keys');
+const { makeKeyStore, toUsd, PASS } = require('../lib/keys');
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DB = process.env.AGENTFEED_DB || path.join(here, '..', 'agentfeed.db');
@@ -27,7 +28,7 @@ const flag = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 
 const die = (msg) => { console.error(msg); process.exit(1); };
 const iso = (ms) => (ms ? new Date(ms).toISOString().replace('.000Z', 'Z') : '-');
 
-if (!cmd || !['list', 'revoke', 'set-rate', 'grant'].includes(cmd)) die('usage: key-admin.mjs list | revoke <prefix> | set-rate <prefix> <n> | grant <usd> --label <x> [--out <file>]');
+if (!cmd || !['list', 'revoke', 'set-rate', 'grant', 'grant-pass'].includes(cmd)) die('usage: key-admin.mjs list | revoke <prefix> | set-rate <prefix> <n> | grant <usd> --label <x> [--out <file>] | grant-pass <days> --label <x> [--out <file>]');
 if (!fs.existsSync(DB)) die(`no database at ${DB}`);
 const db = new Database(DB);
 db.pragma('busy_timeout = 5000');
@@ -44,11 +45,11 @@ const label = (r) => r.prefix || `#${r.key_hash.slice(0, 7)}`;
 
 if (cmd === 'list') {
   const rows = store.list();
-  const cols = ['prefix', 'status', 'balance', 'sold', 'spent', 'calls', 'rate', 'created', 'last_used', 'buyer', 'label'];
+  const cols = ['prefix', 'status', 'balance', 'sold', 'spent', 'calls', 'rate', 'created', 'last_used', 'buyer', 'label', 'expires', 'allow'];
   console.log(cols.join('\t'));
   for (const r of rows) {
     console.log([label(r), r.status, toUsd(r.balance_micro), toUsd(r.sold_micro), toUsd(r.spent_micro), r.calls, r.rate_per_min, iso(r.created), iso(r.last_used),
-      r.buyer ? String(r.buyer).slice(0, 12) : '-', r.label || '-'].join('\t'));
+      r.buyer ? String(r.buyer).slice(0, 12) : '-', r.label || '-', iso(r.expires_at), r.allow || '-'].join('\t'));
   }
   const active = rows.filter((r) => r.status === 'active');
   console.log(`# ${rows.length} keys, ${active.length} active, outstanding $${toUsd(active.reduce((a, r) => a + r.balance_micro, 0))}`);
@@ -62,6 +63,23 @@ if (cmd === 'list') {
   if (!Number.isInteger(n) || n < 1 || n > 6000) die('rate must be an integer from 1 to 6000 requests per minute');
   store.setRate(r.key_hash, n);
   console.log(`${label(r)} rate_per_min ${r.rate_per_min} -> ${n}`);
+} else if (cmd === 'grant-pass') {
+  const days = Number(args[0]);
+  if (!Number.isInteger(days) || days < 1 || days > 365) die('grant-pass takes a number of days from 1 to 365');
+  const lbl = flag('--label');
+  if (!lbl) die('grant-pass needs --label <x> (who or what the pass is for)');
+  const out = flag('--out');
+  if (out && fs.existsSync(out)) die(`${out} exists; refusing to overwrite a key file`);
+  const key = store.grantPass({ days, allow: PASS.allow, label: lbl });
+  const prefix = key.slice(4, 12);
+  if (out) {
+    fs.writeFileSync(out, key + '\n', { mode: 0o600 });
+    fs.chmodSync(out, 0o600);
+    console.log(`granted a ${days}-day bot pass (${PASS.allow.join(', ')}) to ${lbl}: prefix ${prefix}, key written to ${out} (mode 600, ${key.length} chars)`);
+  } else {
+    console.log(`granted a ${days}-day bot pass (${PASS.allow.join(', ')}) to ${lbl}: prefix ${prefix}`);
+    console.log(`key (shown once, not stored anywhere): ${key}`);
+  }
 } else if (cmd === 'grant') {
   const usd = Number(args[0]);
   if (!Number.isFinite(usd) || usd <= 0 || usd > 100) die('grant takes a USD amount above 0 and at most 100');

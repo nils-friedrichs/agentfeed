@@ -14,20 +14,20 @@ const express = require('express');
 const HAVE_BOX = fs.existsSync('/opt/agentfeed/liquidations.db') && fs.existsSync('/opt/overhang/overhang.db');
 const skip = HAVE_BOX ? false : 'needs the box databases (/opt/agentfeed/liquidations.db, /opt/overhang/overhang.db)';
 
-const KEY_ROUTES = ['GET /api/keys/buy-trial', 'GET /api/keys/buy-1', 'GET /api/keys/buy-5', 'GET /api/keys/buy-20', 'GET /api/keys/topup-5', 'GET /api/keys/topup-20'];
+const KEY_ROUTES = ['GET /api/keys/buy-trial', 'GET /api/keys/buy-1', 'GET /api/keys/buy-5', 'GET /api/keys/buy-20', 'GET /api/keys/buy-pass', 'GET /api/keys/topup-5', 'GET /api/keys/topup-20'];
 const SIGNAL_ROUTES = ['GET /api/signal-board', 'GET /api/coin-signal/:coin'];
 
-test('price table: the eight routes at the briefed prices, only the six key routes are noHf', { skip }, () => {
+test('price table: the nine routes at the briefed prices, only the seven key routes are noHf', { skip }, () => {
   const { PRICES } = require('../payments');
   const want = { 'GET /api/signal-board': [0.01, 'get_signal_board'], 'GET /api/coin-signal/:coin': [0.004, 'get_coin_signal'],
-    'GET /api/keys/buy-trial': [0.25, 'buy_key_trial'], 'GET /api/keys/buy-1': [1, 'buy_key_1'], 'GET /api/keys/buy-5': [5, 'buy_key_5'], 'GET /api/keys/buy-20': [20, 'buy_key_20'],
+    'GET /api/keys/buy-trial': [0.25, 'buy_key_trial'], 'GET /api/keys/buy-1': [1, 'buy_key_1'], 'GET /api/keys/buy-5': [5, 'buy_key_5'], 'GET /api/keys/buy-20': [20, 'buy_key_20'], 'GET /api/keys/buy-pass': [25, 'buy_key_pass'],
     'GET /api/keys/topup-5': [5, 'topup_key_5'], 'GET /api/keys/topup-20': [20, 'topup_key_20'] };
   for (const [route, [usd, tool]] of Object.entries(want)) {
     assert.ok(PRICES[route], route);
     assert.equal(PRICES[route].usd, usd, route);
     assert.equal(PRICES[route].tool, tool, route);
   }
-  assert.deepEqual(Object.entries(PRICES).filter(([, p]) => p.noHf).map(([r]) => r).sort(), [...KEY_ROUTES].sort(), 'noHf is exactly the six key routes');
+  assert.deepEqual(Object.entries(PRICES).filter(([, p]) => p.noHf).map(([r]) => r).sort(), [...KEY_ROUTES].sort(), 'noHf is exactly the seven key routes');
   for (const r of SIGNAL_ROUTES) assert.ok(!PRICES[r].noHf, `${r} keeps the high-frequency tier`);
   assert.ok(!PRICES['GET /api/keys/balance'], 'the balance check is free and not in the price table');
 });
@@ -75,7 +75,7 @@ test('challenge: every priced route keeps its "Use when" sentence inside the 400
   assert.deepEqual(bad, [], 'routes whose challenge description lost its when-to-use question');
 });
 
-test('MCP: the two signal tools are listed, the six key routes are not tools', { skip }, () => {
+test('MCP: the two signal tools are listed, the seven key routes are not tools', { skip }, () => {
   const { TOOL_DEFS } = require('../mcp');
   const names = TOOL_DEFS.map((d) => d.name);
   assert.ok(names.includes('get_signal_board') && names.includes('get_coin_signal'));

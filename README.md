@@ -90,6 +90,7 @@ the service publishes it.
 
 | Tool | Price | Route |
 |---|---|---|
+| `buy_key_pass` | $25 | `/api/keys/buy-pass` |
 | `buy_key_20` | $20 | `/api/keys/buy-20` |
 | `topup_key_20` | $20 | `/api/keys/topup-20` |
 | `buy_key_5` | $5 | `/api/keys/buy-5` |
@@ -446,7 +447,7 @@ All of them were paid from our own test wallets.
 
 ## 90 tools (83 paid data routes + 7 free) & pricing
 
-**83 paid + 7 free**, 90 total on the MCP rail (the six prepaid-key routes below are HTTP only). Every call is metered individually in USDC over
+**83 paid + 7 free**, 90 total on the MCP rail (the seven prepaid-key routes below are HTTP only). Every call is metered individually in USDC over
 x402 — no bundles, no minimums. Calling all 83 paid data tools once costs **$1.137**. Counts and prices are summed from
 [the live manifest](https://x402.ochinimus.app/.well-known/x402.json), read 2026-10-15.
 
@@ -631,7 +632,7 @@ Both read only data this service records itself (the Hyperliquid OI sampler, the
 
 - **What a row is.** One row per symbol per closed 5-second bucket that held a liquidation: `longs` and `shorts` (USD, base quantity and VWAP of the long and the short positions liquidated, all venues combined into one figure), `dominant` (`longs`, `shorts` or `balanced`: the side holding at least 60% of the bucket) and `pressure` (the bucket's USD against the symbol's own typical USD per 5 seconds, its median hour of the last 7 days floored at $5,000 an hour). Numbers are rounded to 2 significant figures (3 for the VWAP) and no count of prints is returned.
 - **The cursor.** Send `since=<ms>` once (up to 24 h back; without it the first call begins 2 minutes back), then send each answer's `next` back unchanged. A bucket is served only after it has been closed for 10 seconds, every closed bucket is served exactly once, and `has_more` tells you to ask again at once. Up to 20 symbols and 500 rows a call (`symbols=BTC,ETH,SOL`, or `BTC-USDT` style).
-- **What it costs a bot.** $0.001 a call over x402, $0.0005 on a [prepaid key](#prepaid-keys-for-bots-that-cannot-pay-x402). One call per 10 seconds per key (a refused poll is a 429 with `Retry-After`, never billed). At a 30-second poll that is 2,880 calls and **$1.44 a day** on a key; at 60 seconds, $0.72.
+- **What it costs a bot.** $0.001 a call over x402, $0.0005 on a [prepaid key](#prepaid-keys-for-bots-that-cannot-pay-x402). One call per 10 seconds per key (a refused poll is a 429 with `Retry-After`, never billed). At a 30-second poll that is 2,880 calls and **$1.44 a day** on a key; at 60 seconds, $0.72. A [bot pass](#prepaid-keys-for-bots-that-cannot-pay-x402) ($25 flat for 30 days, this route only) is $0.83 a day at any poll rate.
 
 ```bash
 curl -s -H "X-AgentFeed-Key: $AGENTFEED_KEY" \
@@ -691,8 +692,9 @@ A bot that can set an HTTP header but cannot sign an x402 payment (n8n, Freqtrad
 - **Buy once**, with any x402 client, on any exact rail the route offers: `GET /api/keys/buy-trial` ($0.25), `buy-1`, `buy-5`, `buy-20`. Top up with `topup-5` or `topup-20`, sending the key as the header. Or in a browser at [/keys](https://x402.ochinimus.app/keys) with a Base wallet: the page loads no library and sends nothing but the key's hash.
 - **Spend per call:** send `X-AgentFeed-Key: afk_...` (or `Authorization: Bearer afk_...`) on any paid GET or on `POST /mcp`. Each call draws **half the route's x402 price, minimum $0.0005**, from the balance; a 400, 404, 500 or 503 is never drawn. 120 requests per minute per key.
 - **Bring your own key:** generate `afk_` + base58 of 32 random bytes yourself and buy with `?key_hash=<sha256 hex>&prefix=<8 characters after afk_>`; the server registers the hash and never sees the key, and a dropped connection after payment loses nothing. Without `key_hash` the server generates the key and returns it once.
+- **Bot pass:** `GET /api/keys/buy-pass` ($25) is a different kind of key for a bot that polls `/api/liq-feed` all day: valid for 30 days from the moment its payment settles, good **only** on `/api/liq-feed` (and the MCP tool `get_liq_feed`), nothing drawn per call, still one call per 10 seconds. Every other route answers 403 to it, it cannot be topped up, and `GET /api/keys/balance` shows its routes and expiry. At a 30-second poll it costs $0.83 a day, against $1.44 a day on an ordinary key.
 - **Balance:** `GET /api/keys/balance` with the header, free.
-- **Terms:** a prepaid balance is usage credit, non-refundable, with no expiry; the key is a bearer secret (anyone holding it spends the balance); abuse means revocation. Purchase routes offer the exact accepts only, because credit bought through the half-price batch or Gateway tier would be a free 50%.
+- **Terms:** a prepaid balance is usage credit, non-refundable, with no expiry (a bot pass is a flat price, non-refundable, valid for 30 days); the key is a bearer secret (anyone holding it spends the balance); abuse means revocation. Purchase routes offer the exact accepts only, because credit bought through the half-price batch or Gateway tier would be a free 50%.
 - **In the books:** a purchase is a settled payment (status `paid`); the calls it funds are rows of status `key`, consumption of credit already counted, never revenue.
 
 ## No wallet? Use Apify Store

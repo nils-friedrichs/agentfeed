@@ -1,7 +1,7 @@
 // tools/keys-page.js — GET /keys: buy a prepaid key in the browser (R9 2b).
 //
 // The browser generates the key (afk_ + base58 of 32 random bytes, crypto.getRandomValues), sends AgentFeed only its
-// sha256 (key_hash), and pays buy-trial / buy-1 / buy-5 / buy-20 from an injected EVM wallet on Base. The payment is
+// sha256 (key_hash), and pays buy-trial / buy-1 / buy-5 / buy-20 / buy-pass from an injected EVM wallet on Base. The payment is
 // the x402 v2 `exact` EIP-3009 payload @x402/evm 2.28 builds (dist/cjs/exact/client createEIP3009Payload):
 // authorization { from, to: payTo, value: amount, validAfter: "0", validBefore: now + maxTimeoutSeconds, nonce: 32
 // random bytes }, signed as EIP-712 TransferWithAuthorization over the domain { name, version } from the accept's extra,
@@ -32,7 +32,7 @@ a{color:var(--gold)}`;
 
 const SCRIPT = `
 (function(){
-const PACKS={trial:0.25,'1':1,'5':5,'20':20};
+const PACKS={trial:0.25,'1':1,'5':5,'20':20,pass:25};
 const BASE='eip155:8453', CHAIN_HEX='0x2105', CHAIN_ID=8453;
 const B58='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 const $=(id)=>document.getElementById(id);
@@ -73,7 +73,7 @@ async function buy(){
     const body=await r.json().catch(()=>({}));
     if(r.status!==200){const h=r.headers.get('payment-response');let why=body.error||'';if(h){try{why=unb64(h).errorReason||why;}catch(e){}}throw new Error('not paid ('+r.status+')'+(why?': '+why:''));}
     $('key').textContent=key;
-    $('meta').textContent='prefix '+body.data.prefix+', balance $'+body.data.balance_usd+', '+body.data.rate_per_min+' requests a minute';
+    $('meta').textContent=body.data.pass?'prefix '+body.data.prefix+', bot pass for '+body.data.pass.routes.join(', ')+' for '+body.data.pass.days+' days from now, '+body.data.rate_per_min+' requests a minute':'prefix '+body.data.prefix+', balance $'+body.data.balance_usd+', '+body.data.rate_per_min+' requests a minute';
     $('result').style.display='block';
     say('paid and active. Copy the key now: this page is the only place it exists.','ok');
   }catch(e){say(String(e&&e.message||e),'err');}
@@ -97,6 +97,7 @@ const HTML = `<!doctype html>
 <label><input type="radio" name="pack" value="1">$1</label>
 <label><input type="radio" name="pack" value="5">$5</label>
 <label><input type="radio" name="pack" value="20">$20</label>
+<label><input type="radio" name="pack" value="pass">bot pass $25: 30 days, /api/liq-feed only, no per-call charge</label>
 </div>
 <button id="buy">Buy with USDC on Base</button>
 <div id="status"></div>

@@ -21,6 +21,7 @@ const QUESTIONS = {
   buy_key_1: 'How can a bot that cannot pay x402 buy $1 of AgentFeed credit?',
   buy_key_5: 'How can a bot that cannot pay x402 buy $5 of AgentFeed credit?',
   buy_key_20: 'How can a bot that cannot pay x402 buy $20 of AgentFeed credit?',
+  buy_key_pass: 'How can a bot that cannot pay x402 get 30 days of the AgentFeed liquidation feed for $25?',
   topup_key_5: 'How do I add $5 to an AgentFeed prepaid key?',
   topup_key_20: 'How do I add $20 to an AgentFeed prepaid key?',
   get_peg_deviation: 'How far is a tokenized stock trading from its underlying?',
