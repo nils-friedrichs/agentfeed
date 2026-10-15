@@ -682,7 +682,7 @@ A bot that can set an HTTP header but cannot sign an x402 payment (n8n, Freqtrad
 
 ## No wallet? Use Apify Store
 
-Four AgentFeed data sets are also Apify Store actors. The Store bills in fiat through Apify, so no wallet is needed.
+Five AgentFeed data sets are also Apify Store actors. The Store bills in fiat through Apify, so no wallet is needed.
 
 | Actor | Returns | Price |
 |---|---|---|
@@ -690,6 +690,7 @@ Four AgentFeed data sets are also Apify Store actors. The Store bills in fiat th
 | [Scholarly Paper Search: OpenAlex, Google Scholar alternative](https://apify.com/ochinimus/scholarly-paper-search) | Papers from OpenAlex's CC0 data, by search or DOI | $0.003 per paper |
 | [US Company Filings by Ticker: 10-K, 10-Q, 8-K, Form 4](https://apify.com/ochinimus/us-company-filings) | Recent public filings from the SEC's EDGAR system, per ticker | $0.002 per filing |
 | [PDF to Markdown: clean text from any PDF URL](https://apify.com/ochinimus/pdf-to-markdown) | The text of a PDF as markdown, page by page | $0.01 per PDF |
+| [AI Data Extractor: web page or PDF to JSON by your schema](https://apify.com/ochinimus/ai-data-extractor) | Structured JSON from a web page or PDF, for the fields you name; a field the page does not state is null | $0.02 per page |
 
 Prices are per result, plus Apify's $0.00005 start fee per run.
 
