@@ -668,7 +668,7 @@ above costs nothing and says so.
 ## Use it from an elizaOS agent
 
 ```bash
-npm i @seekdaseek/plugin-agentfeed   # v0.5.2 (npm latest, 2026-09-28)
+npm i @seekdaseek/plugin-agentfeed   # one action per data route; the current version is on npm
 ```
 
 Set `AGENTFEED_PRIVATE_KEY` to a funded Solana wallet and the agent pays per call automatically. Default spend cap $0.50/call (`AGENTFEED_MAX_SPEND_PER_CALL` to change).
