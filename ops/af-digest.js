@@ -318,6 +318,33 @@ async function circleAuthAlert(db, state, now, io = {}) {
   return n;
 }
 
+// ---- Apify comp keys running low. The four Apify actors spend comp keys (api_keys, label starting 'apify'); a key at 0 makes its actor fail, and
+// Apify marks an actor "under maintenance" after 3 failed daily tests. One alert per key when its balance is under KEY_LOW_MICRO, then quiet for
+// KEY_LOW_QUIET (an hour would be 24 messages a day for one unattended key). A key back above the line is forgotten, so its next drop alerts at once.
+// A failed Telegram send leaves the state alone, so the next run (5 min later) tries again. AF_KEY_LOW_MICRO overrides the line for a dry test.
+const KEY_LOW_MICRO = Number(process.env.AF_KEY_LOW_MICRO) || 5000000;   // $5
+const KEY_LOW_QUIET = 6 * 3600e3;
+async function keyLowAlert(db, state, now, io = {}) {
+  const sendFn = io.send || send, log = io.log || console.log;
+  let rows;
+  try { rows = db.prepare("SELECT prefix, label, balance_micro FROM api_keys WHERE status = 'active' AND label LIKE 'apify%' AND balance_micro < ? ORDER BY balance_micro, prefix").all(KEY_LOW_MICRO); }
+  catch { return 0; } // no api_keys table yet (lib/keys.js creates it at boot)
+  const seen = state.keyLow || (state.keyLow = {});
+  for (const p of Object.keys(seen)) if (!rows.some((r) => r.prefix === p)) delete seen[p];
+  const due = rows.filter((r) => !seen[r.prefix] || now - seen[r.prefix] >= KEY_LOW_QUIET);
+  if (!due.length) return 0;
+  const text = [
+    `AgentFeed: ${due.length} Apify comp key${due.length === 1 ? ' is' : 's are'} under ${usd(KEY_LOW_MICRO / 1e6)}, its actor fails at 0`,
+    ...due.map((r) => `  ${r.label} (${r.prefix}): ${usd(r.balance_micro / 1e6)} left`),
+    'Apify marks an actor under maintenance after 3 failed daily tests. Grant a new key and put it in that actor before it reaches 0.',
+    "balances: ssh root@167.233.69.154 'cd /opt/agentfeed && node ops/key-admin.mjs list'",
+  ].join('\n');
+  if (!(await sendFn(text))) return 0;
+  for (const r of due) seen[r.prefix] = now;
+  log(`${new Date(now).toISOString()} apify key low alert sent (${due.map((r) => r.prefix).join(', ')})`);
+  return due.length;
+}
+
 async function alert(db) {
   const now = Date.now();
   const rows = db.prepare(`SELECT ts, tool, payer_wallet, ip, user_agent, error_msg FROM calls WHERE status='payment_refused' AND NOT COALESCE(${RESYNC_SQL}, 0) AND ts >= ?`).all(now - BURST_WINDOW);
@@ -340,6 +367,7 @@ async function alert(db) {
   for (const k of Object.keys(state.alerted)) if (now - state.alerted[k] > 7 * 86400e3) delete state.alerted[k];
   try { await circleAuthAlert(db, state, now); } catch (e) { console.log(`${new Date().toISOString()} circle auth alert failed: ${String(e && e.message).slice(0, 160)}`); }
   await lateTempo(db, state, now);
+  try { await keyLowAlert(db, state, now); } catch (e) { console.log(`${new Date().toISOString()} apify key low alert failed: ${String(e && e.message).slice(0, 160)}`); }
   saveState(state);
 }
 
@@ -350,4 +378,4 @@ if (require.main === module) (async () => {
   else { console.error('usage: node ops/af-digest.js --digest [--force] [--test] | --alert [--dry]'); process.exit(1); }
 })().catch((e) => { console.log(`${new Date().toISOString()} af-digest failed: ${String(e.message).slice(0, 200)}`); process.exit(1); });
 
-module.exports = { shapeOf, yesterday, offsetMin, digestText, keysLines, circleAuthAlert, circleAuthRowsBetween, CIRCLE_AUTH_RE };
+module.exports = { shapeOf, yesterday, offsetMin, digestText, keysLines, circleAuthAlert, keyLowAlert, circleAuthRowsBetween, CIRCLE_AUTH_RE };
