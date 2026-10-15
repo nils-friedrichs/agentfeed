@@ -141,6 +141,7 @@ R5. It is based on the deployed code.
 | /api/market-state | $0.02 | DEX pools (spot), Hyperliquid (HYPE oracle, OI, basis, volatility), the top-250 accounts, our tape, snapshots | computed | — |
 | /api/trade-context | $0.01 | DEX pools; Hyperliquid funding; Hyperliquid OI and the whale net-long share; our tape | raw-banned (the tape, C7) | the tape's biggest prints |
 | /api/liquidations | $0.005 | our CEX tape (Bybit, OKX, Binance) | raw-banned | individual prints (C7: kept, see below) |
+| /api/liq-feed | $0.001 | our liquidation tape, all venues combined (C7) | computed | — (no print, no venue split, no exchange named, no print count; USD and quantity to 2 significant figures, VWAP to 3) |
 | /api/cascade, /api/cascade-scan, /api/liquidation-leaders, /api/liquidation-stats, /api/liq-history, /api/liq-heatmap, /api/cascade-history, /api/venue-liq-share | $0.01 to $0.05 | our CEX tape | raw-banned (raw?) | single MAX/MIN prints (C7) |
 | /api/liq-pulse | $0.005 | our CEX tape | computed | — |
 | /api/cascade-forecast | $0.02 | our CEX tape via caliper | computed | — |
@@ -179,6 +180,12 @@ R5. It is based on the deployed code.
   - No venue has contacted us.
 - **Smallest change that removes the raw exposure, kept for a decision:** drop size, price and usd from individual prints, and replace the MAX/MIN print fields with bucketed or rounded aggregates. The tape keeps its value (cascade detection, forecasts and splits are all computed).
 - **Decision of 12 Oct (planning chat):** keep the tape as is and record the risk here.
+- **Decision of 15 Oct (Sergiu, planning chat), task #90:** the tape also feeds a bot route, `/api/liq-feed`, as **computed buckets only**, never prints. Fixed rules:
+  - one combined figure per symbol per side across all venues: no venue split and no exchange name in the route's answer, description, tags, titles, README row, llms.txt or any PR text; the route is described as cross-venue liquidation pressure computed by AgentFeed, never as any venue's data;
+  - 5-second buckets, served only after a 10 s settle window; USD and quantity rounded to 2 significant figures and the VWAP to 3, so a lone print in a quiet bucket cannot be read back; no count of prints;
+  - the computed part per bucket: the dominant side and the pressure against the symbol's own baseline (the median hour of its last 7 days, floored at $5,000 an hour, the same floor `/api/signal-board` uses);
+  - the raw exposure of 12 Oct (`/api/liquidations`, `/api/last-liquidation`) is unchanged by this route.
+  - **Risk, unchanged in kind:** a venue could still treat derived data as derived from its Service Data; this lowers the exposure, it does not remove it. Bulk redistribution of raw prints was offered as option A and not chosen.
 
 ## Added in R5 Phase B (terms read 2026-10-12, before building)
 

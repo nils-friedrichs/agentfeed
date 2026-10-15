@@ -8836,9 +8836,132 @@
      }
     }
    }
+  },
+  "GET /api/liq-feed": {
+   "tool": "get_liq_feed",
+   "price_usd": 0.001,
+   "input": {
+    "symbols": "BTC,ETH,XRP,HYPE,SOL,DOGE,ADA,AVAX,SUI,LTC"
+   },
+   "inputSchema": {
+    "properties": {
+     "symbols": {
+      "description": "comma list of up to 20 symbols, e.g. BTC,ETH,SOL or BTCUSDT,ETHUSDT (default SOL,BTC,ETH,XRP,DOGE)",
+      "type": "string"
+     },
+     "since": {
+      "description": "first call only: start time in milliseconds since the epoch, up to 24 h back; omit to begin 2 minutes back",
+      "type": "number"
+     },
+     "next": {
+      "description": "the `next` value of the previous answer; send it back unchanged to continue with no gap and no repeat",
+      "type": "string"
+     }
+    },
+    "required": []
+   },
+   "output": {
+    "example": {
+     "tool": "get_liq_feed",
+     "data": {
+      "source": "cross-venue liquidation pressure, computed by AgentFeed",
+      "bucket_s": 5,
+      "settle_s": 10,
+      "as_of": 1792067430000,
+      "symbols": [
+       "BTCUSDT",
+       "ETHUSDT"
+      ],
+      "count": 23,
+      "has_more": false,
+      "next": "1792067430000.6087386",
+      "buckets": [
+       {
+        "t": 1792067400000,
+        "symbol": "BTCUSDT",
+        "longs": {
+         "usd": 250000,
+         "qty": 3.1,
+         "vwap": 80500
+        },
+        "shorts": null,
+        "dominant": "longs",
+        "pressure": 400
+       },
+       {
+        "t": 1792067400000,
+        "symbol": "ETHUSDT",
+        "longs": {
+         "usd": 55000,
+         "qty": 23,
+         "vwap": 2350
+        },
+        "shorts": null,
+        "dominant": "longs",
+        "pressure": 98
+       }
+      ],
+      "basis": {
+       "t": "start of the 5-second bucket in stream time: a liquidation counts in the bucket in which our recording learned of it",
+       "longs": "long positions liquidated in the bucket (USD, base quantity, VWAP across venues)",
+       "shorts": "short positions liquidated in the bucket",
+       "dominant": "the side holding at least 60% of the bucket USD, else balanced",
+       "pressure": "the bucket's total USD divided by the symbol's own typical USD per 5 seconds (its median hour over the last 7 days, floored at $5,000 an hou…",
+       "rounding": "USD, quantity and pressure to 2 significant figures, VWAP to 3; no count of prints"
+      }
+     },
+     "paid": true
+    },
+    "schema": {
+     "type": "object",
+     "properties": {
+      "tool": {
+       "type": "string"
+      },
+      "data": {
+       "type": "object",
+       "properties": {
+        "source": {
+         "type": "string"
+        },
+        "bucket_s": {
+         "type": "number"
+        },
+        "settle_s": {
+         "type": "number"
+        },
+        "as_of": {
+         "type": "number"
+        },
+        "symbols": {
+         "type": "array"
+        },
+        "count": {
+         "type": "number"
+        },
+        "has_more": {
+         "type": "boolean"
+        },
+        "next": {
+         "type": "string"
+        },
+        "buckets": {
+         "type": "array"
+        },
+        "basis": {
+         "type": "object"
+        }
+       }
+      },
+      "paid": {
+       "type": "boolean"
+      }
+     }
+    }
+   }
   }
  },
- "_outputs_recaptured_at": "2026-10-14T06:28:01.559Z",
+ "_outputs_recaptured_at": "2026-10-15T12:30:47.045Z",
  "_pruned_at": "2026-10-13T04:50:31.410Z",
  "_schemas_regenerated_at": "2026-10-13T04:50:31.953Z",
  "_outputs_dropped_at": "2026-10-13T04:50:35.546Z",

@@ -10,6 +10,7 @@ const { z } = require('zod');
 const D = require('./tools/derivs');
 const M = require('./tools/micro');
 const L = require('./tools/liqdb');
+const LF = require('./tools/liqfeed');
 const S = require('./tools/solana2');
 const P = require('./tools/peg');
 const CF = require('./tools/cascade-forecast');
@@ -346,6 +347,14 @@ const EXP = [
     desc: 'Use when an agent needs to know what is being liquidated right now. Returns the last 60 minutes across every USDT perp we record: total USD, long/short split, prints and the top 5 symbols. If our recording is stale it answers 503 and is never billed.',
     schema: {},
     run: () => EN.getLiqPulse() },
+  // task #90 (15 Oct 2026): cross-venue liquidation pressure in 5 s buckets, computed (never a print, no venue named); docs/SOURCES.md C7.
+  { name: 'get_liq_feed', route: 'GET /api/liq-feed', usd: 0.001,
+    tags: ['liquidations', 'pressure', 'realtime', 'cascade', 'bots', 'trading'],
+    desc: "Use when an agent needs liquidation pressure as it happens. Returns 5-second buckets per symbol of long and short USD liquidated across venues, the dominant side and pressure against the symbol's own baseline, from a gap-free cursor.",
+    schema: { symbols: z.string().optional().describe('comma list of up to 20 symbols, e.g. BTC,ETH,SOL or BTCUSDT,ETHUSDT (default SOL,BTC,ETH,XRP,DOGE)'),
+              since: z.number().optional().describe('first call only: start time in milliseconds since the epoch, up to 24 h back; omit to begin 2 minutes back'),
+              next: z.string().optional().describe('the `next` value of the previous answer; send it back unchanged to continue with no gap and no repeat') },
+    run: (a, req) => LF.getLiqFeed(a, req) },
   { name: 'get_funding_pulse', route: 'GET /api/funding-pulse', usd: 0.005,
     tags: ['funding', 'perps', 'screener', 'crowding', 'hyperliquid', 'trading'],
     desc: 'Use when an agent needs the most extreme funding rates right now. Returns the 5 largest absolute annualised rates across the Hyperliquid perps above a liquidity floor, each with 8h rate, open interest and 24h price move. One call, not a full screen.',

@@ -83,9 +83,9 @@ Notional uses `filled_qty × avg_fill_price` — what actually executed — not 
 
 Every paid route, cheapest question last. Generated from
 [`/.well-known/x402.json`](https://x402.ochinimus.app/.well-known/x402.json),
-read 2026-10-14 — names, prices and routes are the manifest's, not a copy kept
+read 2026-10-15 — names, prices and routes are the manifest's, not a copy kept
 in sync by hand. What each one returns is under
-[89 tools](#89-tools-82-paid-data-routes--7-free--pricing), word for word as
+[90 tools](#90-tools-83-paid-data-routes--7-free--pricing), word for word as
 the service publishes it.
 
 | Tool | Price | Route |
@@ -176,6 +176,7 @@ the service publishes it.
 | `get_fx_rates` | $0.002 | `/api/fx-rates` |
 | `get_btc_price` | $0.001 | `/api/btc-price` |
 | `get_eth_price` | $0.001 | `/api/eth-price` |
+| `get_liq_feed` | $0.001 | `/api/liq-feed` |
 | `get_sol_price` | $0.001 | `/api/sol-price` |
 | `get_spot` | $0.001 | `/api/price` |
 
@@ -443,11 +444,11 @@ Without the `spendControls` line the same client throws "All payment requirement
 
 All of them were paid from our own test wallets.
 
-## 89 tools (82 paid data routes + 7 free) & pricing
+## 90 tools (83 paid data routes + 7 free) & pricing
 
-**82 paid + 7 free**, 89 total on the MCP rail (the six prepaid-key routes below are HTTP only). Every call is metered individually in USDC over
-x402 — no bundles, no minimums. Calling all 82 paid data tools once costs **$1.136**. Counts and prices are summed from
-[the live manifest](https://x402.ochinimus.app/.well-known/x402.json), read 2026-10-14.
+**83 paid + 7 free**, 90 total on the MCP rail (the six prepaid-key routes below are HTTP only). Every call is metered individually in USDC over
+x402 — no bundles, no minimums. Calling all 83 paid data tools once costs **$1.137**. Counts and prices are summed from
+[the live manifest](https://x402.ochinimus.app/.well-known/x402.json), read 2026-10-15.
 
 The flagship is [`get_squeeze_score`](#the-moat--our-own-liquidation-tape) — a 0-100 short-squeeze / long-flush composite built from funding, crowding, OI build and the liq-skew of our exclusive tape. One number, one dime, answers "is this trade crowded and about to hurt someone."
 
@@ -489,6 +490,7 @@ Sampled every 5 minutes since 19 July 2026. Deviation is measured against the un
 | `get_liquidation_leaders` | $0.02 | `/api/liquidation-leaders` | Liquidation leaderboard: top symbols by liquidation USD right now across every USDT perp we record on Bybit, OKX and Binance, with long/short split, biggest single print and venue count. What is blowing up, ranked. |
 | `get_liquidation_stats` | $0.01 | `/api/liquidation-stats` | Liquidation stats, 1h and 24h totals for SOL, BTC, ETH, XRP and DOGE: long vs short USD split, biggest single print, and a per-exchange breakdown across Bybit, OKX and Binance. |
 | `get_liq_pulse` | $0.005 | `/api/liq-pulse` | Use when an agent needs to know what is being liquidated right now. Returns the last 60 minutes across every USDT perp we record: total USD, long/short split, prints and the top 5 symbols. If our recording is stale it answers 503 and is never billed. |
+| `get_liq_feed` | $0.001 | `/api/liq-feed` | Use when an agent needs liquidation pressure as it happens. Returns 5-second buckets per symbol of long and short USD liquidated across venues, the dominant side and pressure against the symbol's own baseline, from a gap-free cursor. |
 
 ### Derivatives
 
@@ -622,6 +624,19 @@ elsewhere they answer 451 before any payment.
 | `get_coin_signal` | $0.004 | `/api/coin-signal/:coin` | The same row for one coin plus the 15-minute cascade probability, the nearest liquidation clusters above and below price and the top 3 whale positions. |
 
 Both read only data this service records itself (the Hyperliquid OI sampler, the liquidation tape, the whale snapshot) and name every source with its `as_of`; a stale source answers 503 and is never billed. With a [prepaid key](#prepaid-keys-for-bots-that-cannot-pay-x402) they cost $0.005 and $0.002.
+
+### Liquidation pressure feed for bots
+
+`GET /api/liq-feed` is cross-venue liquidation pressure, computed by AgentFeed from its own liquidation recording and served the way a bot polls: 5-second buckets, a cursor that never skips and never repeats, and a floor price.
+
+- **What a row is.** One row per symbol per closed 5-second bucket that held a liquidation: `longs` and `shorts` (USD, base quantity and VWAP of the long and the short positions liquidated, all venues combined into one figure), `dominant` (`longs`, `shorts` or `balanced`: the side holding at least 60% of the bucket) and `pressure` (the bucket's USD against the symbol's own typical USD per 5 seconds, its median hour of the last 7 days floored at $5,000 an hour). Numbers are rounded to 2 significant figures (3 for the VWAP) and no count of prints is returned.
+- **The cursor.** Send `since=<ms>` once (up to 24 h back; without it the first call begins 2 minutes back), then send each answer's `next` back unchanged. A bucket is served only after it has been closed for 10 seconds, every closed bucket is served exactly once, and `has_more` tells you to ask again at once. Up to 20 symbols and 500 rows a call (`symbols=BTC,ETH,SOL`, or `BTC-USDT` style).
+- **What it costs a bot.** $0.001 a call over x402, $0.0005 on a [prepaid key](#prepaid-keys-for-bots-that-cannot-pay-x402). One call per 10 seconds per key (a refused poll is a 429 with `Retry-After`, never billed). At a 30-second poll that is 2,880 calls and **$1.44 a day** on a key; at 60 seconds, $0.72.
+
+```bash
+curl -s -H "X-AgentFeed-Key: $AGENTFEED_KEY" \
+  "https://x402.ochinimus.app/api/liq-feed?symbols=BTC,ETH,SOL&since=$(( $(date +%s) * 1000 - 300000 ))"
+```
 
 ### Free tasters
 

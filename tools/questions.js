@@ -27,6 +27,7 @@ const QUESTIONS = {
   get_peg_sessions: 'When in the trading day does the peg break worst?',
   get_peg_universe: 'Which tokenized stocks carry the worst off-hours peg risk?',
   get_liq_pulse: 'What is being liquidated right now?',
+  get_liq_feed: 'Which side is being liquidated across venues right now, and how hard compared with normal?',
   get_liq_history: 'How much was liquidated, bucketed over time?',
   get_liq_heatmap: 'At which price levels did leverage actually get flushed?',
   get_cascade_history: 'Which liquidation cascades already happened?',

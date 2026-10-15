@@ -327,5 +327,5 @@ async function getCoinSignal(p = {}, deps = {}) {
   });
 }
 
-module.exports = { getSignalBoard, getCoinSignal, RULES, _tapeSymbol: tapeSymbol, _resolver: resolver, _clustersAround: clustersAround, _reset: () => { _tape = null; _wh = null; _base = null; },
+module.exports = { getSignalBoard, getCoinSignal, liqBaseline, RULES, _tapeSymbol: tapeSymbol, _resolver: resolver, _clustersAround: clustersAround, _reset: () => { _tape = null; _wh = null; _base = null; },
   _setClock: (f) => { clock = f || (() => Date.now()); }, _memo: (on) => { memoOn = !!on; } };

@@ -103,6 +103,9 @@ const EXTRA_ARGS = {
   // the default 24 h window can hold no 8-K at all (a US holiday, a weekend); 72 h is the
   // documented maximum and always returns real filings
   get_sec_8k: { hours: 72 },
+  // task #90: the default 5-coin window can hold no liquidation at all in a quiet two minutes, which would publish an example of nothing;
+  // ten liquid symbols make an empty window very unlikely (the route's cursor is not in the example: it moves every call)
+  get_liq_feed: { symbols: 'BTC,ETH,XRP,HYPE,SOL,DOGE,ADA,AVAX,SUI,LTC' },
 };
 
 // R11: the published OFAC SDN list's SOL address for SHELBIT EXCHANGE (a public US government record), so the example shows a match

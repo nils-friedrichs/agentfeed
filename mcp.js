@@ -10,6 +10,7 @@ const { ExactEvmScheme } = require('@x402/evm/exact/server');
 const { SOLANA_MAINNET_CAIP2, SOLANA_DEVNET_CAIP2 } = require('@x402/svm');
 const { logCall } = require('./db');
 const { settledUsd } = require('./lib/audit');
+const { runInMcpRequest, mcpRequestRow } = require('./lib/mcp-ctx');
 const { getPrice } = require('./tools/prices');
 const { getFunding, getFundingRate } = require('./tools/funding');
 const { getFearGreed } = require('./tools/feargreed');
@@ -224,6 +225,7 @@ async function initMcp(app, keys) {
             payer_wallet: paymentPayload?.payer || settlement?.payer || null,
             tx_sig: settlement?.transaction || null,
             amount_usdc: settledUsd(paymentPayload?.accepted, def.usd), // what the payer accepted, not the list price
+            ...mcpRequestRow(), // req_path '/mcp', user_agent, method: the fields the key rail's MCP row has (lib/mcp-ctx.js)
           });
         },
       },
@@ -294,7 +296,7 @@ async function initMcp(app, keys) {
       res.on('close', () => transport.close());
       const server = buildServer(req);
       await server.connect(transport);
-      await transport.handleRequest(req, res, req.body);
+      await runInMcpRequest(req, () => transport.handleRequest(req, res, req.body));
     } catch (e) {
       console.error('[mcp] request failed:', e.message);
       if (!res.headersSent) res.status(500).json({ error: 'mcp internal error' });
