@@ -150,10 +150,10 @@ function challengeLead(p) {
     const head = OPENING[p.tool] || TOOL_TITLES[p.tool];
     if (!head) throw new Error(`payments: no opening for ${p.tool}`);
     const [what, rest] = splitFirst(entry[1]);
-    return [`${head}: ${what}`, ask, rest].filter(Boolean).join(' ');
+    return [`${head}: ${what}`, ask, rest, p.challengeNote].filter(Boolean).join(' ');
   }
   const [first, rest] = splitFirst(d);
-  return [first, ask, rest].filter(Boolean).join(' ');
+  return [first, ask, rest, p.challengeNote].filter(Boolean).join(' ');
 }
 
 /** Trim for the challenge only. Never mutates the pricing table. */

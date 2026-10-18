@@ -81,6 +81,10 @@ const KEYPASS = () => {
   const P = KEYLIB.PASS;
   return `Bot pass: ${money(P.usd)} flat for ${P.days} days of unlimited calls to ${P.allow.join(', ')} (cross-venue liquidation pressure in 5-second buckets, one call every 10 seconds), for bots that can set an HTTP header but cannot pay x402 per call (Hummingbot, Freqtrade, n8n, scripts, gateways). One payment on any exact rail returns an API key (afk_...) once, or, with key_hash=<sha256 hex of a key you generated>, registers your own key without the server ever seeing it. Send it as X-AgentFeed-Key (or Authorization: Bearer) on ${P.allow.join(', ')}: nothing is drawn per call, and the pass is refused on every other route. It starts when the payment settles and ends ${P.days} days later; GET /api/keys/balance shows the expiry, free. Non-refundable, cannot be topped up. Exact rails only: no half-price batch or Gateway accept on this route.`;
 };
+const KEYDAYPASS = () => {
+  const P = KEYLIB.DAY_PASS;
+  return `Day pass: ${money(P.usd)} flat for 24 hours of unlimited calls to ${P.allow.join(' and ')} (cross-venue liquidation pressure in 5-second buckets, and the recent liquidation tape), for bots that poll all day, can set an HTTP header, and pay by a default x402 client, which buys it as is. One payment on any exact rail returns an API key (afk_...) once, or, with key_hash=<sha256 hex of a key you generated>, registers your own key without the server ever seeing it. Send it as X-AgentFeed-Key (or Authorization: Bearer) on ${P.allow.join(' and ')}: nothing is drawn per call, and the pass is refused on every other route. It starts when the payment settles and ends 24 hours later; GET /api/keys/balance shows the expiry, free. Non-refundable, cannot be topped up. Exact rails only: no half-price batch or Gateway accept on this route.`;
+};
 const KEYTOP = (k) => {
   const usd = KEYLIB.TOPUPS[k];
   return `Top up a prepaid key by ${money(usd)}: send the key as X-AgentFeed-Key and pay once on any exact rail; the balance grows when the payment settles, and the response is only delivered after it did. Needs an active key. Usage credit, non-refundable, no expiry. Exact rails only: no half-price batch or Gateway accept on this route.`;
@@ -358,6 +362,8 @@ const EXP = [
     schema: { symbols: z.string().optional().describe('comma list of up to 20 symbols, e.g. BTC,ETH,SOL or BTCUSDT,ETHUSDT (default SOL,BTC,ETH,XRP,DOGE)'),
               since: z.number().optional().describe('first call only: start time in milliseconds since the epoch, up to 24 h back; omit to begin 2 minutes back'),
               next: z.string().optional().describe('the `next` value of the previous answer; send it back unchanged to continue with no gap and no repeat') },
+    // one line in the 402 description only (payments.challengeLead): the catalogue description stays inside its 180-255 band
+    challengeNote: () => `Heavy pollers can buy a ${money(KEYLIB.DAY_PASS.usd)} day pass (GET ${KEYLIB.DAY_PASS.path}).`,
     run: (a, req) => LF.getLiqFeed(a, req) },
   { name: 'get_funding_pulse', route: 'GET /api/funding-pulse', usd: 0.005,
     tags: ['funding', 'perps', 'screener', 'crowding', 'hyperliquid', 'trading'],
@@ -410,6 +416,12 @@ const EXP = [
     desc: KEYPASS(),
     schema: KEYSCHEMA,
     run: (a, req) => keys().buy(a, req, KEYLIB.PASS.usd, { pass: KEYLIB.PASS }) },
+  // R15: the 24-hour day pass, $1.00: the most a stock x402 client pays under its default spend cap
+  { name: 'buy_key_day_pass', route: 'GET /api/keys/buy-day-pass', usd: KEYLIB.DAY_PASS.usd, noHf: true, mcp: false,
+    tags: ['api-key', 'prepaid', 'bots', 'pass', 'liquidations'],
+    desc: KEYDAYPASS(),
+    schema: KEYSCHEMA,
+    run: (a, req) => keys().buy(a, req, KEYLIB.DAY_PASS.usd, { pass: KEYLIB.DAY_PASS }) },
   { name: 'topup_key_5', route: 'GET /api/keys/topup-5', usd: 5, noHf: true, mcp: false,
     tags: ['api-key', 'prepaid', 'bots', 'credit'],
     desc: KEYTOP('5'),
@@ -532,7 +544,7 @@ const EXP = [
 const PRICES_ADD = {};
 const TAGS_ADD = {};
 for (const t of EXP) {
-  PRICES_ADD[t.route] = { usd: t.usd, tool: t.name, desc: t.desc, ...(t.noHf ? { noHf: true } : {}) };
+  PRICES_ADD[t.route] = { usd: t.usd, tool: t.name, desc: t.desc, ...(t.noHf ? { noHf: true } : {}), ...(t.challengeNote ? { challengeNote: t.challengeNote() } : {}) };
   TAGS_ADD[t.name] = t.tags;
 }
 

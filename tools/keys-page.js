@@ -1,7 +1,7 @@
 // tools/keys-page.js — GET /keys: buy a prepaid key in the browser (R9 2b).
 //
 // The browser generates the key (afk_ + base58 of 32 random bytes, crypto.getRandomValues), sends AgentFeed only its
-// sha256 (key_hash), and pays buy-trial / buy-1 / buy-5 / buy-20 / buy-pass from an injected EVM wallet on Base. The payment is
+// sha256 (key_hash), and pays buy-trial / buy-1 / buy-5 / buy-20 / buy-pass / buy-day-pass from an injected EVM wallet on Base. The payment is
 // the x402 v2 `exact` EIP-3009 payload @x402/evm 2.28 builds (dist/cjs/exact/client createEIP3009Payload):
 // authorization { from, to: payTo, value: amount, validAfter: "0", validBefore: now + maxTimeoutSeconds, nonce: 32
 // random bytes }, signed as EIP-712 TransferWithAuthorization over the domain { name, version } from the accept's extra,
@@ -32,7 +32,7 @@ a{color:var(--gold)}`;
 
 const SCRIPT = `
 (function(){
-const PACKS={trial:0.25,'1':1,'5':5,'20':20,pass:25};
+const PACKS={trial:0.25,'1':1,'5':5,'20':20,pass:25,'day-pass':1};
 const BASE='eip155:8453', CHAIN_HEX='0x2105', CHAIN_ID=8453;
 const B58='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 const $=(id)=>document.getElementById(id);
@@ -74,8 +74,9 @@ async function buy(){
     if(r.status!==200){const h=r.headers.get('payment-response');let why=body.error||'';if(h){try{why=unb64(h).errorReason||why;}catch(e){}}throw new Error('not paid ('+r.status+')'+(why?': '+why:''));}
     $('key').textContent=key;
     const ps=body.data.pass;
-    $('meta').textContent=ps?'prefix '+body.data.prefix+', bot pass for '+ps.routes.join(', ')+' only, valid until about '+new Date(Date.now()+ps.days*864e5).toISOString().slice(0,10)+' ('+ps.days+' days from this payment), one call every 10 seconds, nothing drawn per call':'prefix '+body.data.prefix+', balance $'+body.data.balance_usd+', '+body.data.rate_per_min+' requests a minute';
-    if(ps) $('examples').textContent='curl "https://x402.ochinimus.app'+ps.routes[0]+'?symbols=BTCUSDT,ETHUSDT" -H "X-AgentFeed-Key: afk_..."\\ncurl https://x402.ochinimus.app/api/keys/balance -H "X-AgentFeed-Key: afk_..."   # shows the expiry';
+    const day=!!ps&&ps.days===1, until=ps&&new Date(Date.now()+ps.days*864e5).toISOString();
+    $('meta').textContent=ps?'prefix '+body.data.prefix+', '+(day?'day pass':'bot pass')+' for '+ps.routes.join(', ')+' only, valid until about '+(day?until.slice(0,16).replace('T',' ')+' UTC':until.slice(0,10))+' ('+(day?'24 hours':ps.days+' days')+' from this payment), '+(ps.routes.length>1?'/api/liq-feed answers one call every 10 seconds':'one call every 10 seconds')+', nothing drawn per call':'prefix '+body.data.prefix+', balance $'+body.data.balance_usd+', '+body.data.rate_per_min+' requests a minute';
+    if(ps) $('examples').textContent='curl "https://x402.ochinimus.app'+ps.routes[0]+'?symbols=BTCUSDT,ETHUSDT" -H "X-AgentFeed-Key: afk_..."'+(ps.routes.indexOf('/api/liquidations')>=0?'\\ncurl "https://x402.ochinimus.app/api/liquidations?symbol=SOLUSDT" -H "X-AgentFeed-Key: afk_..."':'')+'\\ncurl https://x402.ochinimus.app/api/keys/balance -H "X-AgentFeed-Key: afk_..."   # shows the expiry';
     $('result').style.display='block';
     say('paid and active. Copy the key now: this page is the only place it exists.','ok');
   }catch(e){say(String(e&&e.message||e),'err');}
@@ -93,20 +94,21 @@ const HTML = `<!doctype html>
 <title>AgentFeed prepaid keys</title><link rel="icon" href="/icon.png"><style>${STYLE}</style></head>
 <body>
 <h1>AgentFeed prepaid key</h1>
-<p>For bots that can send a header but cannot pay x402. Send the key as <code>X-AgentFeed-Key</code>. A prepaid pack: each call costs half the route's x402 price (minimum $0.0005). The bot pass: a flat $25 for 30 days of <code>/api/liq-feed</code> only, nothing drawn per call.</p>
+<p>For bots that can send a header but cannot pay x402. Send the key as <code>X-AgentFeed-Key</code>. A prepaid pack: each call costs half the route's x402 price (minimum $0.0005). The bot pass: a flat $25 for 30 days of <code>/api/liq-feed</code> only, nothing drawn per call. The day pass: a flat $1 for 24 hours of <code>/api/liq-feed</code> and <code>/api/liquidations</code>, nothing drawn per call.</p>
 <div class="packs">
 <label><input type="radio" name="pack" value="trial" checked>trial $0.25</label>
 <label><input type="radio" name="pack" value="1">$1</label>
 <label><input type="radio" name="pack" value="5">$5</label>
 <label><input type="radio" name="pack" value="20">$20</label>
 <label><input type="radio" name="pack" value="pass">bot pass $25: 30 days, /api/liq-feed only, no per-call charge</label>
+<label><input type="radio" name="pack" value="day-pass">day pass $1: 24 hours, /api/liq-feed and /api/liquidations, no per-call charge</label>
 </div>
 <button id="buy">Buy with USDC on Base</button>
 <div id="status"></div>
 <div id="result"><b>Your key, shown once:</b><code id="key"></code><button id="copy">Copy</button><p id="meta" class="dim"></p>
 <pre id="examples">curl https://x402.ochinimus.app/api/signal-board -H "X-AgentFeed-Key: afk_..."
 curl https://x402.ochinimus.app/api/keys/balance -H "X-AgentFeed-Key: afk_..."</pre></div>
-<p class="dim">This page runs only in your browser. It creates the key here, sends AgentFeed only the key's sha256, and asks your wallet to sign one USDC transfer authorization on Base for exactly the pack price, payable to the address in AgentFeed's fresh 402 answer. Nothing else is loaded or contacted. A prepaid balance is a usage credit: non-refundable, no expiry. The bot pass is a flat price: non-refundable, valid 30 days from the payment, <code>/api/liq-feed</code> only, and it cannot be topped up (buy another when it ends). The key is a bearer secret: anyone holding it spends the balance or uses the pass; abuse means revocation. This page pays from an EVM wallet on Base. No EVM wallet, or a Solana wallet: the same routes take USDC on Solana, Polygon, Arbitrum, Arc, Algorand, Optimism, Monad and Avalanche from any x402 client, and the key comes back in the response; script: <a href="https://github.com/seekdaseek/agentfeed/blob/main/docs/nofx.md#c-from-a-solana-wallet-or-another-rail">docs</a>.</p>
+<p class="dim">This page runs only in your browser. It creates the key here, sends AgentFeed only the key's sha256, and asks your wallet to sign one USDC transfer authorization on Base for exactly the pack price, payable to the address in AgentFeed's fresh 402 answer. Nothing else is loaded or contacted. A prepaid balance is a usage credit: non-refundable, no expiry. The bot pass is a flat price: non-refundable, valid 30 days from the payment, <code>/api/liq-feed</code> only, and it cannot be topped up (buy another when it ends). The day pass is the same for 24 hours on <code>/api/liq-feed</code> and <code>/api/liquidations</code>. The key is a bearer secret: anyone holding it spends the balance or uses the pass; abuse means revocation. This page pays from an EVM wallet on Base. No EVM wallet, or a Solana wallet: the same routes take USDC on Solana, Polygon, Arbitrum, Arc, Algorand, Optimism, Monad and Avalanche from any x402 client, and the key comes back in the response; script: <a href="https://github.com/seekdaseek/agentfeed/blob/main/docs/nofx.md#c-from-a-solana-wallet-or-another-rail">docs</a>.</p>
 <script>${SCRIPT}</script>
 </body></html>`;
 

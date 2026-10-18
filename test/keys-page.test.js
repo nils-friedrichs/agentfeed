@@ -110,3 +110,20 @@ test('keys page: a Solana-only buyer is pointed at a docs section that exists', 
   assert.ok(heads.includes(m[1]), `docs/nofx.md has a heading for #${m[1]}`);
   assert.match(require('fs').readFileSync(require('path').join(__dirname, '..', 'docs', 'nofx.md'), 'utf8'), /spendControls: \{ maxAmountPerPayment: '\$25' \}/);
 });
+
+// ---- R15: the day pass in the page
+test('keys page: buying the $1 day pass signs $1.00 to /api/keys/buy-day-pass and shows both routes and the 24 hours', async () => {
+  const data = { prefix: 'abcd1234', pass: { price_usd: 1, days: 1, routes: ['/api/liq-feed', '/api/liquidations'], starts: 'when this payment settles', expires: '24 hours after that' }, status: 'active', rate_per_min: 120 };
+  const { els, seen } = await runPage({ pack: 'day-pass', price: 1, data });
+  assert.equal(els.status.className, 'ok', els.status.textContent);
+  assert.ok(seen.urls[0].startsWith('/api/keys/buy-day-pass?key_hash='));
+  assert.equal(seen.typed.message.value, '1000000');
+  assert.match(els.meta.textContent, /^prefix abcd1234, day pass for \/api\/liq-feed, \/api\/liquidations only, valid until about 20\d\d-\d\d-\d\d \d\d:\d\d UTC \(24 hours from this payment\), \/api\/liq-feed answers one call every 10 seconds, nothing drawn per call$/);
+  assert.match(els.examples.textContent, /^curl "https:\/\/x402\.ochinimus\.app\/api\/liq-feed\?symbols=BTCUSDT,ETHUSDT" -H "X-AgentFeed-Key: afk_\.\.\."\ncurl "https:\/\/x402\.ochinimus\.app\/api\/liquidations\?symbol=SOLUSDT" -H "X-AgentFeed-Key: afk_\.\.\."\ncurl https:\/\/x402\.ochinimus\.app\/api\/keys\/balance /);
+});
+
+test('keys page: the day pass is offered with its price, term and routes, and the fine print says so', () => {
+  assert.match(HTML, /day pass \$1: 24 hours, \/api\/liq-feed and \/api\/liquidations, no per-call charge/);
+  assert.match(HTML, /The day pass is the same for 24 hours on <code>\/api\/liq-feed<\/code> and <code>\/api\/liquidations<\/code>\./);
+  assert.match(HTML, /The day pass: a flat \$1 for 24 hours of <code>\/api\/liq-feed<\/code> and <code>\/api\/liquidations<\/code>/);
+});

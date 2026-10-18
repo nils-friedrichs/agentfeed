@@ -5,7 +5,8 @@
 //   node ops/key-admin.mjs revoke <prefix>
 //   node ops/key-admin.mjs set-rate <prefix> <n>            requests per minute, 1-6000
 //   node ops/key-admin.mjs grant <usd> --label <x> [--out <file>]
-//   node ops/key-admin.mjs grant-pass <days> --label <x> [--out <file>]     a comp bot pass: good only on /api/liq-feed, no balance
+//   node ops/key-admin.mjs grant-pass <days> --label <x> [--day] [--out <file>]   a comp bot pass: good only on /api/liq-feed, no balance;
+//                                                                         --day: the day pass's routes (/api/liq-feed and /api/liquidations)
 //
 // grant makes a comp or partner key (a gateway such as claw402, or a proof run), active at once, sold_micro 0, so it
 // never reads as revenue. The key is printed ONCE to this terminal; with --out it is written to <file> (mode 600) and
@@ -19,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const Database = require('better-sqlite3');
-const { makeKeyStore, toUsd, PASS } = require('../lib/keys');
+const { makeKeyStore, toUsd, PASS, DAY_PASS } = require('../lib/keys');
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DB = process.env.AGENTFEED_DB || path.join(here, '..', 'agentfeed.db');
@@ -70,14 +71,15 @@ if (cmd === 'list') {
   if (!lbl) die('grant-pass needs --label <x> (who or what the pass is for)');
   const out = flag('--out');
   if (out && fs.existsSync(out)) die(`${out} exists; refusing to overwrite a key file`);
-  const key = store.grantPass({ days, allow: PASS.allow, label: lbl });
+  const kind = args.includes('--day') ? DAY_PASS : PASS;
+  const key = store.grantPass({ days, allow: kind.allow, label: lbl });
   const prefix = key.slice(4, 12);
   if (out) {
     fs.writeFileSync(out, key + '\n', { mode: 0o600 });
     fs.chmodSync(out, 0o600);
-    console.log(`granted a ${days}-day bot pass (${PASS.allow.join(', ')}) to ${lbl}: prefix ${prefix}, key written to ${out} (mode 600, ${key.length} chars)`);
+    console.log(`granted a ${days}-day ${kind.label} (${kind.allow.join(', ')}) to ${lbl}: prefix ${prefix}, key written to ${out} (mode 600, ${key.length} chars)`);
   } else {
-    console.log(`granted a ${days}-day bot pass (${PASS.allow.join(', ')}) to ${lbl}: prefix ${prefix}`);
+    console.log(`granted a ${days}-day ${kind.label} (${kind.allow.join(', ')}) to ${lbl}: prefix ${prefix}`);
     console.log(`key (shown once, not stored anywhere): ${key}`);
   }
 } else if (cmd === 'grant') {
