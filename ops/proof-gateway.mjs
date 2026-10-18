@@ -1,6 +1,7 @@
 // ops/proof-gateway.mjs <url> <key-file> [--deposit 0.05|auto] [--dry] — one Circle Gateway nanopayment.
-// CHAIN=base (default) or CHAIN=arc picks the chain the payer deposits on and pays from (R5 A2 proof on Base;
-// R7: Arc mainnet 5042, where gas is paid in USDC and a proof costs cents).
+// CHAIN=arc (the default and, since 18 Oct 2026, the only chain: the Base, Polygon and Arbitrum Gateway accepts were withdrawn
+// from the 402, see lib/hf.js) is the chain the payer deposits on and pays from. R5 A2 was proven on Base; R7: Arc mainnet 5042,
+// where gas is paid in USDC and a proof costs cents.
 // A Gateway buyer pays from its Gateway balance, so it first deposits USDC into the GatewayWallet once
 // (--deposit: an approve + deposit transaction pair, which needs gas at the payer: ETH on Base, USDC on Arc).
 // `--deposit auto` sizes the deposit from a LIVE gas estimate so the approve, the deposit and a couple of payments
@@ -11,11 +12,10 @@ import { GatewayClient } from '@circle-fin/x402-batching/client';
 import { encodeFunctionData, parseAbi } from 'viem';
 
 const NETS = {
-  base: { id: 'eip155:8453', label: 'Base', usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' },
   arc: { id: 'eip155:5042', label: 'Arc', usdc: '0x3600000000000000000000000000000000000000' },
 };
-const CHAIN = (process.env.CHAIN || 'base').toLowerCase();
-if (!NETS[CHAIN]) { console.log(`CHAIN must be base or arc, got ${CHAIN}`); process.exit(2); }
+const CHAIN = (process.env.CHAIN || 'arc').toLowerCase();
+if (!NETS[CHAIN]) { console.log(`CHAIN must be arc, got ${CHAIN} (the Base, Polygon and Arbitrum Gateway accepts were withdrawn on 18 Oct 2026)`); process.exit(2); }
 const NET = NETS[CHAIN];
 const GATEWAY_WALLET = '0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE';
 const SELLER = '0xa853129acf56a851f9d51cd8cb47619465260fa9';

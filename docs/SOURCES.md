@@ -421,8 +421,8 @@ Terms re-read by the Phase B session on **2026-10-13** (the planning chat had re
 ## Payment infrastructure (not data sources)
 
 CDP facilitator (x402 exact on Base, Polygon, Arbitrum, Solana and World Chain; batch-settlement on Base, Polygon,
-Arbitrum, R5), Circle Facilitator Service (Arc), Circle Gateway (nanopayments on Base, Polygon,
-Arbitrum, Arc, R5), GoPlausible (Algorand, R5), Ultravioleta (Optimism, Monad, Avalanche in every 402; Celo, HyperEVM,
+Arbitrum, R5), Circle Facilitator Service (Arc), Circle Gateway (nanopayments on Arc; on Base, Polygon,
+Arbitrum too until 18 Oct 2026, R5), GoPlausible (Algorand, R5), Ultravioleta (Optimism, Monad, Avalanche in every 402; Celo, HyperEVM,
 Unichain, Scroll, SKALE Base, BNB Chain, Ethereum and Robinhood Chain on request, R10), PayAI (Sei and X Layer on request, R10),
 Tempo RPC (MPP tempo/charge), Helius (MPP solana/charge verification). Their terms govern
 settlement, not data resale, and are out of scope here.

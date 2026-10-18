@@ -261,11 +261,11 @@ dependency, not a dev one, because a `--omit=dev` install would otherwise comple
 
 ## Half price for high-frequency callers
 
-A bot that calls often pays half the route's price, minimum $0.0005, through either of two schemes that ride the same 402 as the per-call accepts. Per-call prices do not change. The six prepaid-key purchase routes carry per-call accepts only.
+A bot that calls often pays half the route's price, minimum $0.0005, through either of two schemes that ride the same 402 as the per-call accepts. Per-call prices do not change. The six prepaid-key purchase routes carry per-call accepts only. The Gateway accept is offered on Arc only: it was withdrawn from Base, Polygon and Arbitrum on 18 Oct 2026, because buyers whose client picked it as the cheapest accept of the chain signed a plain USDC authorization to the Gateway wallet, which is not a Gateway payment and was refused.
 
 | | batch-settlement | Circle Gateway nanopayment |
 |---|---|---|
-| Networks | Base, Polygon, Arbitrum | Base, Polygon, Arbitrum, Arc |
+| Networks | Base, Polygon, Arbitrum | Arc |
 | Accept | `scheme: batch-settlement` | `scheme: exact`, `extra.name: GatewayWalletBatched` |
 | Pays | the treasury `0x22DB3A9686EE5261e7Bf3ed4f91277232E8076e6` | Gateway seller `0xA853129ACF56A851f9d51CD8cb47619465260Fa9` |
 | Buyer does once | opens a channel with one deposit (`extra.minDeposit` in the accept); every later call is an off-chain voucher | deposits USDC into the GatewayWallet `0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE` |
@@ -301,18 +301,9 @@ Keep the `pay` object alive between calls. A client that starts a fresh process 
 
 Full script, with a guard that checks the accept before anything is signed: `ops/proof-batch.mjs`.
 
-### Gateway, on Base
+### Gateway, on Arc
 
-```js
-import { GatewayClient } from '@circle-fin/x402-batching/client';
-
-const client = new GatewayClient({ chain: 'base', privateKey: process.env.EVM_KEY });
-await client.deposit('0.05'); // once: approve + deposit, gas paid in ETH on Base
-const res = await client.pay('https://x402.ochinimus.app/api/liquidation-stats');
-console.log(res.formattedAmount, res.data);
-```
-
-Full script: `ops/proof-gateway.mjs` (`CHAIN=base` or `CHAIN=arc`).
+The Gateway accept is on Arc only (see "Pay on Arc" below for the full walk-through): `ops/proof-gateway.mjs` (`CHAIN=arc`, the default) deposits into the GatewayWallet once and pays one nanopayment.
 
 ### Proven on mainnet
 
@@ -375,7 +366,7 @@ All of them were paid from our own test wallets.
 
 - `lib/rails.js`: the Arc rail (network, asset, payTo).
 - `lib/circle-arc.js`: the Circle Facilitator Service client: Arc-only `/supported`, `/verify`, `/settle` and settlement-status polling. A payment still pending is withheld and logged for `ops/arc-reconcile.js`.
-- `lib/hf.js`: the half-price tier: batch-settlement on Base, Polygon and Arbitrum, Gateway offers on Base, Polygon, Arbitrum and Arc, the half-price rule, and `routeGateway`, which hands Gateway payments to Circle's `BatchFacilitatorClient` while every other payment keeps its facilitator.
+- `lib/hf.js`: the half-price tier: batch-settlement on Base, Polygon and Arbitrum, the Gateway offer on Arc, the half-price rule, and `routeGateway`, which hands Gateway payments to Circle's `BatchFacilitatorClient` while every other payment keeps its facilitator.
 - `ops/batch-claim.js`: claims and settles batch-settlement vouchers every 30 minutes.
 - `payments.js`: facilitator order: Coinbase CDP first, Circle for Arc, then the Gateway tier.
 - `ops/gateway-withdraw.mjs` and `ops/arc-sweep.mjs`: revenue out of the hot addresses.

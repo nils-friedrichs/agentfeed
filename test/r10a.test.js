@@ -150,12 +150,14 @@ test('Phase A: a payment on every network reaches its own facilitator and no oth
 });
 
 // ---- the 12,000-byte cap, on a production-shaped 402 -----------------------------------------------------------------
-async function prodShaped(t, { withExt }) {
+// gatewayNetworks: the Gateway accept's chains. The default is the tier as it is now (Arc only since R14); the model check below passes
+// the four chains the header of 14 Oct was measured with, because that measurement is what it validates.
+async function prodShaped(t, { withExt, gatewayNetworks = hf.GATEWAY_NETWORKS }) {
   const authorizer = privateKeyToAccount(generatePrivateKey());
   const EVM = [...rails.evmRails({ PAY_TO_EVM, X402_ARC: 'off' }), { network: ARC.network, name: 'Arc', usdc: ARC.usdc, payTo: '0x0Cf44185564F2b72E291050DC79E578429E52f83', facilitator: 'circle', asset: { address: ARC.usdc, decimals: 6, extra: ARC.extra } }];
-  const HF = { batch: { networks: hf.BATCH_NETWORKS, receiver: PAY_TO_EVM, authorizer }, gateway: { networks: hf.GATEWAY_NETWORKS, payTo: '0xC1dC5f1c3D2b0B3e2a9d8F7a6b5C4d3E2F1a0B9c' } };
+  const HF = { batch: { networks: hf.BATCH_NETWORKS, receiver: PAY_TO_EVM, authorizer }, gateway: { networks: gatewayNetworks, payTo: '0xC1dC5f1c3D2b0B3e2a9d8F7a6b5C4d3E2F1a0B9c' } };
   const EXT = withExt ? extRails({ PAY_TO_EVM }) : [];
-  const nets = [...new Set([...EVM.map((r) => r.network), ...hf.GATEWAY_NETWORKS, ...EXT.map((r) => r.network)])];
+  const nets = [...new Set([...EVM.map((r) => r.network), ...gatewayNetworks, ...EXT.map((r) => r.network)])];
   const kinds = [
     { x402Version: 2, scheme: 'exact', network: SOLANA_MAINNET_CAIP2, extra: { feePayer: FEE_PAYER } },
     ...nets.map((network) => ({ x402Version: 2, scheme: 'exact', network })),
@@ -198,9 +200,17 @@ async function prodShaped(t, { withExt }) {
 }
 
 test('Phase A: the model reproduces today\'s largest 402 header (trade-context, 10,916 bytes through Cloudflare) within 8 bytes', async (t) => {
-  const { prLen } = await prodShaped(t, { withExt: false });
+  const { prLen } = await prodShaped(t, { withExt: false, gatewayNetworks: ['eip155:8453', 'eip155:137', 'eip155:42161', 'eip155:5042'] });
   const n = await prLen('/api/trade-context');
   assert.ok(Math.abs(n - 10916) <= 8, `model ${n} vs measured 10916`);
+});
+
+test('R14: with the Gateway accept on Arc only the same header is smaller, by the three accepts that left', async (t) => {
+  const four = await prodShaped(t, { withExt: false, gatewayNetworks: ['eip155:8453', 'eip155:137', 'eip155:42161', 'eip155:5042'] });
+  const one = await prodShaped(t, { withExt: false });
+  const a = await four.prLen('/api/trade-context'), b = await one.prLen('/api/trade-context');
+  assert.ok(b < a - 3 * 400, `Arc only ${b} bytes vs four chains ${a}: three Gateway accepts of roughly 450 bytes each are gone`);
+  t.diagnostic(`trade-context PAYMENT-REQUIRED: ${a} bytes with four Gateway chains, ${b} with Arc only`);
 });
 
 test('Phase A: PAYMENT-REQUIRED stays at or under 12,000 bytes on every route, default and every suffix', async (t) => {
