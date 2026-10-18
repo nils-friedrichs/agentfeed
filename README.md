@@ -83,7 +83,7 @@ Notional uses `filled_qty × avg_fill_price` — what actually executed — not 
 
 Every paid route, cheapest question last. Generated from
 [`/.well-known/x402.json`](https://x402.ochinimus.app/.well-known/x402.json),
-read 2026-10-15 — names, prices and routes are the manifest's, not a copy kept
+read 2026-10-18 — names, prices and routes are the manifest's, not a copy kept
 in sync by hand. What each one returns is under
 [90 tools](#90-tools-83-paid-data-routes--7-free--pricing), word for word as
 the service publishes it.
@@ -96,6 +96,7 @@ the service publishes it.
 | `buy_key_5` | $5 | `/api/keys/buy-5` |
 | `topup_key_5` | $5 | `/api/keys/topup-5` |
 | `buy_key_1` | $1 | `/api/keys/buy-1` |
+| `buy_key_day_pass` | $1 | `/api/keys/buy-day-pass` |
 | `buy_key_trial` | $0.25 | `/api/keys/buy-trial` |
 | `get_squeeze_score` | $0.1 | `/api/squeeze-score` |
 | `get_cascade_scan` | $0.05 | `/api/cascade-scan` |
