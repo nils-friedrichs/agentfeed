@@ -120,7 +120,9 @@ const R11_TEXT = {
   get_classify: 'The app crashes every time I log in.',
   // R10 F6: a plain example. With the injection phrase itself as the example, the route never entered the CDP Bazaar index
   // (paid twice on Oct 14, validate says valid, index null); the example is not the behaviour, which is unchanged.
-  get_injection_check: 'Please summarize this quarterly report and list the three biggest risks it mentions.',
+  // R14 (task #108, 18 Oct 2026): still not indexed with a polite request as the example, so the example is now a statement, not
+  // a request, and the description, the question and the note of this route say what the route does without addressing a reader.
+  get_injection_check: 'The quarterly report lists three risks: supply costs, currency moves and a delayed product launch.',
 };
 
 function fixture(key, tool) {

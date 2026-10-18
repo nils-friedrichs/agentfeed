@@ -109,7 +109,7 @@ const QUESTIONS = {
   get_extract: 'What are these fields on this page or PDF, as JSON?',
   get_translate: 'What does this text say in another language?',
   get_classify: 'Which of my labels fits this text best?',
-  get_injection_check: 'Is this text trying to give instructions to the AI that reads it?',
+  get_injection_check: 'Does this text contain a prompt-injection attempt?',
   get_transcribe: 'What is said in this audio file?',
 };
 

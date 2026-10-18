@@ -265,7 +265,7 @@ test('injection-check: the worse of the two layers wins; the model can add what 
   assert.equal(r.verdict, 'malicious', 'the model cannot talk the rules down'); assert.ok(r.confidence >= 0.9); assert.ok(r.rules.matched.some((m) => m.id === 'override_instructions'));
   reset(); r = await INJ.injectionCheck({ text: 'Researchers quote "ignore previous instructions" as the classic attack string.' }, deps({ verdict: 'no_injection_found', confidence: 0.94, reasons: ['discusses an attack'] }));
   assert.equal(r.verdict, 'no_injection_found'); assert.ok(r.rules.matched.some((m) => m.id === 'quoted_pattern')); assert.ok(!/safe/i.test(r.verdict));
-  assert.match(r.note, /Never "safe"/);
+  assert.match(r.note, /The verdict is never "safe"/);
   // outage
   reset(); const down = { fetchImpl: gem([() => new Response('x', { status: 500 })]).fetchImpl, key: KEY };
   await assert.rejects(INJ.injectionCheck({ text: 'An ordinary paragraph about gardening.' }, down), is503);

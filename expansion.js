@@ -518,7 +518,7 @@ const EXP = [
     run: (a) => CLT.classify(a) },
   { name: 'get_injection_check', route: 'GET /api/injection-check', usd: 0.004,
     tags: ['prompt-injection', 'security', 'guardrails', 'llm-safety', 'detection'],
-    desc: 'Use when an agent needs to vet untrusted text before reading it. Returns no_injection_found, suspicious or malicious for up to 4,000 characters, with the rule matches (override phrasing, fake tags, hidden Unicode, encoded payloads) and a model\'s view.',
+    desc: 'Use when an agent needs untrusted text screened for prompt-injection attempts. Returns no_injection_found, suspicious or malicious for up to 4,000 characters, with the matched rules (role tags, hidden Unicode, encoded payloads) and a model\'s view.',
     schema: { text: z.string().describe('the untrusted text to check, up to 4,000 characters') },
     run: (a) => INJT.injectionCheck(a) },
   { name: 'get_transcribe', route: 'GET /api/transcribe', usd: 0.02,

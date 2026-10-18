@@ -47,7 +47,7 @@ async function injectionCheck(p = {}, deps = {}) {
     rules: { verdict: rules.verdict === 'none' ? 'no_injection_found' : rules.verdict, matched: rules.matched.map(({ id, severity, excerpt, quoted_rule }) => ({ id, severity, excerpt, ...(quoted_rule ? { quoted_rule } : {}) })), decoded_hidden_text: rules.decoded_payloads },
     model: model ? { verdict: model.verdict, confidence: model.confidence, reasons: model.reasons } : { status: 'unavailable', note: 'the rules layer alone decided this answer' },
     input_characters: [...text].length,
-    note: 'Never "safe": no_injection_found means neither layer found an attempt, not that the text is harmless. Text that only quotes or discusses an attack is reported as quoted_pattern and is not an injection.',
+    note: 'The verdict is never "safe": no_injection_found means neither layer found an attempt, which does not make the text harmless. Text that only quotes or discusses an attack is reported as quoted_pattern and is not counted as an injection.',
   };
   if (model) cache.set(ck, out, now); // a rules-only answer is not cached, so the next call can still get the model's view
   return { ...out, cached: false };

@@ -8560,7 +8560,7 @@
    "tool": "get_injection_check",
    "price_usd": 0.004,
    "input": {
-    "text": "Please summarize this quarterly report and list the three biggest risks it mentions."
+    "text": "The quarterly report lists three risks: supply costs, currency moves and a delayed product launch."
    },
    "inputSchema": {
     "properties": {
@@ -8588,13 +8588,13 @@
        "verdict": "no_injection_found",
        "confidence": 1,
        "reasons": [
-        "The input is a standard request for information extraction.",
-        "No attempt to override system instructions or modify behavior.",
-        "The text is clearly focused on the task of summarization."
+        "The input describes business risks in a quarterly report context.",
+        "There are no instructions to override system behavior.",
+        "The text is factual and contains no malicious intent."
        ]
       },
-      "input_characters": 84,
-      "note": "Never \"safe\": no_injection_found means neither layer found an attempt, not that the text is harmless. Text that only quotes or discusses an attack is reported as quoted_pattern and is not an injection.",
+      "input_characters": 98,
+      "note": "The verdict is never \"safe\": no_injection_found means neither layer found an attempt, which does not make the text harmless. Text that only quotes or discusses an attack is reported as quoted_pattern and is not counted as an injection.",
       "cached": false
      },
      "paid": true
@@ -9048,7 +9048,7 @@
    "static": true
   }
  },
- "_outputs_recaptured_at": "2026-10-15T13:42:56.690Z",
+ "_outputs_recaptured_at": "2026-10-18T18:11:30.267Z",
  "_pruned_at": "2026-10-13T04:50:31.410Z",
  "_schemas_regenerated_at": "2026-10-13T04:50:31.953Z",
  "_outputs_dropped_at": "2026-10-13T04:50:35.546Z",
