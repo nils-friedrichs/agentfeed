@@ -15,18 +15,20 @@ const { commands, strings, KNOWN_BAD } = require('./helpers/instructs');
 
 const ORIGIN = 'https://x402.ochinimus.app';
 const PRICES = {
-  'GET /api/price': { usd: 0.001, tool: 'get_spot' }, 'GET /api/perp': { usd: 0.005, tool: 'get_perp' }, 'GET /api/liq-pulse': { usd: 0.005, tool: 'get_liq_pulse' },
+  'GET /api/market-state': { usd: 0.02, tool: 'get_market_state' }, 'GET /api/price': { usd: 0.001, tool: 'get_spot' }, 'GET /api/perp': { usd: 0.005, tool: 'get_perp' }, 'GET /api/liq-pulse': { usd: 0.005, tool: 'get_liq_pulse' },
   'GET /api/funding-pulse': { usd: 0.005, tool: 'get_funding_pulse' }, 'GET /api/liq-feed': { usd: 0.001, tool: 'get_liq_feed' }, 'GET /api/liquidations': { usd: 0.005, tool: 'get_recent_liquidations' },
   'GET /api/signal-board': { usd: 0.01, tool: 'get_signal_board' }, 'GET /api/coin-signal/:coin': { usd: 0.004, tool: 'get_coin_signal' }, 'GET /api/cascade': { usd: 0.01, tool: 'get_cascade_alert' },
   'GET /api/positioning': { usd: 0.005, tool: 'get_positioning' }, 'GET /api/sol-price': { usd: 0.001, tool: 'get_sol_price' },
 };
 const DOCS = { openapi: { openapi: '3.1.0', info: { title: 'AgentFeed' }, paths: {} }, wellKnown: { version: 1, resources: ['https://x402.ochinimus.app/api/price'] } };
 
-async function boot({ limiter = true } = {}) {
+const STARTED = Date.UTC(2026, 9, 19, 5, 21, 21, 987);   // the process start the security.txt tests inject
+
+async function boot({ limiter = true, startedAt = STARTED } = {}) {
   const app = express();
   const rows = [];
   if (limiter) { const rl = makeRateLimiter({ logCall: (r) => rows.push(r), isPricedPath: (p) => !!PRICES[`GET ${p}`], presentsPayment }); app.use(rl.middleware); }
-  A.mountDiscoveryAliases(app, { docs: () => DOCS, PRICES, ORIGIN, version: '2.9.0' });
+  A.mountDiscoveryAliases(app, { docs: () => DOCS, PRICES, ORIGIN, version: '2.9.0', startedAt });
   const srv = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
   const base = `http://127.0.0.1:${srv.address().port}`;
   const get = (p, headers = {}) => fetch(base + p, { headers: { 'cf-connecting-ip': '203.0.113.9', ...headers } });
@@ -75,6 +77,11 @@ test('/api and /api/: name, scope, the seven links, the ten trading-loop routes 
     assert.deepEqual([r.tool, r.price_usd], [entry.tool, entry.usd], r.path);
   }
   assert.ok(a.trading_loop.some((r) => r.path === '/api/coin-signal/{coin}'), 'path parameters are written as in openapi');
+  // R15c: the one-call bundle heads the list, /api/price is not in it
+  assert.equal(a.trading_loop[0].path, '/api/market-state');
+  assert.deepEqual([a.trading_loop[0].tool, a.trading_loop[0].price_usd], ['get_market_state', 0.02]);
+  assert.ok(!a.trading_loop.some((r) => r.path === '/api/price'), '/api/price left the list');
+  assert.deepEqual(a.trading_loop.map((r) => r.path), ['/api/market-state', '/api/perp', '/api/liq-pulse', '/api/funding-pulse', '/api/liq-feed', '/api/liquidations', '/api/signal-board', '/api/coin-signal/{coin}', '/api/cascade', '/api/positioning']);
 });
 
 test('/api drops a trading-loop route that left the price table rather than publish a stale one', () => {
@@ -134,9 +141,39 @@ test('security.txt: RFC 9116 Contact, Expires and Canonical, no email', async (t
   assert.equal(f.Contact, 'https://github.com/seekdaseek/agentfeed/security');
   assert.equal(f.Canonical, `${ORIGIN}/.well-known/security.txt`);
   assert.match(f.Expires, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
-  assert.ok(new Date(f.Expires) > new Date('2027-06-01T00:00:00Z'), 'about a year out from 19 Oct 2026');
+  assert.equal(f.Expires, '2027-10-18T05:21:21Z', 'the start time plus 364 days, whole seconds');
   assert.ok(!/@/.test(txt) && !/mailto:/i.test(txt), 'no email');
   assert.ok(txt.endsWith('\n'));
+});
+
+test('security.txt Expires is computed from the process start: 364 days, always under a year, never a fixed date (R15c)', async (t) => {
+  const exp = async (startedAt) => {
+    const s = await boot({ startedAt }); t.after(s.close);
+    return (await (await s.get('/.well-known/security.txt')).text()).match(/^Expires: (.+)$/m)[1];
+  };
+  const a = Date.UTC(2026, 9, 19, 5, 21, 21), b = Date.UTC(2028, 1, 28, 23, 59, 59);   // b: 2028 is a leap year
+  assert.equal(await exp(a), '2027-10-18T05:21:21Z');
+  assert.equal(await exp(b), '2029-02-26T23:59:59Z');
+  for (const at of [a, b]) {
+    const days = (Date.parse(await exp(at)) - at) / 86_400_000;
+    assert.equal(days, 364, 'exactly 364 days');
+    assert.ok(days < 365, 'RFC 9116 asks for less than a year');
+  }
+  assert.equal(A.expiresFor(a + 999), A.expiresFor(a), 'milliseconds are dropped');
+  assert.notEqual(await exp(a), await exp(b), 'it follows the start time');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'discovery-aliases.js'), 'utf8');
+  assert.ok(!/2027-10-19/.test(src), 'the fixed 2027-10-19 is gone');
+});
+
+test('without an injected start the Expires is the real start plus 364 days', async (t) => {
+  const before = Date.now();
+  const app = express();
+  A.mountDiscoveryAliases(app, { docs: () => DOCS, PRICES, ORIGIN, version: '2.9.0' });
+  const srv = await new Promise((r) => { const sv = app.listen(0, '127.0.0.1', () => r(sv)); });
+  t.after(() => srv.close());
+  const txt = await (await fetch(`http://127.0.0.1:${srv.address().port}/.well-known/security.txt`)).text();
+  const at = Date.parse(txt.match(/^Expires: (.+)$/m)[1]);
+  assert.ok(at >= before + 364 * 86_400_000 - 1000 && at <= Date.now() + 364 * 86_400_000, 'about now + 364 days');
 });
 
 test('every published string in the new documents is plain data: nothing addresses a reader or tells anyone what to do', async (t) => {

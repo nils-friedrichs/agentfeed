@@ -9082,7 +9082,7 @@
       },
       "status": "active",
       "rate_per_min": 120,
-      "use": "send it on every call to /api/liq-feed, /api/liquidations as the header X-AgentFeed-Key: <key> (or Authorization: Bearer <key>); a call costs nothing more while the pass is valid; /api/liq-feed answers one call per 10 seconds per key",
+      "use": "send it on every call to /api/liq-feed, /api/liquidations as the header X-AgentFeed-Key: <key> (or Authorization: Bearer <key>); a call costs nothing more while the pass is valid; each route answers one call every 10 seconds per key (6 a minute)",
       "balance": "GET /api/keys/balance with the same header (free) shows the expiry",
       "terms": "a 24-hour day pass for a flat $1, good only on /api/liq-feed, /api/liquidations, non-refundable, cannot be topped up (buy another when it ends); the key is a bearer secret: anyone holding it uses the pass; abuse means revocation",
       "note": "this is the only time the key is shown; it is not stored anywhere on our side, only its sha256"

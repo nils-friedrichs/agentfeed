@@ -118,12 +118,12 @@ test('keys page: buying the $1 day pass signs $1.00 to /api/keys/buy-day-pass an
   assert.equal(els.status.className, 'ok', els.status.textContent);
   assert.ok(seen.urls[0].startsWith('/api/keys/buy-day-pass?key_hash='));
   assert.equal(seen.typed.message.value, '1000000');
-  assert.match(els.meta.textContent, /^prefix abcd1234, day pass for \/api\/liq-feed, \/api\/liquidations only, valid until about 20\d\d-\d\d-\d\d \d\d:\d\d UTC \(24 hours from this payment\), \/api\/liq-feed answers one call every 10 seconds, nothing drawn per call$/);
+  assert.match(els.meta.textContent, /^prefix abcd1234, day pass for \/api\/liq-feed, \/api\/liquidations only, valid until about 20\d\d-\d\d-\d\d \d\d:\d\d UTC \(24 hours from this payment\), \/api\/liq-feed and \/api\/liquidations each answer one call every 10 seconds \(6 a minute\), nothing drawn per call$/);
   assert.match(els.examples.textContent, /^curl "https:\/\/x402\.ochinimus\.app\/api\/liq-feed\?symbols=BTCUSDT,ETHUSDT" -H "X-AgentFeed-Key: afk_\.\.\."\ncurl "https:\/\/x402\.ochinimus\.app\/api\/liquidations\?symbol=SOLUSDT" -H "X-AgentFeed-Key: afk_\.\.\."\ncurl https:\/\/x402\.ochinimus\.app\/api\/keys\/balance /);
 });
 
 test('keys page: the day pass is offered with its price, term and routes, and the fine print says so', () => {
-  assert.match(HTML, /day pass \$1: 24 hours, \/api\/liq-feed and \/api\/liquidations, no per-call charge/);
+  assert.match(HTML, /day pass \$1: 24 hours, \/api\/liq-feed and \/api\/liquidations, one call every 10 s each, no per-call charge/);
   assert.match(HTML, /The day pass is the same for 24 hours on <code>\/api\/liq-feed<\/code> and <code>\/api\/liquidations<\/code>\./);
-  assert.match(HTML, /The day pass: a flat \$1 for 24 hours of <code>\/api\/liq-feed<\/code> and <code>\/api\/liquidations<\/code>/);
+  assert.match(HTML, /The day pass: a flat \$1 for 24 hours of <code>\/api\/liq-feed<\/code> and <code>\/api\/liquidations<\/code>, nothing drawn per call, each route one call every 10 seconds per key \(6 a minute\)\.<\/p>/);   // R15c: the cadence is on the page
 });

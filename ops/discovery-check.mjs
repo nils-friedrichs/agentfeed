@@ -37,6 +37,10 @@ ok(JSON.stringify(bodies['/swagger.json']) === JSON.stringify(json(oa.body)), '/
 const api = bodies['/api'];
 ok(api && api.name === 'AgentFeed' && api.trading_loop && api.trading_loop.length === 10 && Object.keys(api.links).length === 7, '/api: name, 7 links, 10 trading-loop routes');
 ok(JSON.stringify(bodies['/api']) === JSON.stringify(bodies['/api/']), '/api/ is the same document');
+// R15c: /api/market-state heads the trading loop in place of /api/price; security.txt Expires is process start + 364 days, so it lies between 300 and 364 days ahead of now
+ok(api && api.trading_loop[0].path === '/api/market-state' && !api.trading_loop.some((r) => r.path === '/api/price'), '/api: the trading loop starts with /api/market-state and no longer lists /api/price');
+const exp = Date.parse((/^Expires: (.+)$/m.exec(sec.body) || [])[1]);
+ok(exp > Date.now() + 300 * 86_400_000 && exp <= Date.now() + 364 * 86_400_000 + 60_000, `security.txt Expires ${new Date(exp).toISOString()} is the process start plus 364 days (${((exp - Date.now()) / 86_400_000).toFixed(1)} days ahead)`);
 
 // left alone: these must keep answering 404 (or whatever they answered before), not be turned into documents
 for (const p of ['/.well-known/oauth-authorization-server', '/.well-known/oauth-protected-resource', '/supported', '/x402/supported', '/api/supported', '/facilitator/supported',

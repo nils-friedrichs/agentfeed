@@ -75,7 +75,7 @@ async function buy(){
     $('key').textContent=key;
     const ps=body.data.pass;
     const day=!!ps&&ps.days===1, until=ps&&new Date(Date.now()+ps.days*864e5).toISOString();
-    $('meta').textContent=ps?'prefix '+body.data.prefix+', '+(day?'day pass':'bot pass')+' for '+ps.routes.join(', ')+' only, valid until about '+(day?until.slice(0,16).replace('T',' ')+' UTC':until.slice(0,10))+' ('+(day?'24 hours':ps.days+' days')+' from this payment), '+(ps.routes.length>1?'/api/liq-feed answers one call every 10 seconds':'one call every 10 seconds')+', nothing drawn per call':'prefix '+body.data.prefix+', balance $'+body.data.balance_usd+', '+body.data.rate_per_min+' requests a minute';
+    $('meta').textContent=ps?'prefix '+body.data.prefix+', '+(day?'day pass':'bot pass')+' for '+ps.routes.join(', ')+' only, valid until about '+(day?until.slice(0,16).replace('T',' ')+' UTC':until.slice(0,10))+' ('+(day?'24 hours':ps.days+' days')+' from this payment), '+(ps.routes.length>1?'/api/liq-feed and /api/liquidations each answer one call every 10 seconds (6 a minute)':'one call every 10 seconds')+', nothing drawn per call':'prefix '+body.data.prefix+', balance $'+body.data.balance_usd+', '+body.data.rate_per_min+' requests a minute';
     if(ps) $('examples').textContent='curl "https://x402.ochinimus.app'+ps.routes[0]+'?symbols=BTCUSDT,ETHUSDT" -H "X-AgentFeed-Key: afk_..."'+(ps.routes.indexOf('/api/liquidations')>=0?'\\ncurl "https://x402.ochinimus.app/api/liquidations?symbol=SOLUSDT" -H "X-AgentFeed-Key: afk_..."':'')+'\\ncurl https://x402.ochinimus.app/api/keys/balance -H "X-AgentFeed-Key: afk_..."   # shows the expiry';
     $('result').style.display='block';
     say('paid and active. Copy the key now: this page is the only place it exists.','ok');
@@ -94,14 +94,14 @@ const HTML = `<!doctype html>
 <title>AgentFeed prepaid keys</title><link rel="icon" href="/icon.png"><style>${STYLE}</style></head>
 <body>
 <h1>AgentFeed prepaid key</h1>
-<p>For bots that can send a header but cannot pay x402. Send the key as <code>X-AgentFeed-Key</code>. A prepaid pack: each call costs half the route's x402 price (minimum $0.0005). The bot pass: a flat $25 for 30 days of <code>/api/liq-feed</code> only, nothing drawn per call. The day pass: a flat $1 for 24 hours of <code>/api/liq-feed</code> and <code>/api/liquidations</code>, nothing drawn per call.</p>
+<p>For bots that can send a header but cannot pay x402. Send the key as <code>X-AgentFeed-Key</code>. A prepaid pack: each call costs half the route's x402 price (minimum $0.0005). The bot pass: a flat $25 for 30 days of <code>/api/liq-feed</code> only, nothing drawn per call. The day pass: a flat $1 for 24 hours of <code>/api/liq-feed</code> and <code>/api/liquidations</code>, nothing drawn per call, each route one call every 10 seconds per key (6 a minute).</p>
 <div class="packs">
 <label><input type="radio" name="pack" value="trial" checked>trial $0.25</label>
 <label><input type="radio" name="pack" value="1">$1</label>
 <label><input type="radio" name="pack" value="5">$5</label>
 <label><input type="radio" name="pack" value="20">$20</label>
 <label><input type="radio" name="pack" value="pass">bot pass $25: 30 days, /api/liq-feed only, no per-call charge</label>
-<label><input type="radio" name="pack" value="day-pass">day pass $1: 24 hours, /api/liq-feed and /api/liquidations, no per-call charge</label>
+<label><input type="radio" name="pack" value="day-pass">day pass $1: 24 hours, /api/liq-feed and /api/liquidations, one call every 10 s each, no per-call charge</label>
 </div>
 <button id="buy">Buy with USDC on Base</button>
 <div id="status"></div>

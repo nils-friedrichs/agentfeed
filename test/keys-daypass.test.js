@@ -132,7 +132,11 @@ test('purchase: $1.00 settles once, the key arrives once, the row is a 24-hour p
   assert.deepEqual(s.rows.filter((x) => x.status === 'paid').map((x) => [x.tool, x.amount_usdc]), [['buy_key_day_pass', 1]]);
   // the key works at once, on both routes, nothing drawn, and without a payment
   const hits = s.gateHits.n;
-  for (const p of ['/api/liq-feed', '/api/liquidations', '/api/liquidations']) assert.equal((await s.get(p, { 'x-agentfeed-key': body.key })).status, 200);
+  let n = 0;
+  for (const p of ['/api/liq-feed', '/api/liquidations', '/api/liquidations']) {
+    if (p === '/api/liquidations' && n++) s.clock.t += 10_000;   // R15c: /api/liquidations is one call every 10 seconds per day-pass key
+    assert.equal((await s.get(p, { 'x-agentfeed-key': body.key })).status, 200, p);
+  }
   assert.equal(s.gateHits.n, hits, 'no x402 challenge for a pass call');
   await flush();
   const after = s.K.store.get(hashKey(body.key));
@@ -233,10 +237,133 @@ test('text: the example body is a day-pass body with a placeholder key; the keys
   assert.match(ex.key, /^afk_x+$/);
   assert.deepEqual([ex.pass.price_usd, ex.pass.days, ex.pass.routes, ex.pass.expires], [1, 1, DAY_PASS.allow, '24 hours after that']);
   assert.match(ex.terms, /24-hour day pass for a flat \$1/);
+  assert.match(ex.use, /; each route answers one call every 10 seconds per key \(6 a minute\)$/, 'R15c: the purchase body states the cadence, for both routes');
+  assert.ok(ex.use.length <= 260, `the static Bazaar example is clamped to 260 characters by gen-bazaar-meta.js (${ex.use.length})`);
+  assert.doesNotMatch(exampleBody('buy_key_pass').use, /\/api\/liquidations/, 'the 30-day pass body is unchanged');
+  assert.match(exampleBody('buy_key_pass').use, /\/api\/liq-feed answers one call per 10 seconds per key$/);
   const all = { 'GET /api/keys/buy-1': { usd: 1 }, 'GET /api/keys/buy-5': { usd: 5 }, 'GET /api/keys/buy-20': { usd: 20 }, 'GET /api/keys/buy-pass': { usd: 25 }, 'GET /api/keys/buy-day-pass': { usd: 1 } };
   const s = keysSentence(all);
-  assert.match(s, /A 24-hour day pass for \/api\/liq-feed and \/api\/liquidations is \$1 flat \(\/api\/keys\/buy-day-pass\): at that price a default x402 client buys it as is\./);
+  assert.match(s, /A 24-hour day pass for \/api\/liq-feed and \/api\/liquidations is \$1 flat \(\/api\/keys\/buy-day-pass\), each route one call every 10 seconds per key \(6 a minute\): at that price a default x402 client buys it as is\./);
   assert.match(s, /prepaid key once \(\$1, \$5, \$20; page at \/keys\)/, 'the day pass is not listed as a pack');
   assert.match(s, /which the \$5, \$20, \$25 purchases need\.$/, 'and it is not one of the purchases that need the cap raised');
   assert.doesNotMatch(keysSentence({ 'GET /api/keys/buy-1': { usd: 1 } }), /day pass/, 'no sentence when the route is not in the table');
+});
+
+// ---- R15c (19 Oct 2026): a day-pass key gets /api/liquidations once every 10 seconds, six a minute, the cadence of /api/liq-feed -------------
+// The route caps at 100 rows with no paging, so this stops a $1 pass from mirroring the tape at 120 a minute while a 10-second poller loses nothing.
+// x402 callers and prepaid packs are not paced; the 30-day bot pass is not paced by lib/keys.js (liq-feed has its own gate in tools/liqfeed.js).
+
+test('R15c REST: one /api/liquidations call per 10 seconds per day-pass key; the refusal is a 429 with Retry-After, is not billed, and does not restart the clock', async (t) => {
+  const s = await boot(); t.after(s.close);
+  const key = s.K.store.grantPass({ days: 1, allow: DAY_PASS.allow, label: 'comp' });
+  const H = { 'x-agentfeed-key': key };
+  assert.equal((await s.get('/api/liquidations', H)).status, 200, 'the first call is admitted');
+  await flush();
+  const callsAfterFirst = s.K.store.get(hashKey(key)).calls;
+  const hits = s.gateHits.n, rowsBefore = s.rows.length;
+  const r = await s.get('/api/liquidations', H);
+  assert.equal(r.status, 429);
+  assert.equal(r.headers.get('retry-after'), '10');
+  const j = await r.json();
+  assert.equal(j.retry_after, 10);
+  assert.match(j.error, /^this day pass answers \/api\/liquidations one call every 10 s per key \(6 a minute\)\. Retry in 10 s\.$/);
+  assert.ok(!('data' in j) && !('rows' in j) && !('count' in j), 'no row and no count in a refusal');
+  assert.equal(s.gateHits.n, hits, 'a paced refusal never falls through to an x402 challenge');
+  await flush();
+  assert.equal(s.K.store.get(hashKey(key)).calls, callsAfterFirst, 'not counted');
+  assert.equal(s.rows.length, rowsBefore, 'no call row for the refusal');
+  s.clock.t += 9_999;
+  const late = await s.get('/api/liquidations', H);
+  assert.equal(late.status, 429, '1 ms short of the 10 seconds');
+  assert.equal(late.headers.get('retry-after'), '1');
+  s.clock.t += 1;
+  assert.equal((await s.get('/api/liquidations', H)).status, 200, 'exactly 10 s after the first call: admitted (the refusals did not restart the clock)');
+  assert.equal((await s.get('/api/liquidations', H)).status, 429, 'and the clock starts again from that call');
+  // six a minute: a call every 10 s for a minute is six admitted calls, none refused
+  const key2 = s.K.store.grantPass({ days: 1, allow: DAY_PASS.allow, label: 'comp2' });
+  const seen = [];
+  for (let i = 0; i < 6; i++) { seen.push((await s.get('/api/liquidations', { 'x-agentfeed-key': key2 })).status); s.clock.t += 10_000; }
+  assert.deepEqual(seen, [200, 200, 200, 200, 200, 200], 'a 10-second poller loses nothing');
+});
+
+test('R15c REST: the pace is per key and per route; /api/liq-feed is not paced here; x402 callers and prepaid packs are not paced', async (t) => {
+  const s = await boot(); t.after(s.close);
+  const a = s.K.store.grantPass({ days: 1, allow: DAY_PASS.allow, label: 'a' });
+  const b = s.K.store.grantPass({ days: 1, allow: DAY_PASS.allow, label: 'b' });
+  assert.equal((await s.get('/api/liquidations', { 'x-agentfeed-key': a })).status, 200);
+  assert.equal((await s.get('/api/liquidations', { 'x-agentfeed-key': a })).status, 429);
+  assert.equal((await s.get('/api/liquidations', { 'x-agentfeed-key': b })).status, 200, 'another key has its own clock');
+  for (let i = 0; i < 3; i++) assert.equal((await s.get('/api/liq-feed', { 'x-agentfeed-key': a })).status, 200, 'liq-feed has its own gate (tools/liqfeed.js), not this one');
+  // a prepaid pack key: back to back, as before
+  const pack = s.K.store.grant(1, 'pack');
+  for (let i = 0; i < 5; i++) assert.equal((await s.get('/api/liquidations', { 'x-agentfeed-key': pack })).status, 200, `pack call ${i}`);
+  // the 30-day bot pass is a different pass: no pace in keys.js
+  const bot = s.K.store.grantPass({ days: 30, label: 'bot' });
+  for (let i = 0; i < 3; i++) assert.equal((await s.get('/api/liq-feed', { 'x-agentfeed-key': bot })).status, 200);
+  // x402: a caller with no key reaches the payment layer every time, however fast
+  const hits = s.gateHits.n;
+  for (let i = 0; i < 4; i++) assert.equal((await s.get('/api/liquidations')).status, 402);
+  assert.equal(s.gateHits.n, hits + 4, 'four unpaid calls, four x402 challenges: nothing is paced');
+});
+
+test('R15c REST: the pace is memory only; a restart forgets it at the cost of one early call', async (t) => {
+  const s = await boot(); t.after(s.close);
+  const key = s.K.store.grantPass({ days: 1, allow: DAY_PASS.allow, label: 'comp' });
+  assert.equal((await s.get('/api/liquidations', { 'x-agentfeed-key': key })).status, 200);
+  assert.equal((await s.get('/api/liquidations', { 'x-agentfeed-key': key })).status, 429);
+  const fresh = makeKeys({ db: s.db, PRICES, logCall: () => {}, hfUsd, now: () => s.clock.t });   // what a restarted process has: same database, no pace
+  t.after(() => fresh.stop());
+  const app = express();
+  app.use((req, _res, next) => { req.callerIp = '127.0.0.1'; next(); });
+  app.use(fresh.identify); app.use(fresh.charge);
+  app.get('/api/liquidations', (_req, res) => res.json({ ok: true }));
+  const srv = await new Promise((r) => { const sv = app.listen(0, '127.0.0.1', () => r(sv)); });
+  t.after(() => srv.close());
+  const url = `http://127.0.0.1:${srv.address().port}/api/liquidations`;
+  assert.equal((await fetch(url, { headers: { 'x-agentfeed-key': key } })).status, 200, 'the restarted process admits the first call');
+  assert.equal((await fetch(url, { headers: { 'x-agentfeed-key': key } })).status, 429, 'and paces from there');
+});
+
+test('R15c MCP: the same pace on get_recent_liquidations, none on get_liq_feed; the refusal is a tool error with status 429 and retry_after', async (t) => {
+  const db = new Database(':memory:');
+  const clock = { t: 1_800_000_000_000 };
+  const rows = [];
+  const K = makeKeys({ db, PRICES, logCall: (r) => rows.push(r), hfUsd, now: () => clock.t });
+  t.after(() => K.stop());
+  const DEFS = [{ name: 'get_liq_feed', usd: 0.001 }, { name: 'get_recent_liquidations', usd: 0.005 }];
+  const app = express();
+  app.use((req, _res, next) => { req.callerIp = '127.0.0.1'; next(); });
+  app.use(K.identify);
+  app.post('/mcp', express.json(), async (req, res) => {
+    const srv = new McpServer({ name: 't', version: '1.0.0' });
+    for (const def of DEFS) {
+      const wrap = K.mcpWrap(req, def) || ((h) => async () => ({ isError: true, content: [{ type: 'text', text: 'x402 payment required' }] })); // eslint-disable-line no-unused-vars
+      srv.registerTool(def.name, { description: def.name, inputSchema: { symbols: z.string().optional() } }, wrap(async () => ({ content: [{ type: 'text', text: JSON.stringify({ tool: def.name, ok: true }) }] })));
+    }
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+    res.on('close', () => transport.close());
+    await srv.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  });
+  const server = await new Promise((r) => { const sv = app.listen(0, '127.0.0.1', () => r(sv)); });
+  t.after(() => server.close());
+  let id = 0;
+  const call = async (name, headers) => (await (await fetch(`http://127.0.0.1:${server.address().port}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...headers },
+    body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method: 'tools/call', params: { name, arguments: {} } }) })).json()).result;
+  const key = K.store.grantPass({ days: 1, allow: DAY_PASS.allow, label: 'comp' });
+  const H = { 'x-agentfeed-key': key };
+  assert.equal((await call('get_recent_liquidations', H)).isError, undefined, 'the first call is admitted');
+  const keyRows = rows.filter((x) => x.status === 'key').length;
+  const refused = await call('get_recent_liquidations', H);
+  assert.equal(refused.isError, true);
+  const body = JSON.parse(refused.content[0].text);
+  assert.deepEqual([body.status, body.retry_after], [429, 10]);
+  assert.match(body.error, /^this day pass answers \/api\/liquidations one call every 10 s per key \(6 a minute\)\. Retry in 10 s\.$/);
+  assert.equal(rows.filter((x) => x.status === 'key').length, keyRows, 'a refusal leaves no call row');
+  for (let i = 0; i < 3; i++) assert.equal((await call('get_liq_feed', H)).isError, undefined, 'get_liq_feed is not paced by this wrapper');
+  clock.t += 10_000;
+  assert.equal((await call('get_recent_liquidations', H)).isError, undefined, '10 seconds later: admitted');
+  // a prepaid pack key on the same tool, back to back
+  const pack = K.store.grant(1, 'pack');
+  for (let i = 0; i < 3; i++) assert.equal((await call('get_recent_liquidations', { 'x-agentfeed-key': pack })).isError, undefined);
 });

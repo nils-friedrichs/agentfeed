@@ -23,6 +23,7 @@ test('price table: the day pass is $1.00, an exact-only key route, with its own 
   assert.match(p.desc, /^Day pass: \$1 flat for 24 hours of unlimited calls to \/api\/liq-feed and \/api\/liquidations /);
   assert.match(p.desc, /It starts when the payment settles and ends 24 hours later/);
   assert.match(p.desc, /Non-refundable, cannot be topped up/);
+  assert.match(p.desc, /each of the two routes answers one call every 10 seconds per key \(6 a minute\)/, 'R15c: the route description (openapi, catalogue) states the cadence');
 });
 
 test('accepts: the day pass carries the exact accepts only, every one for exactly 1,000,000 atomic units', { skip }, () => {
@@ -62,7 +63,7 @@ test('text surfaces: openapi documents the route and its key_hash parameter; llm
   const api = D.buildOpenApi(ctx);
   assert.ok(api.paths['/api/keys/buy-day-pass'], 'openapi has the route');
   assert.ok((api.paths['/api/keys/buy-day-pass'].get.parameters || []).some((p) => p.name === 'key_hash'));
-  const sentence = 'A 24-hour day pass for /api/liq-feed and /api/liquidations is $1 flat (/api/keys/buy-day-pass)';
+  const sentence = 'A 24-hour day pass for /api/liq-feed and /api/liquidations is $1 flat (/api/keys/buy-day-pass), each route one call every 10 seconds per key (6 a minute)';   // R15c
   for (const [name, text] of [['openapi', JSON.stringify(api)], ['llms.txt', D.buildLlmsTxt(ctx)], ['SKILL.md', D.buildSkillMd(ctx)]]) assert.ok(text.includes(sentence), `${name} carries the sentence`);
 });
 
@@ -76,4 +77,5 @@ test('the day pass is a REST route only, and its Bazaar example is a constructed
   assert.match(ex.key, /^afk_x+$/);
   assert.deepEqual(ex.pass.routes, ['/api/liq-feed', '/api/liquidations']);
   assert.equal(ex.pass.expires, '24 hours after that');
+  assert.match(ex.use, /; each route answers one call every 10 seconds per key \(6 a minute\)$/, 'R15c: the example purchase body states the cadence');
 });

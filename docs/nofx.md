@@ -112,8 +112,9 @@ default list of assets also leaves out USDC on Optimism (`eip155:10`): to pay th
 ### The day pass: the one a default client buys as it is
 
 `GET /api/keys/buy-day-pass` is **$1.00 flat for 24 hours** (from the moment the payment settles), good only on `/api/liq-feed` and
-`/api/liquidations`, nothing drawn per call, 120 requests a minute per key, and `/api/liq-feed` still answers one call per 10
-seconds. `@x402/fetch` 2.28 refuses any payment over $1 and accepts exactly $1.00, so the scripts above work for this pass with
+`/api/liquidations`, nothing drawn per call, and each of the two routes answers one call every 10 seconds per key (6 a
+minute; a call inside the 10 seconds is a 429 with `Retry-After`, never billed). `/api/liquidations` returns at most 100 rows a
+call with no paging, so a poller at that pace loses nothing. `@x402/fetch` 2.28 refuses any payment over $1 and accepts exactly $1.00, so the scripts above work for this pass with
 the `spendControls` line left out; the packs over $1 and the $25 bot pass below need it. Same two scripts, `buy-day-pass` instead
 of `buy-trial`. `GET /api/keys/balance` shows `pass.kind: "day"`, `pass.expires_at` and `pass.hours_left`; after the 24 hours the key
 answers 401 `this day pass expired on <date and time> UTC` with `buy: /api/keys/buy-day-pass`.
