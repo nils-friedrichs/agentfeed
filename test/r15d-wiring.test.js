@@ -17,11 +17,18 @@ test('mcp tool table: only get_liq_feed carries mcpGate, and its run forwards th
   const def = TOOL_DEFS.find((d) => d.name === 'get_liq_feed');
   LF._callers.clear();
   let first;
-  try { first = def.run({ symbols: 'BTC' }, { passGateKey: 'key:r15dtest' }); } catch (e) { if (e.status === 503) return; throw e; }   // a stale tape cannot show the gate
+  const pass = { caller: { key: 'key:r15dtest', pass: true } };
+  try { first = def.run({ symbols: 'BTC' }, pass); } catch (e) { if (e.status === 503) return; throw e; }   // a stale tape cannot show the gate
   assert.ok(first && Array.isArray(first.buckets), 'the first call is served');
-  assert.throws(() => def.run({ symbols: 'BTC' }, { passGateKey: 'key:r15dtest' }), (e) => e.status === 429 && /one call every 10 s per key/.test(e.message) && e.retryAfter >= 1, 'the second call, same key, is refused');
-  assert.doesNotThrow(() => def.run({ symbols: 'BTC' }, { passGateKey: 'key:r15dother' }), 'another key has its own clock');
-  assert.doesNotThrow(() => def.run({ symbols: 'BTC' }), 'no pass key: not gated over MCP, as before');
+  assert.throws(() => def.run({ symbols: 'BTC' }, pass), (e) => e.status === 429 && /one call every 10 s per key/.test(e.message) && e.retryAfter >= 1, 'the second call, same pass key, is refused');
+  assert.doesNotThrow(() => def.run({ symbols: 'BTC' }, { caller: { key: 'key:r15dother', pass: true } }), 'another key has its own clock');
+  const pack = { caller: { key: 'key:r15dpack', pass: false } };
+  assert.doesNotThrow(() => def.run({ symbols: 'BTC' }, pack));
+  assert.throws(() => def.run({ symbols: 'BTC' }, pack), (e) => e.status === 429 && /one call every 5 s per key/.test(e.message), 'a pack key is on the 5 s clock');
+  const wallet = { caller: { key: 'wallet:r15dwallet', pass: false } };
+  assert.doesNotThrow(() => def.run({ symbols: 'BTC' }, wallet));
+  assert.throws(() => def.run({ symbols: 'BTC' }, wallet), (e) => e.status === 429 && /one call every 5 s per payer/.test(e.message), 'an x402 wallet is on the 5 s clock');
+  assert.doesNotThrow(() => def.run({ symbols: 'BTC' }), 'no identity: not gated over MCP');
   assert.doesNotThrow(() => def.run({ symbols: 'BTC' }), 'and not on the next call either');
   LF._callers.clear();
 });

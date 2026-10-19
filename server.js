@@ -363,6 +363,8 @@ app.get('/api/forecast-record', async (req, res) => {
 app.get('/api/keys/balance', keys.balance);
 app.get('/keys', require('./tools/keys-page').keysPage);
 
+// R15d: the five documents that change with every deploy say `no-cache` (the ETag keeps a revalidation a 304); lib/discovery-aliases.js
+{ const A = require('./lib/discovery-aliases'); app.get(A.NO_CACHE_DOC_PATHS, A.docNoCache); }
 app.get('/openapi.json', (_req, res) => res.json(docs().openapi));
 app.get('/.well-known/x402', (_req, res) => res.json(docs().wellKnown));
 app.get('/llms.txt', (_req, res) => res.type('text/plain; charset=utf-8').send(docs().llms));

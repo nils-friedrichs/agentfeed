@@ -296,7 +296,7 @@ function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp, tempo }) {
 
     paths[template] = {
       get: {
-        description: p.desc,
+        description: p.docNote ? `${p.desc} ${p.docNote}` : p.desc,
         operationId: p.tool,
         ...(parameters.length ? { parameters } : {}),
         ...(Object.keys(m.input || {}).length ? { 'x-example-query': m.input } : {}),
@@ -491,7 +491,7 @@ function catalogueLines({ PRICES, TAGS, META, bullet }) {
       const pp = m && m.pathParamsSchema && Object.keys(m.pathParamsSchema.properties || {});
       const args = [...(pp || []).map((k) => `:${k}`), ...(params || [])].join(', ');
       out.push(`${bullet.item}GET ${r.path} — $${r.usd}${args ? ` — params: ${args}` : ''}`);
-      out.push(`${bullet.indent}${r.desc}`);
+      out.push(`${bullet.indent}${r.desc}${r.docNote ? ` ${r.docNote}` : ''}`);
     }
   }
   return out;
@@ -638,6 +638,8 @@ function buildSkillMd({ PRICES, TAGS, META, FREE_TOOLS, mpp, tempo }) {
     '',
     `One call of every paid data route costs $${total.toFixed(3)}. Prices are per call; there are no bundles, minimums or subscriptions.`,
     ...table,
+    // a route that paces its callers says so in full (R15e: the liq-feed intervals), next to the table that names it
+    ...(routes.some(([, p]) => p.docNote) ? ['', '### Pacing', '', ...routes.filter(([, p]) => p.docNote).map(([r, p]) => `- \`${r}\`: ${p.docNote}`)] : []),
     ...(keys.length ? ['', `## Prepaid key packs (${keys.length})`, '', 'Credit, not data: one x402 payment on an exact rail buys a key whose balance pays for calls at half the route price (minimum $0.0005).', '', '| Route | Price |', '|---|---|', ...keys.map(([r, p]) => `| \`${r}\` | $${p.usd} |`)] : []),
     '',
     '## Limits and error codes',

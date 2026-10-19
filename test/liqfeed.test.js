@@ -230,9 +230,9 @@ test('freshness: a tape older than 30 minutes is a 503 (never billed), exactly l
   assert.throws(() => LF.getLiqFeed({ symbols: 'BTC' }, undefined, deps(ANCHOR + 5_100_000 + 31 * 60_000)), (e) => e.status === 503 && /freshness bound/.test(e.message) && /Not charged/.test(e.message));
 });
 
-test('rate limit: one call per 10 s per key; catch-up pages (has_more) are exempt; MCP and different keys are not gated; x402 callers are keyed by IP', () => {
+test('rate limit: one call per 10 s per PASS key; catch-up pages (has_more) are exempt; MCP without an identity and different keys are not gated; x402 callers are keyed by IP (5 s: see R15e)', () => {
   LF._callers.clear();
-  const reqKey = (prefix) => ({ keyPaid: { prefix }, callerIp: '1.1.1.1' });
+  const reqKey = (prefix) => ({ keyPaid: { prefix, pass: true }, callerIp: '1.1.1.1' });
   const now = ANCHOR + 700_000;
   const call = (req, at, extra) => LF.getLiqFeed({ symbols: 'BTC' }, req, deps(at, extra));
   call(reqKey('aaaaaaaa'), now);
@@ -241,7 +241,8 @@ test('rate limit: one call per 10 s per key; catch-up pages (has_more) are exemp
   call(reqKey('bbbbbbbb'), now + 1_000);                                      // another key
   call(undefined, now + 1_000); call(undefined, now + 1_001);                 // MCP: no gate here
   call(reqKey('aaaaaaaa'), now + 10_000);                                     // 10 s later: fine
-  call({ callerIp: '2.2.2.2' }, now); assert.throws(() => call({ callerIp: '2.2.2.2' }, now + 5_000), (e) => e.status === 429);
+  call({ callerIp: '2.2.2.2' }, now); assert.throws(() => call({ callerIp: '2.2.2.2' }, now + 4_999), (e) => e.status === 429);
+  call({ callerIp: '2.2.2.2' }, now + 5_000);                                 // an x402 caller: one bucket (R15e)
   call({ callerIp: '3.3.3.3' }, now + 5_000);                                 // a different IP
   // catch-up: while the answer says has_more the next page is immediate
   LF._callers.clear();
@@ -251,28 +252,92 @@ test('rate limit: one call per 10 s per key; catch-up pages (has_more) are exemp
   assert.equal(b.buckets.length > 0, true);
 });
 
-// R15d: over MCP a pass key is on the clock its REST calls use. mcp.js hands get_liq_feed { passGateKey: 'key:<prefix>' } (lib/keys.js passGateKey).
-test('R15d rate limit: a pass key has ONE clock across REST and MCP (has_more included); MCP without a pass key is still ungated', () => {
-  LF._callers.clear();
-  const rest = (prefix) => ({ keyPaid: { prefix }, callerIp: '1.1.1.1' });
-  const mcp = (prefix) => ({ passGateKey: `key:${prefix}` });
+// R15d/R15e: one clock per caller, both rails. A pass key (day, 30-day) waits 10 s; an x402 payer or a prepaid pack key waits one bucket, 5 s, so a
+// billed call always has a new settled bucket to carry. A key is the same clock over REST and MCP; has_more catch-up is exempt for everyone.
+const restKey = (prefix, pass) => ({ keyPaid: { prefix, pass: !!pass }, callerIp: '1.1.1.1' });
+const mcpKey = (prefix, pass) => ({ caller: { key: `key:${prefix}`, pass: !!pass } });
+const mcpWallet = (addr) => ({ caller: { key: `wallet:${addr}`, pass: false } });
+
+// a dense private tape: BTC prints every 2.5 s, so every 5-second bucket holds rows and a new settled bucket is always one to serve
+function denseTape(from, to) {
+  const rowsIn = [];
+  for (let ts = from; ts < to; ts += 2_500) rowsIn.push([ts, 'BTCUSDT', 'Buy', 1, 80_000]);
+  return miniTape(rowsIn);
+}
+
+test('R15e rate limit: a pay-per-call caller (x402 payer, prepaid pack) is refused at 4.9 s and served at 5.0 s with at least one new bucket; a pass key is refused at 9.9 s', () => {
+  const T0 = Math.floor((ANCHOR + 1_000_000) / BUCKET_MS) * BUCKET_MS;
+  const tape = denseTape(T0 - 600_000, T0 + 600_000);
+  const at = (ms) => T0 + ms;
+  const call = (req, ms, p) => LF.getLiqFeed({ symbols: 'BTC', ...p }, req, tape.d(at(ms), { unrounded: true }));
+  const callers = {
+    'x402 payer (REST, by IP)': () => ({ callerIp: '9.9.9.9' }),
+    'x402 payer (MCP, by wallet)': () => mcpWallet('0xabc'),
+    'prepaid pack (REST)': () => restKey('packkey1', false),
+    'prepaid pack (MCP)': () => mcpKey('packkey1', false),
+  };
+  for (const [name, who] of Object.entries(callers)) {
+    LF._callers.clear();
+    const first = call(who(), 20_000, { since: at(-60_000) });
+    assert.ok(first.buckets.length >= 1, `${name}: the first call serves buckets`);
+    assert.throws(() => call(who(), 24_900, { next: first.next }), (e) => e.status === 429 && e.kind === 'bad_request' && e.retryAfter === 1 && /one call every 5 s per /.test(e.message) && /Not charged/.test(e.message), `${name}: refused at 4.9 s`);
+    const second = call(who(), 25_000, { next: first.next });
+    assert.ok(second.buckets.length >= 1, `${name}: served at 5.0 s with at least one new bucket`);
+    assert.ok(second.buckets[0].t >= first.buckets[first.buckets.length - 1].t + BUCKET_MS || second.buckets[0].t > first.buckets[first.buckets.length - 1].t, `${name}: the bucket is new`);
+  }
+  // a pass key waits twice as long, REST and MCP alike
+  for (const [name, who] of [['pass key (REST)', () => restKey('passkey1', true)], ['pass key (MCP)', () => mcpKey('passkey1', true)]]) {
+    LF._callers.clear();
+    const first = call(who(), 20_000, { since: at(-60_000) });
+    assert.throws(() => call(who(), 29_900, { next: first.next }), (e) => e.status === 429 && e.retryAfter === 1 && /one call every 10 s per key/.test(e.message), `${name}: refused at 9.9 s`);
+    assert.throws(() => call(who(), 25_000, { next: first.next }), (e) => e.status === 429 && e.retryAfter === 5, `${name}: still refused at 5.0 s (a pass key is not on the 5 s clock)`);
+    const second = call(who(), 30_000, { next: first.next });
+    assert.ok(second.buckets.length >= 1, `${name}: served at 10.0 s`);
+  }
+});
+
+test('R15e rate limit: why 5 s is the floor — the horizon moves in whole buckets, so a call less than one bucket later may carry nothing new (control)', () => {
+  // the same dense tape, no gate (an MCP call with no identity): calls 4 s apart on a bucket boundary phase give an empty answer
+  const T0 = Math.floor((ANCHOR + 1_000_000) / BUCKET_MS) * BUCKET_MS;
+  const tape = denseTape(T0 - 600_000, T0 + 600_000);
+  const first = LF.getLiqFeed({ symbols: 'BTC', since: T0 - 60_000 }, undefined, tape.d(T0 + 20_000, { unrounded: true }));
+  const sooner = LF.getLiqFeed({ symbols: 'BTC', next: first.next }, undefined, tape.d(T0 + 20_000 + 4_000, { unrounded: true }));
+  assert.equal(sooner.buckets.length, 0, 'T0+24 s: the horizon is still the one of T0+20 s, nothing new to sell');
+  const bucketLater = LF.getLiqFeed({ symbols: 'BTC', next: first.next }, undefined, tape.d(T0 + 20_000 + 5_000, { unrounded: true }));
+  assert.ok(bucketLater.buckets.length >= 1, 'one bucket later there is always at least one');
+});
+
+test('R15e rate limit: one key, one clock across REST and MCP, for a pass key and for a pack key; different keys, wallets and IPs are separate; has_more is exempt for all', () => {
   const now = ANCHOR + 700_000;
   const call = (req, at, extra) => LF.getLiqFeed({ symbols: 'BTC' }, req, deps(at, extra));
-  assert.equal(LF._callerKey(rest('aaaaaaaa')), LF._callerKey(mcp('aaaaaaaa')), 'the same key string on both surfaces');
-  call(rest('aaaaaaaa'), now);                                                // REST first ...
-  assert.throws(() => call(mcp('aaaaaaaa'), now + 3_000), (e) => e.status === 429 && e.kind === 'bad_request' && e.retryAfter === 7 && /Not charged/.test(e.message), '... MCP 3 s later is refused');
-  call(mcp('bbbbbbbb'), now + 3_000);                                         // another key is its own clock
-  call(mcp('aaaaaaaa'), now + 10_000);                                        // 10 s after the REST call: admitted ...
-  assert.throws(() => call(rest('aaaaaaaa'), now + 12_000), (e) => e.status === 429 && e.retryAfter === 8, '... and REST is now refused after the MCP call');
-  call(undefined, now + 12_000); call(undefined, now + 12_001);               // MCP without a pass key (x402, a pack): no gate here, as before
-  call(mcp('aaaaaaaa'), now + 20_000);
-  // catch-up crosses the surfaces too: a REST answer that says has_more lets the next MCP page through at once
+  // pack key: REST first, then MCP 3 s later is refused; 5 s after the REST call MCP is served, and then REST is refused again
   LF._callers.clear();
-  const a = LF.getLiqFeed({ symbols: 'BTC,ETH,SOL', since: ANCHOR }, rest('cccccccc'), deps(ANCHOR + 700_000, { maxRows: 10 }));
-  assert.equal(a.has_more, true);
-  const b = LF.getLiqFeed({ symbols: 'BTC,ETH,SOL', next: a.next }, mcp('cccccccc'), deps(ANCHOR + 700_001, { maxRows: 10 }));
-  assert.equal(b.buckets.length > 0, true);
-  if (!b.has_more) assert.throws(() => LF.getLiqFeed({ symbols: 'BTC,ETH,SOL', next: b.next }, rest('cccccccc'), deps(ANCHOR + 700_002, { maxRows: 10 })), (e) => e.status === 429, 'the last page ends the catch-up');
+  assert.equal(LF._callerKey(restKey('aaaaaaaa', false)), LF._callerKey(mcpKey('aaaaaaaa', false)), 'the same key string on both surfaces');
+  call(restKey('aaaaaaaa', false), now);
+  assert.throws(() => call(mcpKey('aaaaaaaa', false), now + 3_000), (e) => e.status === 429 && e.retryAfter === 2);
+  call(mcpKey('aaaaaaaa', false), now + 5_000);
+  assert.throws(() => call(restKey('aaaaaaaa', false), now + 7_000), (e) => e.status === 429 && e.retryAfter === 3);
+  // pass key: the same on a 10 s clock
+  LF._callers.clear();
+  call(restKey('bbbbbbbb', true), now);
+  assert.throws(() => call(mcpKey('bbbbbbbb', true), now + 6_000), (e) => e.status === 429 && e.retryAfter === 4);
+  call(mcpKey('bbbbbbbb', true), now + 10_000);
+  assert.throws(() => call(restKey('bbbbbbbb', true), now + 12_000), (e) => e.status === 429 && e.retryAfter === 8);
+  // separate callers
+  LF._callers.clear();
+  call(mcpWallet('0xaaa'), now); call(mcpWallet('0xbbb'), now + 1); call(restKey('cccccccc', false), now + 2); call({ callerIp: '4.4.4.4' }, now + 3); call({ callerIp: '5.5.5.5' }, now + 4);
+  assert.throws(() => call(mcpWallet('0xaaa'), now + 4_000), (e) => e.status === 429 && /per payer/.test(e.message));
+  assert.throws(() => call({ callerIp: '4.4.4.4' }, now + 4_000), (e) => e.status === 429 && /per caller/.test(e.message));
+  // an MCP call with no identity is still ungated
+  call(undefined, now + 4_000); call(undefined, now + 4_001);
+  // has_more: the next page is immediate for a pack key over MCP after a REST page, and for a wallet
+  for (const [first, next] of [[restKey('dddddddd', false), mcpKey('dddddddd', false)], [mcpWallet('0xddd'), mcpWallet('0xddd')]]) {
+    LF._callers.clear();
+    const a = LF.getLiqFeed({ symbols: 'BTC,ETH,SOL', since: ANCHOR }, first, deps(ANCHOR + 700_000, { maxRows: 10 }));
+    assert.equal(a.has_more, true);
+    const b = LF.getLiqFeed({ symbols: 'BTC,ETH,SOL', next: a.next }, next, deps(ANCHOR + 700_001, { maxRows: 10 }));
+    assert.equal(b.buckets.length > 0, true);
+  }
 });
 
 // ---- through the real x402 middleware and the key rail: refusals settle nothing
@@ -322,7 +387,7 @@ async function boot(clock) {
 }
 const flush = () => new Promise((r) => setTimeout(r, 20));
 
-test('x402: a good call settles once at $0.001; a bad symbol (400), a poll under 10 s (429 + Retry-After) and a stale tape (503) settle nothing', async (t) => {
+test('x402: a good call settles once at $0.001; a bad symbol (400), a poll under 5 s (429 + Retry-After) and a stale tape (503) settle nothing', async (t) => {
   LF._callers.clear();
   const clock = { t: ANCHOR + 700_000 };
   const s = await boot(clock); t.after(s.close);
@@ -334,8 +399,8 @@ test('x402: a good call settles once at $0.001; a bad symbol (400), a poll under
   assert.equal(s.fac.calls.settle, 1);
   const tooSoon = await s.pay('/api/liq-feed?symbols=BTC&next=' + body.data.next);
   assert.equal(tooSoon.status, 429);
-  assert.equal(tooSoon.headers.get('retry-after'), '10');
-  assert.match((await tooSoon.json()).error, /one call every 10 s/);
+  assert.equal(tooSoon.headers.get('retry-after'), '5', 'an x402 payer waits one bucket');
+  assert.match((await tooSoon.json()).error, /one call every 5 s/);
   assert.equal(s.fac.calls.settle, 1, 'the 429 settled nothing');
   clock.t += 20_000;
   const unk = await s.pay('/api/liq-feed?symbols=ZZZZUSDT');
@@ -362,7 +427,7 @@ test('key rail: $0.0005 a call; every refusal refunds the reservation in full an
   assert.equal(bal(), 10_000 - 500, 'half of $0.001');
   const r429 = await s.get('/api/liq-feed?symbols=BTC', { 'x-agentfeed-key': k });
   assert.equal(r429.status, 429);
-  assert.equal(r429.headers.get('retry-after'), '10');
+  assert.equal(r429.headers.get('retry-after'), '5', 'a prepaid pack waits one bucket');
   assert.equal(bal(), 10_000 - 500, 'a 429 is refunded');
   clock.t += 20_000;
   assert.equal((await s.get('/api/liq-feed?symbols=NOPEUSDT', { 'x-agentfeed-key': k })).status, 400);
@@ -370,6 +435,27 @@ test('key rail: $0.0005 a call; every refusal refunds the reservation in full an
   await flush();
   assert.equal(s.rows.filter((r) => r.status === 'key').length, 1);
   assert.equal(s.rows.filter((r) => r.status === 'key')[0].amount_usdc, 0.0005);
+});
+
+test('R15e key rail: a pass key waits 10 s through the real rail, the refusal is unbilled and writes no row; at 5 s it is still refused', async (t) => {
+  LF._callers.clear();
+  const clock = { t: ANCHOR + 700_000 };
+  const s = await boot(clock); t.after(s.close);
+  const k = s.K.store.grantPass({ days: 1, allow: ['/api/liq-feed', '/api/liquidations'], label: 'r15e' });
+  const H = { 'x-agentfeed-key': k };
+  const Q = '/api/liq-feed?symbols=BTC&since=' + (ANCHOR + 590_000);
+  assert.equal((await s.get(Q, H)).status, 200);
+  const r = await s.get(Q, H);
+  assert.equal(r.status, 429);
+  assert.equal(r.headers.get('retry-after'), '10');
+  assert.match((await r.json()).error, /one call every 10 s per key/);
+  clock.t += 5_000;
+  assert.equal((await s.get(Q, H)).status, 429, 'a pass key is not on the 5 s clock');
+  clock.t += 5_000;
+  assert.equal((await s.get(Q, H)).status, 200, 'served at 10 s');
+  await flush();
+  assert.equal(s.rows.filter((x) => x.status === 'key').length, 2, 'two served calls, two rows; the refusals wrote none');
+  assert.ok(s.rows.filter((x) => x.status === 'key').every((x) => x.amount_usdc === 0), 'a pass draws nothing');
 });
 
 // ---- wiring: price, MCP tool, challenge, text
@@ -395,4 +481,37 @@ test('wiring: priced at the $0.001 floor, an MCP tool, a title and a question, a
   const d = challengeDesc(challengeLead(PRICES_ADD['GET /api/liq-feed']));
   assert.ok(d.length <= CHALLENGE_DESC_MAX && /Use when you need to answer: /.test(d), 'the 402 description keeps its question');
   assert.ok(d.startsWith('Liquidation pressure feed: '));
+});
+
+// ---- R15d: the MCP refusal of a pass key polling too fast is the REST refusal's body, retry_after in seconds included
+test('R15d: a pass key refused over MCP gets isError true and the same JSON body as the REST 429, on the same clock', async (t) => {
+  const { runTool } = require('../lib/mcp-gate');
+  const { hashKey } = require('../lib/keys');
+  LF._callers.clear();
+  const clock = { t: ANCHOR + 700_000 };
+  const s = await boot(clock); t.after(s.close);
+  const key = s.K.store.grantPass({ days: 1, allow: ['/api/liq-feed', '/api/liquidations'], label: 'r15d' });
+  const H = { 'x-agentfeed-key': key };
+  const Q = '/api/liq-feed?symbols=BTC,ETH&since=' + (ANCHOR + 590_000);
+  const def = { name: 'get_liq_feed', mcpGate: true, run: (a, ctx) => LF.getLiqFeed(a, ctx, deps(clock.t)) };
+  const ctx = { caller: { key: `key:${s.K.store.get(hashKey(key)).prefix}`, pass: true } };
+  assert.equal((await s.get(Q, H)).status, 200, 'REST first');
+  clock.t += 3_000;
+  const mcp = await runTool(def, { symbols: 'BTC,ETH', since: ANCHOR + 590_000 }, ctx);
+  assert.ok(mcp.refused, 'MCP 3 s later is refused');
+  assert.equal(mcp.refused.isError, true);
+  assert.equal(mcp.refused.content.length, 1);
+  assert.equal(mcp.refused.content[0].type, 'text');
+  const mcpBody = JSON.parse(mcp.refused.content[0].text);
+  const rest = await s.get(Q, H);
+  assert.equal(rest.status, 429);
+  const restBody = await rest.json();
+  assert.deepEqual(mcpBody, restBody, 'one body on both surfaces');
+  assert.deepEqual(Object.keys(mcpBody), ['tool', 'error', 'retry_after']);
+  assert.equal(mcpBody.retry_after, 7);
+  assert.equal(rest.headers.get('retry-after'), '7', 'REST also sends the header; the number is the same');
+  assert.match(mcpBody.error, /one call every 10 s per key/);
+  clock.t += 7_000;
+  const again = await runTool(def, { symbols: 'BTC,ETH', since: ANCHOR + 590_000 }, ctx);
+  assert.ok(again.data && !again.refused, '10 s after the REST call: served');
 });

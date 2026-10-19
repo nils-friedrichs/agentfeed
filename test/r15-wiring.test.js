@@ -43,7 +43,7 @@ test('accepts: the day pass carries the exact accepts only, every one for exactl
 
 test('the liq-feed 402 description carries one line about the day pass, inside the 400-character cap, with its question; no other route says it', { skip }, () => {
   const { PRICES, challengeLead, challengeDesc, CHALLENGE_DESC_MAX } = require('../payments');
-  const line = 'Heavy pollers can buy a $1 day pass (GET /api/keys/buy-day-pass).';
+  const line = 'One call per 5 s, 10 s on a pass. Heavy pollers: $1 day pass, /api/keys/buy-day-pass.';   // R15e: both intervals, inside the 400 cap
   const d = challengeDesc(challengeLead(PRICES['GET /api/liq-feed']));
   assert.ok(d.endsWith(line), d.slice(-120));
   assert.ok(d.length <= CHALLENGE_DESC_MAX, `${d.length} chars`);
@@ -65,6 +65,31 @@ test('text surfaces: openapi documents the route and its key_hash parameter; llm
   assert.ok((api.paths['/api/keys/buy-day-pass'].get.parameters || []).some((p) => p.name === 'key_hash'));
   const sentence = 'A 24-hour day pass for /api/liq-feed and /api/liquidations is $1 flat (/api/keys/buy-day-pass), each route one call every 10 seconds per key (6 a minute)';   // R15c
   for (const [name, text] of [['openapi', JSON.stringify(api)], ['llms.txt', D.buildLlmsTxt(ctx)], ['SKILL.md', D.buildSkillMd(ctx)]]) assert.ok(text.includes(sentence), `${name} carries the sentence`);
+});
+
+test('R15e: every doc that states the liq-feed pace states BOTH intervals: the 402 note, openapi, llms.txt, SKILL.md and the MCP tool description', { skip }, () => {
+  const { PRICES, TAGS, BAZAAR_META, challengeLead, challengeDesc } = require('../payments');
+  const D = require('../tools/discovery');
+  const LF = require('../tools/liqfeed');
+  const { MCP_DEFS_ADD } = require('../expansion');
+  const ctx = { PRICES, TAGS, META: BAZAAR_META, FREE_TOOLS: ['get_fear_greed'], mpp: { active: false, routes: [] }, tempo: { active: false }, network: 'mainnet' };
+  assert.deepEqual([LF.CALLER_INTERVAL_MS, LF.PASS_INTERVAL_MS], [5000, 10000]);
+  assert.equal(LF.CALLER_INTERVAL_MS, LF.BUCKET_MS, 'the pay-per-call interval is one bucket');
+  const both = (text, where) => { assert.ok(/\b5 seconds\b|\b5 s\b/.test(text) && /\b10 seconds\b|\b10 s\b/.test(text), `${where} states 5 s and 10 s`); };
+  const note = challengeDesc(challengeLead(PRICES['GET /api/liq-feed']));
+  both(note, 'the 402 note');
+  assert.ok(note.length <= 400, `${note.length} chars`);
+  const api = D.buildOpenApi(ctx);
+  assert.ok(api.paths['/api/liq-feed'].get.description.includes(LF.PACE_SENTENCE), 'openapi: the operation description carries the full sentence');
+  both(api.paths['/api/liq-feed'].get.description, 'openapi');
+  for (const [name, text] of [['llms.txt', D.buildLlmsTxt(ctx)], ['SKILL.md', D.buildSkillMd(ctx)]]) { assert.ok(text.includes(LF.PACE_SENTENCE), `${name} carries the full sentence`); both(LF.PACE_SENTENCE, name); }
+  const mcp = MCP_DEFS_ADD.find((d) => d.name === 'get_liq_feed');
+  assert.equal(mcp.docNote, LF.PACE_SENTENCE, 'the MCP tool description is built from def.desc + def.docNote (mcp.js)');
+  assert.equal(MCP_DEFS_ADD.filter((d) => d.docNote).length, 1, 'only this tool');
+  assert.equal(PRICES['GET /api/liq-feed'].desc.length >= 180 && PRICES['GET /api/liq-feed'].desc.length <= 255, true, 'the catalogue description is untouched and inside its band');
+  assert.ok(!PRICES['GET /api/liq-feed'].desc.includes('seconds'));
+  const src = fs.readFileSync(path.join(__dirname, '..', 'mcp.js'), 'utf8');
+  assert.ok(/\$\{def\.desc\}\$\{def\.docNote \? ` \$\{def\.docNote\}` : ''\} Costs/.test(src), 'mcp.js appends docNote to the tool description');
 });
 
 test('the day pass is a REST route only, and its Bazaar example is a constructed one with a placeholder key', { skip }, () => {

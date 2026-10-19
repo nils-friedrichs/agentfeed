@@ -363,8 +363,10 @@ const EXP = [
               since: z.number().optional().describe('first call only: start time in milliseconds since the epoch, up to 24 h back; omit to begin 2 minutes back'),
               next: z.string().optional().describe('the `next` value of the previous answer; send it back unchanged to continue with no gap and no repeat') },
     // one line in the 402 description only (payments.challengeLead): the catalogue description stays inside its 180-255 band
-    challengeNote: () => `Heavy pollers can buy a ${money(KEYLIB.DAY_PASS.usd)} day pass (GET ${KEYLIB.DAY_PASS.path}).`,
-    mcpGate: true,   // R15d: over MCP a pass key is gated on the REST clock (mcp.js passes { passGateKey })
+    // the 402 description is capped at 400 characters (payments.CHALLENGE_DESC_MAX): both intervals and the day pass in one short note
+    challengeNote: () => `One call per ${LF.CALLER_INTERVAL_MS / 1000} s, ${LF.PASS_INTERVAL_MS / 1000} s on a pass. Heavy pollers: ${money(KEYLIB.DAY_PASS.usd)} day pass, ${KEYLIB.DAY_PASS.path}.`,
+    docNote: () => LF.PACE_SENTENCE,   // openapi, llms.txt, SKILL.md and the MCP tool description state the pace in full
+    mcpGate: true,   // R15d/R15e: over MCP a caller is gated on the REST clock (mcp.js hands { caller })
     run: (a, req) => LF.getLiqFeed(a, req) },
   { name: 'get_funding_pulse', route: 'GET /api/funding-pulse', usd: 0.005,
     tags: ['funding', 'perps', 'screener', 'crowding', 'hyperliquid', 'trading'],
@@ -545,12 +547,12 @@ const EXP = [
 const PRICES_ADD = {};
 const TAGS_ADD = {};
 for (const t of EXP) {
-  PRICES_ADD[t.route] = { usd: t.usd, tool: t.name, desc: t.desc, ...(t.noHf ? { noHf: true } : {}), ...(t.challengeNote ? { challengeNote: t.challengeNote() } : {}) };
+  PRICES_ADD[t.route] = { usd: t.usd, tool: t.name, desc: t.desc, ...(t.noHf ? { noHf: true } : {}), ...(t.challengeNote ? { challengeNote: t.challengeNote() } : {}), ...(t.docNote ? { docNote: t.docNote() } : {}) };
   TAGS_ADD[t.name] = t.tags;
 }
 
 const MCP_DEFS_ADD = EXP.filter((t) => t.mcp !== false).map((t) => ({
-  name: t.name, usd: t.usd, desc: t.desc, schema: t.schema, mcpGate: !!t.mcpGate,
+  name: t.name, usd: t.usd, desc: t.desc, schema: t.schema, mcpGate: !!t.mcpGate, ...(t.docNote ? { docNote: t.docNote() } : {}),
   run: (a, ctx) => t.run(a || {}, ctx),    // ctx is passed only to a tool flagged mcpGate (mcp.js); every other tool gets undefined, as before
 }));
 

@@ -18,10 +18,12 @@
 // is final. A poller that always sends back `next` sees each row exactly once. Cut at 500 rows or at the scan cap, the answer
 // ends on a bucket boundary and says has_more.
 //
-// One call per MIN_INTERVAL_MS per key (per IP for x402 callers), unless the previous answer said has_more: that is catch-up.
-// R15d: a pass key (the 30-day bot pass, the 24-hour day pass) is on the same clock over MCP: mcp.js hands get_liq_feed
-// { passGateKey: 'key:<prefix>' }, the REST rail's own key, so one key has ONE clock across REST and MCP (has_more included).
-// MCP callers that pay by x402 or with a prepaid pack are not gated here, as before: their own limits apply.
+// One call per CALLER_INTERVAL_MS (one bucket, 5 s) per caller, PASS_INTERVAL_MS (10 s) for a pass key, unless the previous answer said has_more:
+// that is catch-up. The horizon below moves in whole BUCKET_MS steps, so a call less than one bucket after the last cannot carry a new bucket and
+// billing it would sell an empty answer; from one bucket on, every call has at least one new settled bucket.
+// R15d/R15e: over MCP the caller is on the same clock as over REST: mcp.js hands get_liq_feed { caller: { key, pass } } with the REST rail's own
+// 'key:<prefix>' for a key (pass or pack: ONE clock across REST and MCP, has_more included) or 'wallet:<payer>' for an x402 payer once the
+// facilitator has verified the payment. An x402 payer is keyed by IP over REST and by wallet over MCP, so those two do not share a clock.
 // Everything that is refused here is a 4xx or 503, so the call is never billed (lib/tool.js, lib/keys.js).
 'use strict';
 const Database = require('better-sqlite3');
@@ -33,7 +35,11 @@ const MAX_SYMBOLS = 20;
 const MAX_ROWS = 500;
 const SCAN_CAP = 50000;          // raw tape rows read per call (all symbols: the clock needs them all); cut at a bucket boundary
 const LOOKBACK_MS = 24 * 3600_000;
-const MIN_INTERVAL_MS = 10_000;
+const PASS_INTERVAL_MS = 10_000;         // a pass key (flat fee): one call every 10 s, REST and MCP on one clock
+const CALLER_INTERVAL_MS = BUCKET_MS;    // an x402 payer or a prepaid pack key (pays per call): one call every bucket
+const MIN_INTERVAL_MS = PASS_INTERVAL_MS;   // the older name, kept for callers that import it
+/** The sentence the docs, the 402 note aside, use for the pace: one place, so openapi, llms.txt, SKILL.md and the MCP tool description agree. */
+const PACE_SENTENCE = `Calls are paced per caller: one every ${CALLER_INTERVAL_MS / 1000} seconds (one bucket) for an x402 payer or a prepaid pack key, one every ${PASS_INTERVAL_MS / 1000} seconds for a pass key, except while an answer says has_more; a call that comes too early is a 429 with Retry-After and is never billed.`;
 const STALE_S = 30 * 60;         // the bound every tape route uses
 const BASE_FLOOR_USD_H = 5000;   // the floor /api/signal-board puts under a quiet coin's hourly baseline (tools/signals.js Z_FLOOR_USD)
 const DOMINANT_SHARE = 0.6;
@@ -93,22 +99,34 @@ function parseStart(q, now, horizon, db) {
 }
 
 const callers = new Map();       // caller key -> { at, more }
-function callerKey(req) {
-  if (!req) return null;                                        // MCP without a pass key: its own per-key limit (120 a minute) applies
-  if (req.passGateKey) return req.passGateKey;                  // MCP with a pass key: the same key string the REST rail uses below
-  return req.keyPaid ? `key:${req.keyPaid.prefix}` : `ip:${req.callerIp || (req.headers && req.headers['cf-connecting-ip']) || 'unknown'}`;
+
+/**
+ * Who is calling, and how often they may. -> { key, ms, what } or null (an MCP caller with no identity: ungated).
+ *   REST   req.keyPaid { prefix, pass } -> 'key:<prefix>'; no key -> 'ip:<address>' (an x402 payer)
+ *   MCP    req.caller { key, pass } handed by mcp.js: 'key:<prefix>' (the REST rail's own string, so one key has ONE clock across the two
+ *          surfaces) or 'wallet:<payer>' for an x402 caller, known once the payment is verified
+ * A pass key (the 30-day bot pass, the 24-hour day pass) pays a flat fee: one call every PASS_INTERVAL_MS. Everyone else pays for every call:
+ * one call every CALLER_INTERVAL_MS, one bucket, so a billed call always has a new settled bucket to carry (the horizon moves in BUCKET_MS steps).
+ */
+function callerOf(req) {
+  if (!req) return null;                                                           // MCP without an identity: its own per-key limit (120 a minute) applies
+  const named = (key, pass) => ({ key, ms: pass ? PASS_INTERVAL_MS : CALLER_INTERVAL_MS, what: key.startsWith('key:') ? 'key' : key.startsWith('wallet:') ? 'payer' : 'caller' });
+  if (req.caller && req.caller.key) return named(req.caller.key, !!req.caller.pass);
+  if (req.keyPaid) return named(`key:${req.keyPaid.prefix}`, !!req.keyPaid.pass);
+  return named(`ip:${req.callerIp || (req.headers && req.headers['cf-connecting-ip']) || 'unknown'}`, false);
 }
-function gate(key, now) {
-  if (!key) return;
-  const prev = callers.get(key);
-  if (prev && !prev.more && now - prev.at < MIN_INTERVAL_MS) {
-    const wait = Math.ceil((MIN_INTERVAL_MS - (now - prev.at)) / 1000);
-    throw bad(`liq-feed: one call every ${MIN_INTERVAL_MS / 1000} s per key (more only while an answer says has_more). Retry in ${wait} s. Not charged.`, { status: 429, retryAfter: wait });
+const callerKey = (req) => { const c = callerOf(req); return c ? c.key : null; };
+function gate(c, now) {
+  if (!c) return;
+  const prev = callers.get(c.key);
+  if (prev && !prev.more && now - prev.at < c.ms) {
+    const wait = Math.ceil((c.ms - (now - prev.at)) / 1000);
+    throw bad(`liq-feed: one call every ${c.ms / 1000} s per ${c.what} (more only while an answer says has_more). Retry in ${wait} s. Not charged.`, { status: 429, retryAfter: wait });
   }
 }
-function remember(key, now, more) {
-  if (!key) return;
-  callers.set(key, { at: now, more: !!more });
+function remember(c, now, more) {
+  if (!c) return;
+  callers.set(c.key, { at: now, more: !!more });
   if (callers.size > 5000) for (const [k, v] of callers) if (now - v.at > 60_000) callers.delete(k);
 }
 
@@ -127,10 +145,10 @@ function assertFresh(db, now) {
 function getLiqFeed(p = {}, req, deps = {}) {
   const now = deps.now ? deps.now() : Date.now();
   const db = deps.db || getDb();
-  const key = callerKey(req);
+  const caller = callerOf(req);
   const scanCap = deps.scanCap || SCAN_CAP; const maxRows = deps.maxRows || MAX_ROWS;
   const raw = !!deps.unrounded;                                                 // tests only: skip the rounding to check sums exactly
-  gate(key, now);
+  gate(caller, now);
   assertFresh(db, now);
   const horizon = Math.floor((now - SETTLE_MS) / BUCKET_MS) * BUCKET_MS;       // buckets that start before this are old enough to serve
   const symbols = parseSymbols(p.symbols, deps);
@@ -203,7 +221,7 @@ function getLiqFeed(p = {}, req, deps = {}) {
     }
     out.push(...rowsOut);
   }
-  remember(key, now, hasMore);
+  remember(caller, now, hasMore);
   return {
     source: 'cross-venue liquidation pressure, computed by AgentFeed',
     bucket_s: BUCKET_MS / 1000,
@@ -225,4 +243,4 @@ function getLiqFeed(p = {}, req, deps = {}) {
   };
 }
 
-module.exports = { getLiqFeed, BUCKET_MS, SETTLE_MS, MAX_ROWS, MIN_INTERVAL_MS, _callers: callers, _callerKey: callerKey };
+module.exports = { getLiqFeed, BUCKET_MS, SETTLE_MS, MAX_ROWS, MIN_INTERVAL_MS, PASS_INTERVAL_MS, CALLER_INTERVAL_MS, PACE_SENTENCE, _callers: callers, _callerKey: callerKey, _callerOf: callerOf };

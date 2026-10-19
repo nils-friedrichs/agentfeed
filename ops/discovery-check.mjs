@@ -76,5 +76,29 @@ if (OTHER) {
     ok(diff.length === 0 && ma.size === mb.size, `no paid route changed: ${ma.size} routes against ${mb.size} on ${OTHER}, prices and accepts equal (extra.feePayer ignored)${diff.length ? '; differ: ' + diff.slice(0, 5).join(', ') : ''}`);
   }
 }
+// R15d: every document that changes with a deploy says no-cache and carries an ETag, and a conditional GET with that ETag is a 304.
+// (cache-control: max-age=0 is sent because fetch() otherwise adds `no-cache` to a conditional request, which makes the server answer 200.)
+const NOCACHE_PATHS = ['/openapi.json', '/.well-known/x402', '/.well-known/x402.json', '/llms.txt', '/SKILL.md', ...JSON_PATHS, '/.well-known/security.txt'];
+for (const p of NOCACHE_PATHS) {
+  const hdr = BASE.startsWith('http://') ? HDR : {};
+  const r1 = await fetch(BASE + p, { headers: hdr }); await r1.arrayBuffer();
+  const etag = r1.headers.get('etag');
+  const r2 = etag ? await fetch(BASE + p, { headers: { ...hdr, 'if-none-match': etag, 'cache-control': 'max-age=0' } }) : null;
+  if (r2) await r2.arrayBuffer();
+  ok(r1.status === 200 && r1.headers.get('cache-control') === 'no-cache' && !!etag && r2 && r2.status === 304, `${p}: 200, Cache-Control no-cache, ETag, conditional GET ${r2 ? r2.status : 'not sent'} (want 304)`);
+}
+// R15e: every doc that states the liq-feed pace states both intervals (5 s for an x402 payer or a prepaid pack key, 10 s for a pass key).
+{
+  const hdr = BASE.startsWith('http://') ? HDR : {};
+  const both = (t) => /\b5 seconds\b/.test(t) && /\b10 seconds\b/.test(t);
+  const oa = JSON.parse(await (await fetch(BASE + '/openapi.json', { headers: hdr })).text());
+  ok(both(oa.paths['/api/liq-feed'].get.description), '/openapi.json: /api/liq-feed states 5 seconds and 10 seconds');
+  for (const p of ['/llms.txt', '/SKILL.md']) { const t = await (await fetch(BASE + p, { headers: hdr })).text(); const i = t.indexOf('Calls are paced per caller'); ok(i > 0 && both(t.slice(i, i + 400)), `${p}: the liq-feed pace sentence states 5 seconds and 10 seconds`); }
+  const mcp = await fetch(BASE + '/mcp', { method: 'POST', headers: { ...hdr, 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+  const raw = await mcp.text();
+  const j = json(raw.split('\n').map((l) => l.replace(/^data: /, '')).find((l) => l.startsWith('{')) || '');
+  const tool = j && j.result && j.result.tools.find((t) => t.name === 'get_liq_feed');
+  ok(tool && both(tool.description), 'MCP tools/list: get_liq_feed states 5 seconds and 10 seconds');
+}
 console.log(failed ? `\n${failed} check(s) FAILED` : '\nall checks passed; nothing was paid');
 process.exit(failed ? 1 : 0);

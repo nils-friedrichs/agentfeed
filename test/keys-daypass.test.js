@@ -388,20 +388,38 @@ test('openapi: the /api/keys/balance schema lists every field a pass key gets ba
   }
 });
 
-// ---- R15d: passGateKey is the caller key tools/liqfeed.js gates REST on, for a PASS key only ------------------------------------------------
-test('R15d passGateKey: key:<prefix> for an active day pass and bot pass, null for a prepaid pack, no key, an unknown key and an expired pass', async (t) => {
+// ---- R15d/R15e: gateCaller is who tools/liqfeed.js gates over MCP: the REST rail's own 'key:<prefix>' plus whether it is a pass --------------
+test('R15e gateCaller: { key: key:<prefix>, pass } for an active day pass, bot pass and prepaid pack; null for no key, an unknown key and an expired pass', async (t) => {
   const s = await boot(); t.after(s.close);
   const reqOf = async (key) => { const req = { headers: key ? { 'x-agentfeed-key': key } : {}, callerIp: '127.0.0.1', method: 'GET', path: '/x', query: {} }; await new Promise((r) => s.K.identify(req, { set() {}, status() { return this; }, json() { r(); } }, r)); return req; };
   const day = s.K.store.grantPass({ days: 1, allow: DAY_PASS.allow, label: 'd' });
   const bot = s.K.store.grantPass({ days: 30, label: 'b' });
   const pack = s.K.store.grant(1, 'p');
-  assert.equal(s.K.passGateKey(await reqOf(day)), `key:${s.K.store.get(hashKey(day)).prefix}`);
-  assert.equal(s.K.passGateKey(await reqOf(bot)), `key:${s.K.store.get(hashKey(bot)).prefix}`);
-  assert.equal(s.K.passGateKey(await reqOf(pack)), null, 'a prepaid pack is not gated over MCP');
-  assert.equal(s.K.passGateKey(await reqOf(null)), null, 'no key');
-  assert.equal(s.K.passGateKey(await reqOf('afk_' + '1'.repeat(43))), null, 'an unknown key');
-  assert.equal(s.K.passGateKey(undefined), null);
+  const pfx = (k) => s.K.store.get(hashKey(k)).prefix;
+  assert.deepEqual(s.K.gateCaller(await reqOf(day)), { key: `key:${pfx(day)}`, pass: true });
+  assert.deepEqual(s.K.gateCaller(await reqOf(bot)), { key: `key:${pfx(bot)}`, pass: true });
+  assert.deepEqual(s.K.gateCaller(await reqOf(pack)), { key: `key:${pfx(pack)}`, pass: false }, 'a prepaid pack is a caller too, on the 5 s clock');
+  assert.equal(s.K.gateCaller(await reqOf(null)), null, 'no key');
+  assert.equal(s.K.gateCaller(await reqOf('afk_' + '1'.repeat(43))), null, 'an unknown key');
+  assert.equal(s.K.gateCaller(undefined), null);
   s.clock.t += DAY;
-  assert.equal(s.K.passGateKey(await reqOf(day)), null, 'an expired pass');
-  assert.equal(s.K.passGateKey(await reqOf(bot)), `key:${s.K.store.get(hashKey(bot)).prefix}`, 'the 30-day pass is still active');
+  assert.equal(s.K.gateCaller(await reqOf(day)), null, 'an expired pass');
+  assert.deepEqual(s.K.gateCaller(await reqOf(bot)), { key: `key:${pfx(bot)}`, pass: true }, 'the 30-day pass is still active');
 });
+
+test('R15e REST: req.keyPaid.pass is true for a pass key and false for a pack, so liqfeed picks 10 s or 5 s', async (t) => {
+  const s = await boot(); t.after(s.close);
+  const seen = [];
+  s.K.stop();   // (the harness app is already built; a second app below shares the same key store)
+  const app = express();
+  app.use((req, _res, next) => { req.callerIp = '127.0.0.1'; next(); });
+  app.use(s.K.identify); app.use(s.K.charge);
+  app.get('/api/liq-feed', (req, res) => { seen.push(req.keyPaid && { prefix: req.keyPaid.prefix, pass: req.keyPaid.pass }); res.json({ ok: true }); });
+  const srv = await new Promise((r) => { const sv = app.listen(0, '127.0.0.1', () => r(sv)); });
+  t.after(() => srv.close());
+  const day = s.K.store.grantPass({ days: 1, allow: DAY_PASS.allow, label: 'd' });
+  const pack = s.K.store.grant(1, 'p');
+  for (const k of [day, pack]) assert.equal((await fetch(`http://127.0.0.1:${srv.address().port}/api/liq-feed`, { headers: { 'x-agentfeed-key': k } })).status, 200);
+  assert.deepEqual(seen.map((x) => x.pass), [true, false]);
+});
+

@@ -11,6 +11,7 @@ const { SOLANA_MAINNET_CAIP2, SOLANA_DEVNET_CAIP2 } = require('@x402/svm');
 const { logCall } = require('./db');
 const { settledUsd } = require('./lib/audit');
 const { runInMcpRequest, mcpRequestRow } = require('./lib/mcp-ctx');
+const { runTool, trackPayers, callerCtx } = require('./lib/mcp-gate');
 const { getPrice } = require('./tools/prices');
 const { getFunding, getFundingRate } = require('./tools/funding');
 const { getFearGreed } = require('./tools/feargreed');
@@ -191,6 +192,7 @@ async function initMcp(app, keys) {
     .register(network, new ExactSvmScheme());
   for (const r of EVM) rs.register(r.network, new ExactEvmScheme());
   await rs.initialize();
+  const payerFor = trackPayers(rs);          // the verified wallet of an x402 MCP call, for the get_liq_feed clock (lib/mcp-gate.js)
 
   const wrappers = {};
   for (const def of TOOL_DEFS) {
@@ -250,9 +252,9 @@ async function initMcp(app, keys) {
       icons: [{ src: ICON_URL, mimeType: 'image/png' }],
     }, { instructions: INSTRUCTIONS });
 
-    // R15d: a pass key calling a tool flagged mcpGate (get_liq_feed) is gated on the clock its REST calls use
-    const gateKey = keys && req && keys.passGateKey ? keys.passGateKey(req) : null;
-    const gateCtx = gateKey ? { passGateKey: gateKey } : undefined;
+    // R15d/R15e: a caller of a tool flagged mcpGate (get_liq_feed) is gated on the clock its REST calls use: an active key (pass or pack) by its
+    // prefix, an x402 payer by the wallet the facilitator verified; no identity, no gate (lib/mcp-gate.js)
+    const keyCaller = keys && req && keys.gateCaller ? keys.gateCaller(req) : null;
     const ordered = DISPLAY_FIRST.map((n) => TOOL_DEFS.find((d) => d.name === n)).filter(Boolean)
       .concat(TOOL_DEFS.filter((d) => !DISPLAY_FIRST.includes(d.name)));
     for (const def of ordered) {
@@ -260,14 +262,15 @@ async function initMcp(app, keys) {
         def.name,
         {
           title: TOOL_TITLES[def.name],
-          description: def.usd ? `${def.desc} Costs ${def.usd} USDC per call ${RAILS_TEXT}.` : `${def.desc} Free.`,
+          description: def.usd ? `${def.desc}${def.docNote ? ` ${def.docNote}` : ''} Costs ${def.usd} USDC per call ${RAILS_TEXT}.` : `${def.desc} Free.`,
           inputSchema: def.schema,
           outputSchema: outputSchemaFor(def),
           annotations: TOOL_ANNOTATIONS,
         },
-        (def.usd ? ((keys && req && keys.mcpWrap(req, def)) || wrappers[def.name]) : ((h) => h))(async (args) => {
-          const data = await def.run(args || {}, def.mcpGate ? gateCtx : undefined);
-          const payload = { tool: def.name, data };
+        (def.usd ? ((keys && req && keys.mcpWrap(req, def)) || wrappers[def.name]) : ((h) => h))(async (args, context) => {
+          const ran = await runTool(def, args, def.mcpGate ? callerCtx(keyCaller, payerFor, context) : undefined);
+          if (ran.refused) return ran.refused;                       // a gated tool's 429: the REST body, as an isError result (lib/mcp-gate.js)
+          const payload = { tool: def.name, data: ran.data };
           // Both, as the spec requires: text for clients that only read content,
           // structuredContent for the declared outputSchema.
           return { content: [{ type: 'text', text: JSON.stringify(payload) }], structuredContent: payload };
