@@ -119,7 +119,10 @@ test('classification table', () => {
   const rl = makeRateLimiter({ logCall() {}, isPricedPath, presentsPayment });
   const c = (method, path, headers = {}, afKey) => rl.classify({ method, path, headers, afKey });
   for (const p of ['/openapi.json', '/llms.txt', '/SKILL.md', '/.well-known/x402', '/.well-known/x402.json', '/.well-known/x402/discovery/resources']) assert.equal(c('GET', p), 'docs', p);
-  for (const p of ['/openapi.jsonx', '/x/openapi.json', '/.well-known/x402x', '/.well-known/agent.json', '/pricing']) assert.notEqual(c('GET', p), 'docs', p);
+  // R15b: the aliases and the other /.well-known files crawlers ask for are documents too
+  for (const p of ['/swagger.json', '/x402', '/x402-resources', '/api', '/api/', '/.well-known/x402-resources', '/.well-known/x402-services.json', '/.well-known/ai-plugin.json',
+    '/.well-known/agents.json', '/.well-known/agent-registration.json', '/.well-known/security.txt']) assert.equal(c('GET', p), 'docs', p);
+  for (const p of ['/openapi.jsonx', '/x/openapi.json', '/.well-known/x402x', '/.well-known/agent.json', '/pricing', '/api/supported', '/supported', '/apix', '/.well-known/oauth-protected-resource']) assert.notEqual(c('GET', p), 'docs', p);
   assert.equal(c('GET', '/api/sol-price'), 'unpaid');
   assert.equal(c('GET', '/api/sol-price', { 'payment-signature': 'x' }), 'metered');
   assert.equal(c('GET', '/api/sol-price', {}, { presented: true, active: false }), 'metered');

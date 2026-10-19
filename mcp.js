@@ -39,7 +39,7 @@ const TOOL_DEFS = [
     schema: { symbol: z.string().optional().describe('USDT perp symbol e.g. ETHUSDT, ONDOUSDT (omit for SOL and BTC from Hyperliquid)') },
     run: (a) => getFundingRate(a) },
   { name: 'get_fear_greed', usd: 0, desc: 'Crypto Fear & Greed index (0-100) with classification.',
-    schema: {}, run: () => getFearGreed() },
+    schema: {}, run: async () => ({ ...(await getFearGreed()), related: require('./lib/related').relatedFor('get_fear_greed', require('./payments').PRICES) }) },
   { name: 'get_market_snapshot', usd: 0.005, desc: 'SOL+BTC prices, funding rates, and Fear & Greed in one call.',
     schema: {}, run: async () => {
       const [sol, btc, fs_, fb, fg] = await Promise.all([
@@ -84,7 +84,7 @@ const TOOL_DEFS = [
   { name: 'get_liquidation_stats', usd: 0.01, desc: 'Liquidation aggregates for the 5 majors (SOL, BTC, ETH, XRP, DOGE): 1h and 24h totals, longs vs shorts USD split, biggest print, broken out per exchange.',
     schema: {}, run: () => getLiquidationStats() },
   { name: 'get_last_liquidation', usd: 0, desc: 'FREE taster: last liquidation for SOL, BTC, ETH, XRP and DOGE (15-min delayed). Real-time via get_recent_liquidations.',
-    schema: {}, run: () => getLastLiquidation() },
+    schema: {}, run: async () => ({ ...(await getLastLiquidation()), related: require('./lib/related').relatedFor('get_last_liquidation', require('./payments').PRICES) }) },
   { name: 'get_positioning', usd: 0.005, desc: 'SOL+BTC positioning on Hyperliquid: open interest with 1h/24h change and the top 250 accounts\' net-long share (whale crowding).',
     schema: {}, run: () => getPositioning() },
   { name: 'get_trade_context', usd: 0.01, desc: 'Full market state in one call: SOL+BTC prices, funding, Fear & Greed, positioning (open interest and whale net-long share), and liquidation stats. The complete pre-trade picture.',
@@ -93,7 +93,7 @@ const TOOL_DEFS = [
     schema: { mint: z.string().describe('SPL token mint address (base58)') },
     run: (a) => getTokenRisk(a.mint) },
   { name: 'get_exit_method', usd: 0, desc: "FREE: how overhang measures exit liquidity on lending collateral, and the counts behind every paid answer - computed from the tape at request time, nothing hardcoded. Returns what is measured (the protocol's own live-refetched mark vs realisable value from sell-direction quotes at real clip sizes), the corroboration rule in plain terms (a terminal verdict needs six consecutive agreeing floor observations from the symbol's own tape; one sample is never enough; a contradicted floor buys a fresh probe rather than writing a hole), the full status vocabulary including why a router refusal and an empty book are different facts, the size-matched control design and its results, the gated sweep and row counts, covered symbols and markets, and the measured cadence. Read this before paying for get_exit_quote, and to check the claim rather than trust it.",
-    schema: {}, run: () => getExitMethod() },
+    schema: {}, run: async () => ({ ...(await getExitMethod()), related: require('./lib/related').relatedFor('get_exit_method', require('./payments').PRICES) }) },
 ];
 
 TOOL_DEFS.push(...require('./expansion').MCP_DEFS_ADD);

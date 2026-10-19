@@ -367,6 +367,8 @@ app.get('/openapi.json', (_req, res) => res.json(docs().openapi));
 app.get('/.well-known/x402', (_req, res) => res.json(docs().wellKnown));
 app.get('/llms.txt', (_req, res) => res.type('text/plain; charset=utf-8').send(docs().llms));
 app.get('/SKILL.md', (_req, res) => res.type('text/markdown; charset=utf-8').send(docs().skill));
+// R15b: the discovery paths crawlers asked for and got a 404 on (lib/discovery-aliases.js); all in the 'docs' rate bucket
+require('./lib/discovery-aliases').mountDiscoveryAliases(app, { docs, PRICES, ORIGIN: discovery.ORIGIN, version: require('./server.json').version });
 // Directory domain claims (402index, nohumans): inert 404s until a claim writes a value.
 require('./lib/well-known-claims').mountWellKnownClaims(app);
 
@@ -424,7 +426,9 @@ app.get('/api/btc-price', tool('get_btc_price', 0.001, () => getPrice('BTC')));
 
 app.get('/api/funding-rate', tool('get_funding_rate', 0.005, (req) => getFundingRate({ symbol: req.query.symbol })));
 
-app.get('/api/fear-greed', tool('get_fear_greed', 0.001, () => getFearGreed()));
+// R15b: the three free routes carry `related`, the closest paid route as plain data (lib/related.js)
+const { relatedFor } = require('./lib/related');
+app.get('/api/fear-greed', tool('get_fear_greed', 0.001, async () => ({ ...(await getFearGreed()), related: relatedFor('get_fear_greed', PRICES) })));
 
 app.get('/api/market-snapshot', tool('get_market_snapshot', 0.005, async () => {
   const [sol, btc, fundingSol, fundingBtc, fg] = await Promise.all([
@@ -447,13 +451,13 @@ app.get('/api/liquidation-leaders', tool('get_liquidation_leaders', 0.02,
 app.get('/api/liquidation-stats', tool('get_liquidation_stats', 0.01,
   () => getLiquidationStats()));
 app.get('/api/last-liquidation', tool('get_last_liquidation', 0,
-  () => getLastLiquidation()));
+  async () => ({ ...(await getLastLiquidation()), related: relatedFor('get_last_liquidation', PRICES) })));
 
 // overhang method disclosure. FREE, and deliberately absent from PRICES in payments.js
 // so the x402 middleware never sees a $0 route (same treatment as /api/last-liquidation).
 const { getExitMethod } = require('./tools/overhang');
 app.get('/api/exit-method', tool('get_exit_method', 0,
-  () => getExitMethod()));
+  async () => ({ ...(await getExitMethod()), related: relatedFor('get_exit_method', PRICES) })));
 
 const { getCascadeAlert } = require('./tools/cascade');
 app.get('/api/cascade', tool('get_cascade_alert', 0.01,
