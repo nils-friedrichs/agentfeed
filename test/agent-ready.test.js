@@ -221,7 +221,8 @@ test('/auth.md: short markdown, no registration, x402 or MPP per call or a prepa
   const etag = r.headers.get('etag'); assert.ok(etag);
   const text = await r.text();
   assert.ok(text.length < 3000, `${text.length} chars: short`);
-  assert.match(text, /^# Authentication/);
+  assert.equal(text.split('\n')[0], '# auth.md', 'R18: the first line is the H1 the scanner wants (a heading containing auth.md)');
+  assert.equal((text.match(/^# /gm) || []).length, 1, 'one H1');
   assert.match(text, /no registration, no account and no API key/i);
   assert.match(text, /x402/); assert.match(text, /MPP/);
   assert.match(text, /\/api\/keys\/balance/);
@@ -249,4 +250,19 @@ test('robots.txt: Content-Signal inside the User-agent group, the Agentmap direc
 test('the new documents are in the docs rate bucket, not the data one', () => {
   for (const p of ['/.well-known/ard.json', '/.well-known/ai-catalog.json', '/.well-known/api-catalog', '/.well-known/agent-skills/index.json', '/auth.md']) assert.ok(DOC_PATH.test(p), p);
   for (const p of ['/.well-known/agent-skills/other.json', '/auth.md.bak', '/api/keys/buy-1', '/.well-known/oauth-protected-resource']) assert.equal(DOC_PATH.test(p), false, p);
+});
+
+test('R18 robots.txt: Cache-Control no-cache and an ETag like the other discovery documents; a conditional GET is a 304; the body is unchanged', async (t) => {
+  const s = await boot(); t.after(s.close);
+  const r = await s.get('/robots.txt');
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'text/plain; charset=utf-8');
+  assert.equal(r.headers.get('cache-control'), 'no-cache', 'it was public, max-age=3600, and Cloudflare kept the pre-R17 copy for hours');
+  const etag = r.headers.get('etag'); assert.ok(etag, 'an ETag');
+  const body = await r.text();
+  assert.equal(body, compat.ROBOTS, 'the same text as before');
+  const again = await s.get('/robots.txt', { 'if-none-match': etag, 'cache-control': 'max-age=0' });
+  assert.equal(again.status, 304, 'a revalidation is a 304');
+  assert.equal(again.headers.get('cache-control'), 'no-cache');
+  assert.equal((await s.get('/robots.txt', { 'if-none-match': 'W/"stale"', 'cache-control': 'max-age=0' })).status, 200, 'a stale ETag gets the full file (control)');
 });

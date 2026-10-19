@@ -80,7 +80,8 @@ if (OTHER) {
 // R15d: every document that changes with a deploy says no-cache and carries an ETag, and a conditional GET with that ETag is a 304.
 // (cache-control: max-age=0 is sent because fetch() otherwise adds `no-cache` to a conditional request, which makes the server answer 200.)
 const NOCACHE_PATHS = ['/openapi.json', '/.well-known/x402', '/.well-known/x402.json', '/llms.txt', '/SKILL.md', ...JSON_PATHS, '/.well-known/security.txt',
-  '/.well-known/ai-catalog.json', '/.well-known/ard.json', '/.well-known/api-catalog', '/.well-known/agent-skills/index.json', '/auth.md'];   // R17 added the last five
+  '/.well-known/ai-catalog.json', '/.well-known/ard.json', '/.well-known/api-catalog', '/.well-known/agent-skills/index.json', '/auth.md',   // R17 added these five
+  '/robots.txt'];   // R18
 for (const p of NOCACHE_PATHS) {
   const hdr = BASE.startsWith('http://') ? HDR : {};
   const r1 = await fetch(BASE + p, { headers: hdr }); await r1.arrayBuffer();
@@ -138,7 +139,7 @@ for (const p of NOCACHE_PATHS) {
   ok(k && skills.$schema === 'https://schemas.agentskills.io/discovery/0.2.0/schema.json' && k.type === 'skill-md' && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(k.name) && k.description.length <= 1024 && k.url === `${ORIGIN_OF(BASE)}/SKILL.md` && k.digest === `sha256:${crypto.createHash('sha256').update(skillBytes).digest('hex')}`, 'agent-skills index: $schema, name, type, description, url, and digest = sha256 of the served /SKILL.md');
   // /auth.md
   const auth = await raw('/auth.md');
-  ok(auth.r.status === 200 && auth.r.headers.get('content-type') === 'text/markdown; charset=utf-8' && /llms\.txt/.test(auth.text) && /openapi\.json/.test(auth.text) && /\/api\/keys\//.test(auth.text), '/auth.md: text/markdown, links llms.txt and openapi.json, names /api/keys/*');
+  ok(auth.r.status === 200 && auth.r.headers.get('content-type') === 'text/markdown; charset=utf-8' && auth.text.split('\n')[0] === '# auth.md' && /llms\.txt/.test(auth.text) && /openapi\.json/.test(auth.text) && /\/api\/keys\//.test(auth.text), '/auth.md: text/markdown, first line "# auth.md", links llms.txt and openapi.json, names /api/keys/*');
   // the paper route: the slash form and the %2F form are the same route unpaid
   const accepts = async (p) => { const r = await fetch(BASE + p, { headers: hdr }); const h = r.headers.get('payment-required'); await r.arrayBuffer(); return { status: r.status, accepts: h ? JSON.stringify(JSON.parse(Buffer.from(h, 'base64').toString('utf8')).accepts.map((a) => { const { extra, ...rest } = a; return rest; })) : null }; };
   const sl = await accepts('/api/paper/10.1038/nature14539'), en = await accepts('/api/paper/10.1038%2Fnature14539');
