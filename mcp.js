@@ -64,7 +64,7 @@ const TOOL_DEFS = [
               min_events: z.number().optional().describe('min prints to qualify, default 4'),
               min_usd: z.number().optional().describe('min summed USD, default 50000') },
     run: (a) => getCascadeAlert({ query: a }) },
-  { name: 'get_cascade_scan', usd: 0.05, desc: 'FULL-UNIVERSE cascade scan: detects liquidation cascades across every USDT perp we record on Bybit, OKX and Binance simultaneously - not just majors. Bybit is the only complete unthrottled liquidation tape in crypto and no exchange publishes history of it, so this coverage is not available anywhere else. Returns symbol, side, USD total, prints, duration, severity.',
+  { name: 'get_cascade_scan', usd: 0.05, desc: 'Liquidation cascade scan across EVERY USDT perp we record at once, not just the majors: symbol, side liquidated, USD total, prints, duration, severity. Computed from our own multi-venue liquidation tape.',
     schema: { window: z.number().optional().describe('lookback window seconds, 30-300, default 90'),
               min_events: z.number().optional().describe('min prints to qualify, default 4'),
               min_usd: z.number().optional().describe('min summed USD, default 50000') },
