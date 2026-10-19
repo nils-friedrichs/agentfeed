@@ -92,7 +92,7 @@ const KEYTOP = (k) => {
 
 const EXP = [
   { name: 'get_cascade_forecast', route: 'GET /api/cascade-forecast', usd: 0.02,
-    tags: ['forecast','liquidations','cascade','prediction','exclusive'], desc: 'Liquidation forecast, FORWARD-LOOKING and not a description of what already happened. Returns the probability that a symbol will liquidate more in the NEXT 15 minutes than its own 90th-percentile 15-minute window. Calibrated on a 28-day tape of 1.4M Bybit liquidations across 799 symbols, which cannot be reconstructed by anyone starting today because no exchange publishes liquidation history. Every answer carries the exact question, the threshold in USD, the window it read, the number of historical occurrences behind the number, and instructions for settling it yourself from the public feed. When a state has too little history the tool DECLINES rather than guessing, and says why. The settled record is free at /api/forecast-record.',
+    tags: ['forecast','liquidations','cascade','prediction','exclusive'], desc: 'Liquidation forecast, FORWARD-LOOKING and not a description of what already happened. Returns the probability that a symbol will liquidate more in the NEXT 15 minutes than its own 90th-percentile 15-minute window. Calibrated on a 28-day tape of our own multi-venue liquidation record, which cannot be reconstructed by anyone starting today because no exchange publishes liquidation history. Every answer carries the exact question, the threshold in USD, the window it read, the number of historical occurrences behind the number, and instructions for settling it yourself from the public feed. When a state has too little history the tool DECLINES rather than guessing, and says why. The settled record is free at /api/forecast-record.',
     schema: { symbol: z.string().optional().describe('SOL, BTC, ETH or any USDT perp e.g. SXTUSDT (default SOL)'),
               symbols: z.string().optional().describe('comma separated for a batch, max 20, e.g. SOL,BTC,ETH') },
     run: (a) => CF.getCascadeForecast({ query: a }) },
@@ -103,7 +103,7 @@ const EXP = [
     schema: { symbol: sym('SOLUSDT'), scope: z.enum(['symbol', 'all']).optional().describe('all = whole universe'), hours: z.number().optional().describe('lookback 1-168, default 24'), bucket_min: z.number().optional().describe('bucket minutes 5-1440, default 60') },
     run: (a) => L.getLiqHistory(a) },
   { name: 'get_liq_heatmap', route: 'GET /api/liq-heatmap', usd: 0.02,
-    desc: 'Liquidation heatmap by PRICE LEVEL: where leverage actually got flushed in the last N hours — USD, prints and long/short split per price zone, with the hottest zone flagged. Built from real liquidation prints, not entry-price estimates. BTC, ETH, SOL, HYPE or any other USDT perp on our Bybit, OKX and Binance tape.',
+    desc: 'Liquidation heatmap by PRICE LEVEL: where leverage actually got flushed in the last N hours — USD, prints and long/short split per price zone, with the hottest zone flagged. Built from real liquidation prints, not entry-price estimates. BTC, ETH, SOL, HYPE or any other USDT perp on our multi-venue liquidation tape.',
     tags: ['liquidations', 'heatmap', 'levels', 'trading', 'exclusive'],
     schema: { symbol: z.string().optional().describe(`BTC, ETH, SOL, HYPE or any USDT perp e.g. BTCUSDT (default ${SYM_DEFAULT})`), hours: z.number().optional().describe('lookback 1-168, default 24'), buckets: z.number().optional().describe('price buckets 5-50, default 20') },
     run: (a) => L.getLiqHeatmap(a) },
@@ -459,8 +459,8 @@ const EXP = [
     run: (a) => PAP.searchPapers(a) },
   { name: 'get_paper', route: 'GET /api/paper/:doi', usd: 0.005,
     tags: ['research', 'papers', 'academic', 'doi', 'openalex', 'citations'],
-    desc: 'Use when an agent needs the paper behind a DOI. Returns title, year, authors, venue, citation count, open-access URL and the abstract where OpenAlex holds it (CC0 data). Send the slash of the DOI as %2F in the path.',
-    schema: { doi: z.string().describe('a DOI such as 10.1038/nature14539, its slash sent as %2F in the path') },
+    desc: 'Use when an agent needs the paper behind a DOI. Returns title, year, authors, venue, citation count, open-access URL and the abstract where OpenAlex holds it (CC0 data). The DOI goes in the path as written, slash included: /api/paper/10.1038/nature14539.',
+    schema: { doi: z.string().describe('a DOI such as 10.1038/nature14539, sent in the path as written (its slash as %2F also works)') },
     run: (a) => PAP.getPaper(a) },
   { name: 'get_wiki', route: 'GET /api/wiki', usd: 0.005,
     tags: ['wikipedia', 'encyclopedia', 'knowledge', 'reference', 'summary'],

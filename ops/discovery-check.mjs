@@ -6,6 +6,7 @@
 //   node ops/discovery-check.mjs http://127.0.0.1:3998 --against https://x402.ochinimus.app     the staged server against live
 //   node ops/discovery-check.mjs https://x402.ochinimus.app                                      live, after the deploy
 import crypto from 'node:crypto';
+const ORIGIN_OF = (base) => (base.startsWith('http://') ? 'https://x402.ochinimus.app' : base);   // the documents name the public origin, also when read from a local server
 
 const BASE = (process.argv[2] || '').replace(/\/$/, '');
 if (!/^https?:\/\//.test(BASE)) { console.error('usage: node ops/discovery-check.mjs <base-url> [--against <other-url>]'); process.exit(2); }
@@ -78,7 +79,8 @@ if (OTHER) {
 }
 // R15d: every document that changes with a deploy says no-cache and carries an ETag, and a conditional GET with that ETag is a 304.
 // (cache-control: max-age=0 is sent because fetch() otherwise adds `no-cache` to a conditional request, which makes the server answer 200.)
-const NOCACHE_PATHS = ['/openapi.json', '/.well-known/x402', '/.well-known/x402.json', '/llms.txt', '/SKILL.md', ...JSON_PATHS, '/.well-known/security.txt'];
+const NOCACHE_PATHS = ['/openapi.json', '/.well-known/x402', '/.well-known/x402.json', '/llms.txt', '/SKILL.md', ...JSON_PATHS, '/.well-known/security.txt',
+  '/.well-known/ai-catalog.json', '/.well-known/ard.json', '/.well-known/api-catalog', '/.well-known/agent-skills/index.json', '/auth.md'];   // R17 added the last five
 for (const p of NOCACHE_PATHS) {
   const hdr = BASE.startsWith('http://') ? HDR : {};
   const r1 = await fetch(BASE + p, { headers: hdr }); await r1.arrayBuffer();
@@ -99,6 +101,54 @@ for (const p of NOCACHE_PATHS) {
   const j = json(raw.split('\n').map((l) => l.replace(/^data: /, '')).find((l) => l.startsWith('{')) || '');
   const tool = j && j.result && j.result.tools.find((t) => t.name === 'get_liq_feed');
   ok(tool && both(tool.description), 'MCP tools/list: get_liq_feed states 5 seconds and 10 seconds');
+}
+// ---- R17: agent readiness (lib/agent-ready.js)
+{
+  const hdr = BASE.startsWith('http://') ? HDR : {};
+  const raw = async (p, headers = {}) => { const r = await fetch(BASE + p, { headers: { ...hdr, ...headers } }); const buf = Buffer.from(await r.arrayBuffer()); return { r, buf, text: buf.toString('utf8') }; };
+  // the ARD manifest: the same document at both paths, with the fields the schema requires
+  const ai = await raw('/.well-known/ai-catalog.json'), ard = await raw('/.well-known/ard.json');
+  const doc = json(ard.text);
+  ok(ai.text === ard.text && doc, '/.well-known/ai-catalog.json and /.well-known/ard.json are one document');
+  const entryOk = (e) => e && /^urn:air:[a-zA-Z0-9.-]+(:[a-zA-Z0-9._-]+)+$/.test(e.identifier) && e.displayName && /^[a-z]+\/[a-z0-9.+-]+$/.test(e.type) && (('url' in e) !== ('data' in e)) && Array.isArray(e.representativeQueries) && e.representativeQueries.length >= 2 && e.representativeQueries.length <= 5;
+  ok(doc && doc.specVersion === '1.0' && doc.host && doc.host.displayName && Array.isArray(doc.entries) && doc.entries.length === 4 && doc.entries.every(entryOk), 'ARD manifest: specVersion, host.displayName, 4 entries each with identifier, displayName, type, one of url/data, 2-5 queries');
+  ok(ai.r.headers.get('access-control-allow-origin') === '*' && ard.r.headers.get('access-control-allow-origin') === '*' && /^application\/ai-catalog\+json/.test(ai.r.headers.get('content-type') || ''), 'ARD manifest: CORS *, application/ai-catalog+json on the predecessor path');
+  const urls = doc ? await Promise.all(doc.entries.map(async (e) => (await fetch(e.url, { headers: e.url.startsWith(BASE) ? hdr : {} })).status)) : [];
+  ok(urls.length === 4 && urls.every((c) => c === 200), `ARD manifest: every entry url answers 200 (${urls.join(', ')})`);
+  // RFC 9727
+  const ac = await raw('/.well-known/api-catalog');
+  const acj = json(ac.text);
+  ok(/^application\/linkset\+json/.test(ac.r.headers.get('content-type') || '') && acj && acj.linkset[0].anchor === `${ORIGIN_OF(BASE)}/api` && acj.linkset[0]['service-desc'] && acj.linkset[0]['service-doc'] && acj.linkset[0].status, '/.well-known/api-catalog: application/linkset+json, anchor /api, service-desc, service-doc, status');
+  // Link headers on / and /api
+  for (const p of ['/', '/api']) {
+    const l = (await raw(p)).r.headers.get('link') || '';
+    ok(/rel="api-catalog"/.test(l) && /rel="service-desc"/.test(l) && /rel="service-doc"/.test(l) && !/rel="(?!api-catalog|service-desc|service-doc)/.test(l), `${p}: Link header names api-catalog, service-desc, service-doc and nothing else`);
+  }
+  // markdown negotiation, both ways
+  const md = await raw('/', { accept: 'text/markdown' }), llms = await raw('/llms.txt'), dflt = await raw('/'), html = await raw('/', { accept: 'text/html,application/xhtml+xml,*/*;q=0.8' });
+  ok(md.r.status === 200 && md.r.headers.get('content-type') === 'text/markdown; charset=utf-8' && /Accept/i.test(md.r.headers.get('vary') || '') && md.text === llms.text, 'GET / with Accept: text/markdown: text/markdown; charset=utf-8, Vary: Accept, the llms.txt text');
+  ok(/^application\/json/.test(dflt.r.headers.get('content-type') || '') && json(dflt.text) && /^text\/html/.test(html.r.headers.get('content-type') || '') && /Accept/i.test(dflt.r.headers.get('vary') || '') && /Accept/i.test(html.r.headers.get('vary') || ''), 'GET / default is JSON and a browser Accept is HTML, both with Vary: Accept');
+  // robots.txt
+  const robots = (await raw('/robots.txt')).text.split('\n');
+  ok(robots[0] === 'User-agent: *' && robots[1] === 'Content-Signal: search=yes, ai-input=yes, ai-train=yes' && robots.includes(`Agentmap: ${ORIGIN_OF(BASE)}/.well-known/ard.json`), 'robots.txt: Content-Signal under User-agent, Agentmap names ard.json');
+  // the skills index: the digest is of the bytes /SKILL.md serves
+  const skills = json((await raw('/.well-known/agent-skills/index.json')).text);
+  const skillBytes = (await raw('/SKILL.md')).buf;
+  const k = skills && skills.skills && skills.skills[0];
+  ok(k && skills.$schema === 'https://schemas.agentskills.io/discovery/0.2.0/schema.json' && k.type === 'skill-md' && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(k.name) && k.description.length <= 1024 && k.url === `${ORIGIN_OF(BASE)}/SKILL.md` && k.digest === `sha256:${crypto.createHash('sha256').update(skillBytes).digest('hex')}`, 'agent-skills index: $schema, name, type, description, url, and digest = sha256 of the served /SKILL.md');
+  // /auth.md
+  const auth = await raw('/auth.md');
+  ok(auth.r.status === 200 && auth.r.headers.get('content-type') === 'text/markdown; charset=utf-8' && /llms\.txt/.test(auth.text) && /openapi\.json/.test(auth.text) && /\/api\/keys\//.test(auth.text), '/auth.md: text/markdown, links llms.txt and openapi.json, names /api/keys/*');
+  // the paper route: the slash form and the %2F form are the same route unpaid
+  const accepts = async (p) => { const r = await fetch(BASE + p, { headers: hdr }); const h = r.headers.get('payment-required'); await r.arrayBuffer(); return { status: r.status, accepts: h ? JSON.stringify(JSON.parse(Buffer.from(h, 'base64').toString('utf8')).accepts.map((a) => { const { extra, ...rest } = a; return rest; })) : null }; };
+  const sl = await accepts('/api/paper/10.1038/nature14539'), en = await accepts('/api/paper/10.1038%2Fnature14539');
+  ok(sl.status === 402 && en.status === 402 && sl.accepts && sl.accepts === en.accepts, '/api/paper: the slash form and the %2F form both answer 402 with the same accepts');
+  // counts
+  const man = json((await raw('/.well-known/x402.json')).text);
+  ok(man && man.resources.length === 91, `manifest: ${man && man.resources.length} routes (expected 91, unchanged)`);
+  const tl = await fetch(BASE + '/mcp', { method: 'POST', headers: { ...hdr, 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+  const tj = json((await tl.text()).split('\n').map((l) => l.replace(/^data: /, '')).find((l) => l.startsWith('{')) || '');
+  ok(tj && tj.result.tools.length === 90, `MCP tools/list: ${tj && tj.result.tools.length} tools (expected 90, unchanged)`);
 }
 console.log(failed ? `\n${failed} check(s) FAILED` : '\nall checks passed; nothing was paid');
 process.exit(failed ? 1 : 0);

@@ -8737,7 +8737,7 @@
     "properties": {
      "doi": {
       "type": "string",
-      "description": "a DOI such as 10.1038/nature14539, its slash sent as %2F in the path"
+      "description": "a DOI such as 10.1038/nature14539, sent in the path as written (its slash as %2F also works)"
      }
     },
     "required": [
@@ -8745,7 +8745,7 @@
     ]
    },
    "pathParams": {
-    "doi": "10.1038%2Fnature14539"
+    "doi": "10.1038/nature14539"
    },
    "output": {
     "example": {

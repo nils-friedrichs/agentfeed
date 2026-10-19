@@ -22,6 +22,9 @@ app.disable('x-powered-by');
 // /api/<route>|eip155:<id> (raw or %7C) is served as /api/<route>; see lib/compat.js.
 const compat = require('./lib/compat');
 app.use(compat.stripNetworkSuffix);
+// R17: /api/paper/10.1038/nature14539 (a literal slash in the DOI) is the same route as /api/paper/10.1038%2Fnature14539: rewritten to the
+// canonical one-segment form before the rate limiter, the key rail and the paywall (lib/slash-path.js).
+app.use(require('./lib/slash-path').slashPathCanonical());
 // R11: the seven language-model routes (Gemini) only serve callers inside Google's available regions (Gemini API Additional
 // Terms). tools/llm/region-gate.js answers 451 {error, country} when CF-IPCountry is present and off that list (T1 and XX
 // included), here, before the key, the rate limiter and every payment middleware, so a refusal is never charged; it also refuses
@@ -371,6 +374,8 @@ app.get('/llms.txt', (_req, res) => res.type('text/plain; charset=utf-8').send(d
 app.get('/SKILL.md', (_req, res) => res.type('text/markdown; charset=utf-8').send(docs().skill));
 // R15b: the discovery paths crawlers asked for and got a 404 on (lib/discovery-aliases.js); all in the 'docs' rate bucket
 require('./lib/discovery-aliases').mountDiscoveryAliases(app, { docs, PRICES, ORIGIN: discovery.ORIGIN, version: require('./server.json').version });
+// R17: what the agent-readiness scan and the agent registries read (lib/agent-ready.js): ard.json, api-catalog, the skills index, auth.md
+require('./lib/agent-ready').mountAgentReady(app, { docs, PRICES, ORIGIN: discovery.ORIGIN });
 // Directory domain claims (402index, nohumans): inert 404s until a claim writes a value.
 require('./lib/well-known-claims').mountWellKnownClaims(app);
 
@@ -487,6 +492,8 @@ require('./expansion').register(app, tool);
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'agentfeed', x402: x402Network }));
 
 const { renderLanding } = require('./tools/landing');
+// R17: GET / sends the Link header (api-catalog, service-desc, service-doc) and Vary: Accept on every representation; Accept: text/markdown gets the llms.txt text
+app.get('/', require('./lib/agent-ready').rootNegotiation({ ORIGIN: discovery.ORIGIN, llmsText: () => docs().llms }));
 app.get('/', (req, res, next) => {
   if ((req.headers.accept || '').includes('text/html')) {
     // Same measurement `/` publishes as JSON, so the HTML and the JSON
@@ -591,7 +598,7 @@ app.get('/mcp', compat.mcpGet405);
   const concreteUrl = (pattern) => {
     let p = pattern.replace('GET ', '');
     const ex = (BAZAAR_META[pattern] && BAZAAR_META[pattern].pathParams) || {};
-    for (const [n, v] of Object.entries(ex)) p = p.replace(`:${n}`, encodeURIComponent(String(v)));
+    for (const [n, v] of Object.entries(ex)) p = p.replace(`:${n}`, encodeURIComponent(String(v)).replace(/%2F/gi, '/'));   // R17: a DOI's slash stays literal
     return discovery.ORIGIN + p;
   };
   const handler = compat.makeDiscovery({ getLayer: () => paymentLayer, concreteUrl });

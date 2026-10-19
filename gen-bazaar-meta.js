@@ -143,7 +143,7 @@ function fixture(key, tool) {
     case 'email': return 'jane.doe@gmail.com';
     case 'domain': return 'wikipedia.org';
     case 'q': return 'graph neural networks';
-    case 'doi': return '10.1038%2Fnature14539';   // the slash travels as %2F in the path; inserted verbatim or encoded again, both resolve
+    case 'doi': return '10.1038/nature14539';   // R17: the slash goes in the path as written (lib/slash-path.js rewrites it to the one-segment form); %2F still resolves
     case 'title': return 'Solana (blockchain platform)';
     case 'data': return tool === 'get_qr' ? 'https://x402.ochinimus.app' : 'hello';
     case 'alg': return 'keccak256';

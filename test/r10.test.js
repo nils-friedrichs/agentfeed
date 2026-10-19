@@ -214,7 +214,7 @@ test('F7: the HEAD guard lets a free /api route through and meters it with GET; 
 
 test('F8: robots.txt allows all and names the machine-readable documents; the sitemap lists the public pages', () => {
   for (const p of ['/llms.txt', '/openapi.json', '/.well-known/x402.json', '/sitemap.xml']) assert.ok(compat.ROBOTS.includes(`https://x402.ochinimus.app${p}`), p);
-  assert.ok(/^User-agent: \*\nAllow: \/\n/.test(compat.ROBOTS));
+  assert.ok(/^User-agent: \*\nContent-Signal: search=yes, ai-input=yes, ai-train=yes\nAllow: \/\n/.test(compat.ROBOTS));   // R17: the content signal sits inside the group
   assert.ok(/\nSitemap: https:\/\/x402\.ochinimus\.app\/sitemap\.xml\n/.test(compat.ROBOTS));
   assert.deepEqual(compat.SITEMAP_PATHS, ['/', '/keys', '/pricing', '/terms', '/llms.txt', '/openapi.json']);
   let type, body;
