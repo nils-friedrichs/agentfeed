@@ -364,6 +364,7 @@ const EXP = [
               next: z.string().optional().describe('the `next` value of the previous answer; send it back unchanged to continue with no gap and no repeat') },
     // one line in the 402 description only (payments.challengeLead): the catalogue description stays inside its 180-255 band
     challengeNote: () => `Heavy pollers can buy a ${money(KEYLIB.DAY_PASS.usd)} day pass (GET ${KEYLIB.DAY_PASS.path}).`,
+    mcpGate: true,   // R15d: over MCP a pass key is gated on the REST clock (mcp.js passes { passGateKey })
     run: (a, req) => LF.getLiqFeed(a, req) },
   { name: 'get_funding_pulse', route: 'GET /api/funding-pulse', usd: 0.005,
     tags: ['funding', 'perps', 'screener', 'crowding', 'hyperliquid', 'trading'],
@@ -549,8 +550,8 @@ for (const t of EXP) {
 }
 
 const MCP_DEFS_ADD = EXP.filter((t) => t.mcp !== false).map((t) => ({
-  name: t.name, usd: t.usd, desc: t.desc, schema: t.schema,
-  run: (a) => t.run(a || {}),
+  name: t.name, usd: t.usd, desc: t.desc, schema: t.schema, mcpGate: !!t.mcpGate,
+  run: (a, ctx) => t.run(a || {}, ctx),    // ctx is passed only to a tool flagged mcpGate (mcp.js); every other tool gets undefined, as before
 }));
 
 // REST registration: merge query + path params into one args object

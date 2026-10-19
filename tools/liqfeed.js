@@ -19,6 +19,9 @@
 // ends on a bucket boundary and says has_more.
 //
 // One call per MIN_INTERVAL_MS per key (per IP for x402 callers), unless the previous answer said has_more: that is catch-up.
+// R15d: a pass key (the 30-day bot pass, the 24-hour day pass) is on the same clock over MCP: mcp.js hands get_liq_feed
+// { passGateKey: 'key:<prefix>' }, the REST rail's own key, so one key has ONE clock across REST and MCP (has_more included).
+// MCP callers that pay by x402 or with a prepaid pack are not gated here, as before: their own limits apply.
 // Everything that is refused here is a 4xx or 503, so the call is never billed (lib/tool.js, lib/keys.js).
 'use strict';
 const Database = require('better-sqlite3');
@@ -91,7 +94,8 @@ function parseStart(q, now, horizon, db) {
 
 const callers = new Map();       // caller key -> { at, more }
 function callerKey(req) {
-  if (!req) return null;                                        // MCP: its own per-key limit (120 a minute) applies
+  if (!req) return null;                                        // MCP without a pass key: its own per-key limit (120 a minute) applies
+  if (req.passGateKey) return req.passGateKey;                  // MCP with a pass key: the same key string the REST rail uses below
   return req.keyPaid ? `key:${req.keyPaid.prefix}` : `ip:${req.callerIp || (req.headers && req.headers['cf-connecting-ip']) || 'unknown'}`;
 }
 function gate(key, now) {
@@ -221,4 +225,4 @@ function getLiqFeed(p = {}, req, deps = {}) {
   };
 }
 
-module.exports = { getLiqFeed, BUCKET_MS, SETTLE_MS, MAX_ROWS, MIN_INTERVAL_MS, _callers: callers };
+module.exports = { getLiqFeed, BUCKET_MS, SETTLE_MS, MAX_ROWS, MIN_INTERVAL_MS, _callers: callers, _callerKey: callerKey };

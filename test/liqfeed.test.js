@@ -251,6 +251,30 @@ test('rate limit: one call per 10 s per key; catch-up pages (has_more) are exemp
   assert.equal(b.buckets.length > 0, true);
 });
 
+// R15d: over MCP a pass key is on the clock its REST calls use. mcp.js hands get_liq_feed { passGateKey: 'key:<prefix>' } (lib/keys.js passGateKey).
+test('R15d rate limit: a pass key has ONE clock across REST and MCP (has_more included); MCP without a pass key is still ungated', () => {
+  LF._callers.clear();
+  const rest = (prefix) => ({ keyPaid: { prefix }, callerIp: '1.1.1.1' });
+  const mcp = (prefix) => ({ passGateKey: `key:${prefix}` });
+  const now = ANCHOR + 700_000;
+  const call = (req, at, extra) => LF.getLiqFeed({ symbols: 'BTC' }, req, deps(at, extra));
+  assert.equal(LF._callerKey(rest('aaaaaaaa')), LF._callerKey(mcp('aaaaaaaa')), 'the same key string on both surfaces');
+  call(rest('aaaaaaaa'), now);                                                // REST first ...
+  assert.throws(() => call(mcp('aaaaaaaa'), now + 3_000), (e) => e.status === 429 && e.kind === 'bad_request' && e.retryAfter === 7 && /Not charged/.test(e.message), '... MCP 3 s later is refused');
+  call(mcp('bbbbbbbb'), now + 3_000);                                         // another key is its own clock
+  call(mcp('aaaaaaaa'), now + 10_000);                                        // 10 s after the REST call: admitted ...
+  assert.throws(() => call(rest('aaaaaaaa'), now + 12_000), (e) => e.status === 429 && e.retryAfter === 8, '... and REST is now refused after the MCP call');
+  call(undefined, now + 12_000); call(undefined, now + 12_001);               // MCP without a pass key (x402, a pack): no gate here, as before
+  call(mcp('aaaaaaaa'), now + 20_000);
+  // catch-up crosses the surfaces too: a REST answer that says has_more lets the next MCP page through at once
+  LF._callers.clear();
+  const a = LF.getLiqFeed({ symbols: 'BTC,ETH,SOL', since: ANCHOR }, rest('cccccccc'), deps(ANCHOR + 700_000, { maxRows: 10 }));
+  assert.equal(a.has_more, true);
+  const b = LF.getLiqFeed({ symbols: 'BTC,ETH,SOL', next: a.next }, mcp('cccccccc'), deps(ANCHOR + 700_001, { maxRows: 10 }));
+  assert.equal(b.buckets.length > 0, true);
+  if (!b.has_more) assert.throws(() => LF.getLiqFeed({ symbols: 'BTC,ETH,SOL', next: b.next }, rest('cccccccc'), deps(ANCHOR + 700_002, { maxRows: 10 })), (e) => e.status === 429, 'the last page ends the catch-up');
+});
+
 // ---- through the real x402 middleware and the key rail: refusals settle nothing
 const express = require('express');
 const { paymentMiddleware, x402ResourceServer } = require('@x402/express');

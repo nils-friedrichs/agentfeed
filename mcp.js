@@ -250,6 +250,9 @@ async function initMcp(app, keys) {
       icons: [{ src: ICON_URL, mimeType: 'image/png' }],
     }, { instructions: INSTRUCTIONS });
 
+    // R15d: a pass key calling a tool flagged mcpGate (get_liq_feed) is gated on the clock its REST calls use
+    const gateKey = keys && req && keys.passGateKey ? keys.passGateKey(req) : null;
+    const gateCtx = gateKey ? { passGateKey: gateKey } : undefined;
     const ordered = DISPLAY_FIRST.map((n) => TOOL_DEFS.find((d) => d.name === n)).filter(Boolean)
       .concat(TOOL_DEFS.filter((d) => !DISPLAY_FIRST.includes(d.name)));
     for (const def of ordered) {
@@ -263,7 +266,7 @@ async function initMcp(app, keys) {
           annotations: TOOL_ANNOTATIONS,
         },
         (def.usd ? ((keys && req && keys.mcpWrap(req, def)) || wrappers[def.name]) : ((h) => h))(async (args) => {
-          const data = await def.run(args || {});
+          const data = await def.run(args || {}, def.mcpGate ? gateCtx : undefined);
           const payload = { tool: def.name, data };
           // Both, as the spec requires: text for clients that only read content,
           // structuredContent for the declared outputSchema.

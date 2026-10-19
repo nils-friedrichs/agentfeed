@@ -198,3 +198,16 @@ test('rate limit: all of them are in the docs bucket (120 a minute), none in the
   assert.deepEqual([ok, limited], [120, 10]);
   assert.match(s.rows[0].error_msg, /120 req\/min exceeded on the discovery documents bucket/);
 });
+
+test('R15d: every alias document says no-cache and carries an ETag, so a cache must revalidate and a repeat is a 304', async (t) => {
+  const s = await boot(); t.after(s.close);
+  const paths = [...A.WELLKNOWN_ALIASES, '/swagger.json', '/api', '/api/', '/.well-known/ai-plugin.json', '/.well-known/agents.json', '/.well-known/agent-registration.json', '/.well-known/security.txt'];
+  for (const p of paths) {
+    const r = await s.get(p);
+    assert.equal(r.status, 200, p);
+    assert.equal(r.headers.get('cache-control'), 'no-cache', p);
+    const etag = r.headers.get('etag');
+    assert.ok(etag, `${p} has an ETag`);   // (fetch() adds Cache-Control: no-cache to a conditional request, which makes Express answer 200; max-age=0 is an ordinary revalidation)
+    assert.equal((await s.get(p, { 'if-none-match': etag, 'cache-control': 'max-age=0' })).status, 304, `${p}: a revalidation with the ETag is a 304`);
+  }
+});

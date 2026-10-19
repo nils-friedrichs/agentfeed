@@ -387,3 +387,21 @@ test('openapi: the /api/keys/balance schema lists every field a pass key gets ba
     assert.ok(schema.properties.pass.properties.kind.enum.includes(b.pass.kind));
   }
 });
+
+// ---- R15d: passGateKey is the caller key tools/liqfeed.js gates REST on, for a PASS key only ------------------------------------------------
+test('R15d passGateKey: key:<prefix> for an active day pass and bot pass, null for a prepaid pack, no key, an unknown key and an expired pass', async (t) => {
+  const s = await boot(); t.after(s.close);
+  const reqOf = async (key) => { const req = { headers: key ? { 'x-agentfeed-key': key } : {}, callerIp: '127.0.0.1', method: 'GET', path: '/x', query: {} }; await new Promise((r) => s.K.identify(req, { set() {}, status() { return this; }, json() { r(); } }, r)); return req; };
+  const day = s.K.store.grantPass({ days: 1, allow: DAY_PASS.allow, label: 'd' });
+  const bot = s.K.store.grantPass({ days: 30, label: 'b' });
+  const pack = s.K.store.grant(1, 'p');
+  assert.equal(s.K.passGateKey(await reqOf(day)), `key:${s.K.store.get(hashKey(day)).prefix}`);
+  assert.equal(s.K.passGateKey(await reqOf(bot)), `key:${s.K.store.get(hashKey(bot)).prefix}`);
+  assert.equal(s.K.passGateKey(await reqOf(pack)), null, 'a prepaid pack is not gated over MCP');
+  assert.equal(s.K.passGateKey(await reqOf(null)), null, 'no key');
+  assert.equal(s.K.passGateKey(await reqOf('afk_' + '1'.repeat(43))), null, 'an unknown key');
+  assert.equal(s.K.passGateKey(undefined), null);
+  s.clock.t += DAY;
+  assert.equal(s.K.passGateKey(await reqOf(day)), null, 'an expired pass');
+  assert.equal(s.K.passGateKey(await reqOf(bot)), `key:${s.K.store.get(hashKey(bot)).prefix}`, 'the 30-day pass is still active');
+});
