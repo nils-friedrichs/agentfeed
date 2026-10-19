@@ -367,3 +367,23 @@ test('R15c MCP: the same pace on get_recent_liquidations, none on get_liq_feed; 
   const pack = K.store.grant(1, 'pack');
   for (let i = 0; i < 3; i++) assert.equal((await call('get_recent_liquidations', { 'x-agentfeed-key': pack })).isError, undefined);
 });
+
+// ---- openapi documents the pass fields /api/keys/balance already returns (patch from MONEY, 19 Oct 2026) ------------------------------------
+test('openapi: the /api/keys/balance schema lists every field a pass key gets back, for both kinds of pass, and the status values', async (t) => {
+  const D = require('../tools/discovery');
+  const api = D.buildOpenApi({ PRICES: {}, TAGS: {}, META: {}, FREE_TOOLS: [], mpp: { active: false, routes: [] }, tempo: { active: false }, network: 'mainnet' });
+  const get = api.paths['/api/keys/balance'].get;
+  const schema = get.responses[200].content['application/json'].schema;
+  assert.match(get.description, /a pass key also returns pass\.expires_at, pass\.days_left and pass\.hours_left/);
+  assert.match(schema.properties.status.description, /active, pending, revoked or expired/);
+  assert.deepEqual(schema.properties.pass.properties.kind.enum, ['pass', 'day']);
+  const s = await boot(); t.after(s.close);
+  for (const [days, allow, kind] of [[1, DAY_PASS.allow, 'day'], [30, PASS.allow, 'pass']]) {
+    const key = s.K.store.grantPass({ days, allow, label: `schema-${kind}` });
+    const b = await (await s.get('/api/keys/balance', { 'x-agentfeed-key': key })).json();
+    assert.equal(b.pass.kind, kind);
+    for (const k of Object.keys(b)) assert.ok(k in schema.properties, `top-level ${k} is documented`);
+    for (const k of Object.keys(b.pass)) assert.ok(k in schema.properties.pass.properties, `pass.${k} is documented (${kind})`);
+    assert.ok(schema.properties.pass.properties.kind.enum.includes(b.pass.kind));
+  }
+});

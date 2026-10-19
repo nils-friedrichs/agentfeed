@@ -388,11 +388,11 @@ function buildOpenApi({ PRICES, META, FREE_TOOLS, mpp, tempo }) {
   // R10 F5: the free prepaid-key balance (server.js, lib/keys.js balance): no payment, the key in a header.
   paths['/api/keys/balance'] = {
     get: {
-      description: 'Free. The balance of a prepaid key: balance_usd, calls, spent_usd, last_used, rate_per_min and status. Send the key as X-AgentFeed-Key (or Authorization: Bearer). A missing or unknown key answers 401 with the route that sells one. Never cached.',
+      description: 'Free. The balance of a prepaid key: balance_usd, calls, spent_usd, last_used, rate_per_min and status; a pass key also returns pass.expires_at, pass.days_left and pass.hours_left. Send the key as X-AgentFeed-Key (or Authorization: Bearer). A missing or unknown key answers 401 with the route that sells one. Never cached.',
       operationId: 'get_key_balance',
       parameters: [{ in: 'header', name: 'X-AgentFeed-Key', required: true, description: 'the prepaid key (afk_ + 43 or 44 base58 characters); Authorization: Bearer <key> also works', schema: { type: 'string' } }],
       responses: {
-        200: { content: { 'application/json': { schema: { type: 'object', properties: { prefix: { type: 'string' }, balance_usd: { type: 'number' }, calls: { type: 'integer' }, spent_usd: { type: 'number' }, last_used: { type: ['string', 'null'] }, rate_per_min: { type: 'integer' }, status: { type: 'string' } } } } }, description: 'Free response. This endpoint is not payment-gated.' },
+        200: { content: { 'application/json': { schema: { type: 'object', properties: { prefix: { type: 'string' }, balance_usd: { type: 'number' }, calls: { type: 'integer' }, spent_usd: { type: 'number' }, last_used: { type: ['string', 'null'] }, rate_per_min: { type: 'integer' }, status: { type: 'string', description: 'active, pending, revoked or expired' }, pass: { type: 'object', description: 'Present only on a pass key (the 30-day bot pass or the 24-hour day pass). A pass draws no balance; it is good on its listed routes until expires_at.', properties: { kind: { type: 'string', enum: ['pass', 'day'] }, routes: { type: 'array', items: { type: 'string' } }, expires_at: { type: ['string', 'null'], description: 'ISO 8601 UTC time the pass ends; null until the purchase settles' }, days_left: { type: ['integer', 'null'] }, hours_left: { type: ['integer', 'null'] }, note: { type: 'string' } } } } } } }, description: 'Free response. This endpoint is not payment-gated.' },
         401: { content: { 'application/json': { schema: { type: 'object' }, example: { error: 'unknown key', buy: '/api/keys/buy-5' } } }, description: 'No key sent, or the key is unknown.' },
       },
       security: [],
