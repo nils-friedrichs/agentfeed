@@ -266,7 +266,10 @@ function check(header) {
   return { blocked: !Object.prototype.hasOwnProperty.call(COUNTRIES, country), country };
 }
 
-const stripSuffix = (p) => { const i = p.indexOf('|'); return (i < 0 ? p : p.slice(0, i)).replace(/\/+$/, '') || '/'; };
+// R19a: the canonical path (lib/canon-path.js), so /API/OCR, /Api/Ocr/ and /api//ocr from a blocked country are the 451 like /api/ocr (the x402 gate
+// routes them all to the same paid handler); the network suffix (|eip155:8453, or its %7C spelling, decoded by canonPath) is stripped after.
+const { canonPath } = require('../../lib/canon-path');
+const stripSuffix = (p) => { const c = canonPath(p); const i = c.indexOf('|'); return (i < 0 ? c : c.slice(0, i)).replace(/\/+$/, '') || '/'; };
 function refuse(res, country) {
   res.status(451).json({ error: 'The language-model routes are not available in your region (Google Gemini API availability)', country: country || null });
 }

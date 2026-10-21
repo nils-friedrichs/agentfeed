@@ -43,6 +43,7 @@
 // The challenge goes in WWW-Authenticate only (appended to any solana challenge already
 // there); PAYMENT-REQUIRED is never touched.
 
+const { canonPath, patternRegex } = require('../lib/canon-path');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
@@ -89,7 +90,7 @@ async function init({ prices, recipient, secretKey, realm, store, db }) {
     }),
   }));
   const routes = Object.entries(prices).map(([pattern, p]) => [
-    new RegExp(`^${pattern.replace(/^GET /, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/:[A-Za-z0-9_]+/g, '[^/]+')}$`),
+    patternRegex(pattern),   // over the canonical path (lib/canon-path.js, R19a)
     pattern, tokenAmount(p.usd), usdToUnits(p.usd),
   ]);
   state = { instances, routes, Credential, Receipt, realm, recipient,
@@ -102,7 +103,8 @@ async function init({ prices, recipient, secretKey, realm, store, db }) {
 
 const routeFor = (path) => {
   if (!state) return null;
-  const r = state.routes.find(([re]) => re.test(path));
+  const c = canonPath(path);   // a credential is taken on every spelling x402 routes to a priced route (R19a)
+  const r = state.routes.find(([re]) => re.test(c));
   return r ? { pattern: r[1], amount: r[2], units: r[3] } : null;
 };
 const webRequest = (req) => new Request(`https://${req.headers.host || 'x402.ochinimus.app'}${req.originalUrl}`, { method: req.method });

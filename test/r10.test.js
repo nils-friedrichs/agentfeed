@@ -200,14 +200,15 @@ test('F6: injection-check\'s Bazaar example is plain text, with the answer captu
   assert.ok(fs.readFileSync(path.join(ROOT, 'gen-bazaar-meta.js'), 'utf8').includes(`get_injection_check: '${m.input.text}'`), 'the generator makes the same example');
 });
 
-test('F7: the HEAD guard lets a free /api route through and meters it with GET; the bare 405 is gone', () => {
+test('F7: every HEAD under /api/ (any spelling, R19a) is handed on as a GET with the payment headers removed: a priced route answers its plain challenge, a free route answers like a GET with no body; the bare 405 is gone', () => {
   const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  const guard = src.slice(src.indexOf("if (req.method !== 'HEAD' || !req.path.startsWith('/api/')) return next();"), src.indexOf('// Paid routes are GET-only'));
-  assert.ok(guard.includes('req.headOnly = true;') && guard.includes("req.method = 'GET';"), 'a paid HEAD still becomes the plain challenge');
+  const guard = src.slice(src.indexOf("if (req.method !== 'HEAD' || !isApiPath(req.path)) return next();"), src.indexOf('// Paid routes are GET-only'));
+  assert.ok(guard.includes('req.headOnly = true;') && guard.includes("req.method = 'GET';"), 'a HEAD becomes a GET with headOnly set');
   assert.ok(!/status\(405\)/.test(guard) && !guard.includes('head_probe'), 'no 405, no head_probe row');
-  assert.ok(/\n  next\(\);\n\}\);/.test(guard), 'a free or unknown /api HEAD goes on');
+  assert.ok(!guard.includes('isPricedPath('), 'R19a: the guard does not ask whether the route looks priced, so no spelling can slip past it');
+  for (const h of ['payment-signature', 'x-payment', 'payment-authorization']) assert.ok(guard.includes(`'${h}'`), `${h} is removed`);
   const limiter = fs.readFileSync(path.join(ROOT, 'lib', 'ratelimit.js'), 'utf8'); // the limiter moved out of server.js in R13
-  assert.ok(limiter.includes("(req.method === 'HEAD' && req.path.startsWith('/api/') && !isPricedPath(req.path))"), 'metered with GET');
+  assert.ok(limiter.includes("(req.method === 'HEAD' && isApiPath(req.path) && !isPricedPath(req.path))"), 'metered with GET');
   const err = require('../error-responses.json').shared.find((e) => e.status === 405);
   assert.ok(/HEAD on a free route answers like GET/.test(err.when));
 });

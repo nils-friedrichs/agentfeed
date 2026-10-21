@@ -21,6 +21,7 @@ app.set('trust proxy', 1);
 app.disable('x-powered-by');
 // /api/<route>|eip155:<id> (raw or %7C) is served as /api/<route>; see lib/compat.js.
 const compat = require('./lib/compat');
+const { canonPath, isApiPath, pricedMatcher } = require('./lib/canon-path');
 app.use(compat.stripNetworkSuffix);
 // R17: /api/paper/10.1038/nature14539 (a literal slash in the DOI) is the same route as /api/paper/10.1038%2Fnature14539: rewritten to the
 // canonical one-segment form before the rate limiter, the key rail and the paywall (lib/slash-path.js).
@@ -78,19 +79,21 @@ setInterval(rateLimiter.sweep, 120_000).unref();
 // hermes-contact-discovery, browsers) read that as a dead route. Such a HEAD is
 // metered with GET (the limiter above), because it does run the handler.
 // Matches /api/* only: /health, / and /.well-known are untouched.
-const PRICED_PATHS = Object.keys(PRICES).map((r) => new RegExp('^' + r.slice(4).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/:[A-Za-z0-9_]+/g, '[^/]+') + '$'));
-const isPricedPath = (p) => PRICED_PATHS.some((re) => re.test(p)) || QUERY_ALIASABLE.some((r) => r.base === p);
+// R19a (21 Oct 2026): "priced" and "under /api/" are decided on the CANONICAL path (lib/canon-path.js: case-insensitive, // collapsed, trailing / stripped,
+// the rules @x402/core routes by), never on the spelling. This guard used an exact, case-sensitive regex while Express routes case-insensitively and
+// with an optional trailing slash and the x402 gate only matches GET, so HEAD /API/<route> and HEAD /api/<route>/ reached the PAID handler with no
+// payment: Content-Length and ETag of the paid answer went out (the paid answer for a route with few possible answers), the handler's upstream calls ran
+// on our money, and a `free` row was written for a priced tool. Now EVERY HEAD under /api/ is handed on as a GET with the payment headers removed,
+// whether or not it looks priced: a priced route can only answer its plain 402 challenge, a free route still answers like a GET with no body.
+const PRICED = pricedMatcher(Object.keys(PRICES));
+const isPricedPath = (p) => PRICED.test(p) || QUERY_ALIASABLE.some((r) => canonPath(p) === r.base.toLowerCase());
 app.use((req, res, next) => {
-  if (req.method !== 'HEAD' || !req.path.startsWith('/api/')) return next();
-  if (isPricedPath(req.path)) {
-    for (const h of ['payment-signature', 'x-payment', 'payment-authorization']) delete req.headers[h];
-    if (/^payment\s/i.test(String(req.headers.authorization || '').trim())) delete req.headers.authorization;
-    req.method = 'GET';
-    req.headOnly = true;
-    return next();
-  }
-  // A free /api route (or an unknown one, which 404s as a GET would): through, unchanged.
-  next();
+  if (req.method !== 'HEAD' || !isApiPath(req.path)) return next();
+  for (const h of ['payment-signature', 'x-payment', 'payment-authorization']) delete req.headers[h];
+  if (/^payment\s/i.test(String(req.headers.authorization || '').trim())) delete req.headers.authorization;
+  req.method = 'GET';
+  req.headOnly = true;
+  return next();
 });
 
 // Paid routes are GET-only: any other verb on a priced path is a JSON 405 (lib/compat.js).
@@ -141,7 +144,7 @@ const QUERY_ALIASABLE = Object.keys(PRICES)
 
 app.use((req, _res, next) => {
   if (req.method !== 'GET') return next();
-  const hit = QUERY_ALIASABLE.find((r) => req.path === r.base);
+  const hit = QUERY_ALIASABLE.find((r) => canonPath(req.path) === r.base.toLowerCase());
   if (hit) {
     const value = req.query[hit.param];
     if (typeof value === 'string' && value.length > 0) {

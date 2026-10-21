@@ -52,7 +52,7 @@ test('acceptedOf: reads accepted out of a v2 payment header and nothing else', (
   assert.equal(acceptedOf(undefined), null);
 });
 
-test('the route wrapper logs what was charged: list price on exact, half on batch and Gateway, null on a free call', async () => {
+test('the route wrapper logs what was charged: list price on exact, half on batch and Gateway, null on a free call (R19b: from the matched requirement, not the buyer\'s header)', async () => {
   const PRICES = { 'GET /api/priced': { usd: 0.01, tool: 'get_priced', desc: 'priced' } };
   const audit = [];
   const { tool } = makeTool({
@@ -61,16 +61,21 @@ test('the route wrapper logs what was charged: list price on exact, half on batc
     logCall: (row) => audit.push(row),
   });
   const app = express();
-  app.use((req, res, next) => { res.req = req; req.callerIp = '203.0.113.7'; next(); });
+  app.use((req, res, next) => {
+    res.req = req; req.callerIp = '203.0.113.7';
+    if (req.headers['x-test-matched']) req.x402Matched = { scheme: 'exact', amount: req.headers['x-test-matched'] };   // what the beforeVerify hook keeps (lib/rail-ctx.js bindMatched)
+    next();
+  });
   app.get('/api/priced', tool('get_priced', 0.01, () => ({ ok: true })));
   const server = await new Promise((r) => { const s = app.listen(0, () => r(s)); });
   const get = (headers) => fetch(`http://127.0.0.1:${server.address().port}/api/priced`, { headers }).then((r) => r.status);
   try {
     const cases = [
-      ['exact', { 'x-test-settled': '1', 'payment-signature': header({ accepted: { amount: '10000' } }) }, 0.01],
-      ['batch', { 'x-test-settled': '1', 'payment-signature': header({ accepted: { amount: '5000' } }) }, 0.005],
-      ['gateway minimum', { 'x-test-settled': '1', 'payment-signature': header({ accepted: { amount: '500' } }) }, 0.0005],
-      ['inflated claim', { 'x-test-settled': '1', 'payment-signature': header({ accepted: { amount: '90000' } }) }, 0.01],
+      ['exact', { 'x-test-settled': '1', 'x-test-matched': '10000' }, 0.01],
+      ['batch', { 'x-test-settled': '1', 'x-test-matched': '5000' }, 0.005],
+      ['gateway minimum', { 'x-test-settled': '1', 'x-test-matched': '500' }, 0.0005],
+      ['inflated requirement: not believed', { 'x-test-settled': '1', 'x-test-matched': '90000' }, 0.01],
+      ['a header claiming half price, nothing matched server-side: the header is not read', { 'x-test-settled': '1', 'payment-signature': header({ accepted: { amount: '5000' } }) }, 0.01],
       ['garbage header', { 'x-test-settled': '1', 'payment-signature': 'zzz' }, 0.01],
       ['v1 x-payment', { 'x-test-settled': '1', 'x-payment': header({ x402Version: 1, scheme: 'exact' }) }, 0.01],
       ['mpp (no payment header)', { 'x-test-settled': '1' }, 0.01],
@@ -81,7 +86,7 @@ test('the route wrapper logs what was charged: list price on exact, half on batc
     assert.equal(audit.length, cases.length);
     cases.forEach(([name, , want], i) => assert.equal(audit[i].amount_usdc, want, name));
     assert.equal(audit[0].status, 'paid');
-    assert.equal(audit[7].status, 'free');
+    assert.equal(audit[cases.length - 1].status, 'free');
   } finally { server.close(); }
 });
 

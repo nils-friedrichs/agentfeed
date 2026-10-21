@@ -338,9 +338,11 @@ function buildPaymentLayer(deps = {}) {
   }
   resourceServer
     .registerExtension(bazaarResourceServerExtension);
+  // R19b: remember, per request, the requirement core matched the payment against (server-built, with the amount it quoted); lib/tool.js logs that
+  const { acceptsFor, bindMatched } = require('./lib/rail-ctx');
+  bindMatched(resourceServer);
 
   const routes = {};
-  const { acceptsFor } = require('./lib/rail-ctx');
   const inDefault = new Set(EXT.filter((r) => r.inDefault).map((r) => r.network));
   const isDefault = (n) => inDefault.has(n);
   for (const [pattern, p] of Object.entries(PRICES)) {

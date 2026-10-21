@@ -168,7 +168,7 @@ test('server.js: the middleware order the key rail depends on', () => {
   const at = (s) => { const i = src.indexOf(s); assert.ok(i >= 0, `server.js lost: ${s}`); return i; };
   const identify = at('app.use(keys.identify);');
   const limiter = at('app.use(rateLimiter.middleware);'); // lib/ratelimit.js (R13); the buckets themselves moved with it
-  const headGuard = at("if (req.method !== 'HEAD' || !req.path.startsWith('/api/')) return next();");
+  const headGuard = at("if (req.method !== 'HEAD' || !isApiPath(req.path)) return next();");   // R19a: under /api/ on the canonical path, any spelling
   const getOnly = at('app.use(compat.makeGetOnly({ PRICES }));');
   const canon = at('const QUERY_ALIASABLE');
   const guard = at('app.use(keys.purchaseGuard);');
