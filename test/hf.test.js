@@ -12,7 +12,9 @@ test('price: half the exact price, never below $0.0005', () => {
   assert.equal(hfUsd(0.1), 0.05);
 });
 
-test('accepts: batch on Base/Polygon/Arbitrum to the treasury, Gateway on four chains to the seller key', () => {
+// hfAccepts is fed a four-network Gateway config on purpose: it must emit one accept per configured network. Production offers Gateway on Arc only
+// (R14); that is pinned below against GATEWAY_NETWORKS and the real hfConfig.
+test('accepts: batch on Base/Polygon/Arbitrum to the treasury, one Gateway accept per configured network to the seller key (four networks configured here)', () => {
   const cfg = { batch: { networks: ['eip155:8453', 'eip155:137', 'eip155:42161'], receiver: '0xTREASURY' },
     gateway: { networks: ['eip155:8453', 'eip155:137', 'eip155:42161', 'eip155:5042'], payTo: '0xSELLER' } };
   const a = hfAccepts(cfg, 0.01);

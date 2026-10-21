@@ -6,6 +6,7 @@
 //   node ops/discovery-check.mjs http://127.0.0.1:3998 --against https://x402.ochinimus.app     the staged server against live
 //   node ops/discovery-check.mjs https://x402.ochinimus.app                                      live, after the deploy
 import crypto from 'node:crypto';
+import { robotsVerdict } from './fresh-verdict.mjs';
 const ORIGIN_OF = (base) => (base.startsWith('http://') ? 'https://x402.ochinimus.app' : base);   // the documents name the public origin, also when read from a local server
 
 const BASE = (process.argv[2] || '').replace(/\/$/, '');
@@ -80,8 +81,8 @@ if (OTHER) {
 // R15d: every document that changes with a deploy says no-cache and carries an ETag, and a conditional GET with that ETag is a 304.
 // (cache-control: max-age=0 is sent because fetch() otherwise adds `no-cache` to a conditional request, which makes the server answer 200.)
 const NOCACHE_PATHS = ['/openapi.json', '/.well-known/x402', '/.well-known/x402.json', '/llms.txt', '/SKILL.md', ...JSON_PATHS, '/.well-known/security.txt',
-  '/.well-known/ai-catalog.json', '/.well-known/ard.json', '/.well-known/api-catalog', '/.well-known/agent-skills/index.json', '/auth.md',   // R17 added these five
-  '/robots.txt'];   // R18
+  '/.well-known/ai-catalog.json', '/.well-known/ard.json', '/.well-known/api-catalog', '/.well-known/agent-skills/index.json', '/auth.md'];   // R17 added these five
+// /robots.txt (R18) is judged separately below: Cloudflare overrides our Cache-Control on that path, so the header cannot be the test.
 for (const p of NOCACHE_PATHS) {
   const hdr = BASE.startsWith('http://') ? HDR : {};
   const r1 = await fetch(BASE + p, { headers: hdr }); await r1.arrayBuffer();
@@ -89,6 +90,17 @@ for (const p of NOCACHE_PATHS) {
   const r2 = etag ? await fetch(BASE + p, { headers: { ...hdr, 'if-none-match': etag, 'cache-control': 'max-age=0' } }) : null;
   if (r2) await r2.arrayBuffer();
   ok(r1.status === 200 && r1.headers.get('cache-control') === 'no-cache' && !!etag && r2 && r2.status === 304, `${p}: 200, Cache-Control no-cache, ETag, conditional GET ${r2 ? r2.status : 'not sent'} (want 304)`);
+}
+// R19: /robots.txt must be a body the edge asked the origin for (cf-cache-status REVALIDATED) with an ETag that a conditional GET turns into a 304;
+// straight to a local origin it is our own no-cache. The verdict logic is ops/fresh-verdict.mjs, pinned by test/r19-discovery.test.js.
+{
+  const hdr = BASE.startsWith('http://') ? HDR : {};
+  const r1 = await fetch(BASE + '/robots.txt', { headers: hdr }); await r1.arrayBuffer();
+  const etag = r1.headers.get('etag');
+  const r2 = etag ? await fetch(BASE + '/robots.txt', { headers: { ...hdr, 'if-none-match': etag, 'cache-control': 'max-age=0' } }) : null;
+  if (r2) await r2.arrayBuffer();
+  const v = robotsVerdict({ status: r1.status, cacheControl: r1.headers.get('cache-control'), etag, cfCacheStatus: r1.headers.get('cf-cache-status'), conditionalStatus: r2 ? r2.status : null });
+  ok(v.ok, `/robots.txt: a fresh body (cf-cache-status ${r1.headers.get('cf-cache-status') || 'none, origin direct'}, ETag ${etag ? 'present' : 'absent'}, conditional GET ${r2 ? r2.status : 'not sent'})${v.ok ? '' : ': ' + v.why}`);
 }
 // R15e: every doc that states the liq-feed pace states both intervals (5 s for an x402 payer or a prepaid pack key, 10 s for a pass key).
 {

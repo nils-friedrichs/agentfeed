@@ -184,7 +184,7 @@ const GROUPS = [
   ['Collateral and lending', ['collateral', 'exit-liquidity', 'lending']],
   ['Live liquidations and cascades', ['liquidations', 'cascade', 'squeeze', 'heatmap']],
   ['Tokenized stocks and peg', ['rwa', 'peg', 'tokenized-stocks']],
-  ['Derivatives', ['funding', 'open-interest', 'basis', 'carry', 'crowding', 'perps']],
+  ['Derivatives', ['funding', 'open-interest', 'basis', 'carry', 'crowding', 'perps', 'hip-3']],
   // 'risk' was in this list and it stole get_token_risk, whose tags are
   // solana/tokens/risk/rug-check/security, out of the Solana section. It is too
   // generic to key a group on: get_volatility still lands here via 'volatility'.
@@ -192,6 +192,14 @@ const GROUPS = [
   ['Solana on-chain', ['solana', 'jito', 'mev', 'network', 'onchain', 'tps', 'dex', 'jupiter', 'swap']],
   ['Base and EVM', ['base', 'evm', 'ethereum', 'l2', 'gas', 'erc20', 'ens']],
   ['DeFi and macro', ['defi', 'tvl', 'protocols', 'stablecoins', 'macro']],
+  // R19: the non-market routes, which sat under a catch-all "Other" heading. They come last, so a route that already has a market section
+  // keeps it; each family keys on the tag that names what it does.
+  ['SEC filings and insider trades', ['sec']],
+  ['Compliance and verification', ['sanctions', 'prompt-injection', 'email', 'domain']],
+  ['Research and reference', ['academic', 'wikipedia']],
+  ['Web, document and audio extraction', ['extraction', 'ocr', 'pdf', 'web', 'transcription']],
+  ['Text and language', ['classification', 'translation']],
+  ['Utilities', ['utility']],
 ];
 
 function groupOf(tags) {
@@ -256,6 +264,9 @@ function offersFor(pattern, p, mpp, tempo) {
 // Free routes whose generated one-liner would drop what a caller must know.
 const FREE_DESC = {
   get_last_liquidation: 'Free. Last liquidation for SOL, BTC, ETH, XRP and DOGE, delayed by 15 minutes. For real-time data, use /api/liquidations.',
+  get_fear_greed: 'Free. The crypto Fear & Greed index: a 0-100 score with its classification.',
+  get_exit_method: 'Free. How collateral exit liquidity is measured, and the counts behind every paid answer, computed from our own tape at request time: what is measured (the protocol\'s live mark against realisable value from sell-direction quotes at real clip sizes), the corroboration rule, the status vocabulary, the control design and its results, row counts, covered symbols and markets, and the measured cadence. Read it before paying for /api/exit-quote.',
+  get_forecast_record: 'Free. The live track record of the liquidation cascade forecast. Every forecast was written down before its 15-minute window opened and settled afterwards from the exchange public feed. Returns the settled and pending counts, the base rate, Brier skill against climatology (skill), coverage, the Brier score on answered windows, the reliability and resolution terms and a reliability curve, with the raw rows alongside so the score can be recomputed.',
 };
 
 // one derived sentence about prepaid keys (lib/keys.js), empty when the key routes are not in the price table
