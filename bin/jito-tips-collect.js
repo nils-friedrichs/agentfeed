@@ -6,7 +6,9 @@
 // R20 (24 Oct 2026): this cron was the biggest burner of the free Helius plan: every 5 minutes, 8 getSignaturesForAddress plus about 70 getTransaction, roughly
 // 20,000 calls a day since 12 Oct, which with the nuntius reads emptied the 1,000,000 credits on 23 Oct. It now leads with the FREE public mainnet RPC and
 // keeps Helius as the fallback only (JITO_RPC_PRIMARY / JITO_RPC_FALLBACKS override), and runs every 15 minutes: about 8,400 public calls a day, none on Helius
-// while the public RPC answers. One call at a time, 340 ms apart (about 3 a second), stays under the public RPC's 40 calls per method per 10 seconds.
+// while the public RPC answers. One call at a time, 1.1 s apart (a run is about 100 s): MEASURED on this box on 24 Oct 2026, the public RPC answers getTransaction
+// 20 of 20 at 1 call a second and only 10 of 20 at 2 a second and at 3 a second (HTTP 429 "too many requests for a specific RPC call"), i.e. about 10 calls per 10
+// seconds per address for that method, not the 40 its documentation names. The 340 ms this file used on Helius would fail most reads here.
 // If neither endpoint can serve the sample (fewer than 40 tips) the run FAILS and writes nothing: the snapshot on disk gets older, the route says how old
 // (age_s, as_of) and answers 503, not charged, once it passes MAX_AGE (lib/jito-age.js, 45 minutes). One `rpc_usage` line per run says which host served what.
 // Per run: the newest PER_ACCOUNT signatures of each of the eight tip accounts, then each
@@ -19,10 +21,10 @@ const SR = require('../lib/solrpc');
 const FO = require('../lib/rpc-failover.cjs');
 
 const PER_ACCOUNT = 10;
-// The RPC key is shared with the paid routes and the Seeker apps (6 req/s bucket in seeker-rpc).
-// Measured 12 Oct: 6 parallel reads drew HTTP 429 on 68 of 144 calls and a paid route's call
-// after them. So one request at a time, at most ~3 a second: about 30 s a run, ~0.3 req/s average.
-const GAP_MS = process.env.JITO_GAP_MS !== undefined && Number.isFinite(Number(process.env.JITO_GAP_MS)) ? Number(process.env.JITO_GAP_MS) : 340;   // JITO_GAP_MS only for the tests: production keeps 340
+// The RPC is shared with the paid routes and the Seeker apps (6 req/s bucket in seeker-rpc).
+// Measured 12 Oct on Helius: 6 parallel reads drew HTTP 429 on 68 of 144 calls and a paid route's call
+// after them. So one request at a time. R20: at 1.1 s apart because the public RPC (now first) allows about 10 getTransaction per 10 s.
+const GAP_MS = process.env.JITO_GAP_MS !== undefined && Number.isFinite(Number(process.env.JITO_GAP_MS)) ? Number(process.env.JITO_GAP_MS) : 1100;   // JITO_GAP_MS only for the tests: production keeps 1100
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // The free public RPC first, Helius (when configured) only as the fallback. Unset env: public first, SOLANA_RPC_URL / HELIUS_RPC / HELIUS_API_KEY behind it.
 const EP = SR.makeEndpoints({

@@ -86,6 +86,22 @@ test('R20 client: after a failover the primary rests for 10 minutes (no probe), 
   assert.equal(logs.filter((l) => /rpc_failover/.test(l)).length, 1, 'a primary that keeps failing logs its failover once, not on every probe');
 });
 
+test('R20 client: each endpoint rests on its own: a dead fallback is not asked on every call, a primary that is only rate limited now and then keeps serving, and nothing flaps in the log', async () => {
+  let primaryCalls = 0;
+  const { ep, clock, seen, logs } = rig({ handlers: { [HELIUS]: () => ({ status: 429, body: {} }), [PUBLIC]: () => (++primaryCalls === 1 ? { status: 429, body: {} } : ok('public')) }, primary: FB, fallbacks: [HELIUS_URL] });
+  await assert.rejects(ep.call('getTransaction', ['s']), (e) => e.transport, 'the first call: both refuse');
+  seen.length = 0; clock.t += 1000;
+  assert.equal(await ep.call('getTransaction', ['s']), 'public', 'both endpoints rest, so the one that recovers soonest (the primary) is tried first, and it answers');
+  assert.equal(await ep.call('getTransaction', ['s']), 'public');
+  assert.deepEqual(seen, [`${PUBLIC} getTransaction`, `${PUBLIC} getTransaction`], 'the dead fallback is not asked at all while the primary keeps answering');
+  assert.equal(logs.filter((l) => /rpc_failover/.test(l)).length, 2, 'one line per endpoint that went down');
+  assert.equal(logs.filter((l) => /rpc_primary_back|rpc_endpoint_back/.test(l)).length, 0, 'an answer inside the rest is not a recovery: no back line, no flapping');
+  clock.t += 11 * 60_000; seen.length = 0;
+  assert.equal(await ep.call('getTransaction', ['s']), 'public');
+  assert.deepEqual(seen, [`${PUBLIC} getTransaction`], 'after the rest the primary leads again');
+  assert.equal(logs.filter((l) => /rpc_primary_back/.test(l)).length, 1, 'and only now is it logged as back');
+});
+
 test('R20 client: when no endpoint answers the call is a 503 transport error that names hosts and statuses and never a key', async () => {
   const { ep, logs } = rig({ handlers: { [HELIUS]: refuse(429), [PUBLIC]: refuse(429) } });
   const err = await ep.call('getTokenLargestAccounts', [MINT]).then(() => null, (e) => e);
@@ -416,7 +432,7 @@ test('R20 end to end: with the primary at 429 a PAID Solana route answers from t
 // ---------------------------------------------------------------- the shared helper is ONE file in four repos
 test('R20 helper pin: lib/rpc-failover.cjs is byte-identical to the copies in seeker-rpc, deepwork-backend and stakestreak-backend (each repo\'s test pins this sha256)', () => {
   const sha = crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, '..', 'lib', 'rpc-failover.cjs'))).digest('hex');
-  assert.equal(sha, '7fbd405af89ff2fc07e2d504db4cb600f3ffad439a9ab21f1e40b03f4609b208', 'if you changed the helper, change it in all four places and update the four pins');
+  assert.equal(sha, 'd5fc1443848c865c9215a7ec2ccdccd0b7350836570cee2c55739baec5ac7666', 'if you changed the helper, change it in all four places and update the four pins');
 });
 
 test('R20 docs: the jito route says every 15 minutes wherever it says how often (expansion text, README row, collector header), and nothing says 5 minutes for it any more', () => {
@@ -427,4 +443,6 @@ test('R20 docs: the jito route says every 15 minutes wherever it says how often 
   for (const l of [row, ed]) { assert.match(l, /refreshed every 15 minutes/); assert.doesNotMatch(l, /every 5 minutes/); }
   assert.match(cron, /^\/\/   \*\/15 \* \* \* \* cd \/opt\/agentfeed/m); assert.doesNotMatch(cron, /^\/\/   \*\/5 \* \* \* \*/m);
   assert.match(readme, /\| `RPC_FALLBACKS` \| `https:\/\/api\.mainnet-beta\.solana\.com` \|/, 'the README documents RPC_FALLBACKS');
+  assert.match(cron, /Number\(process\.env\.JITO_GAP_MS\) : 1100;/, 'one call every 1.1 s: the public RPC answers about 10 getTransaction per 10 s per address (measured 24 Oct 2026), the 340 ms of the Helius days drew 429 on half the reads');
+  assert.match(cron, /\/usr\/bin\/timeout 180 /, 'the cron line allows a run of about 100 s');
 });
