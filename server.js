@@ -655,6 +655,8 @@ const { initMcp } = require('./mcp');
   }
   app.listen(PORT, () => {
     console.log(`agentfeed up on :${PORT} (x402: ${x402Network})`);
+    // R20: every Solana read of this process is counted per method and host and fails over (lib/solrpc.js); one `rpc_usage` line every 10 minutes
+    require('./lib/solrpc').startUsageLog(Number(process.env.SOLRPC_USAGE_EVERY_MS) || undefined);
     // build the manifest's accepts (R10 F1) before the first crawler asks, once every facilitator has reported its /supported
     // (lib/manifest.js startupManifest: polls the resource server, never calls initialize() again, 60 s cap). Not reporting only
     // means the first discovery request builds it.

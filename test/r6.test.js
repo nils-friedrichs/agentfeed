@@ -26,6 +26,7 @@ test.before(async () => {
   const base = `http://127.0.0.1:${server.address().port}`;
   process.env.HL_API = `${base}/hl/info`;
   process.env.SOLANA_RPC_URL = 'http://127.0.0.1:9'; // closed port: the SOL pools fail at once
+  process.env.RPC_FALLBACKS = ''; require('../lib/solrpc')._reset();   // R20: no fallback, or the default public RPC would answer for the closed port (and this test would leave the machine)
   const db = new Database(path.join(tmp, 'liq.db'));
   db.exec(`CREATE TABLE liquidations (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, symbol TEXT NOT NULL,
            side TEXT NOT NULL, size REAL NOT NULL, price REAL NOT NULL, usd REAL NOT NULL, exchange TEXT NOT NULL DEFAULT 'bybit')`);

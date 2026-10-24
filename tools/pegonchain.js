@@ -18,7 +18,7 @@ const fs = require('fs');
 const DB_PATH = () => process.env.PEG_ONCHAIN_DB || path.join(__dirname, '..', 'peg-onchain.db');
 const PEGWATCH_DB = () => process.env.PEGWATCH_DB || '/opt/pegwatch/pegwatch.db';
 const POOLS = require('../data/peg-pools.json').pools;
-const SOL_RPC = () => process.env.SOLANA_RPC_URL || `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY || ''}`;
+const SR = require('../lib/solrpc');   // every Solana read: the failover endpoint list (R20)
 const REF_MAX_AGE_S = 15 * 60;
 // sqrt price offsets as in tools/dexspot.js; vaults: Raydium CLMM 137/169, Orca Whirlpool 133/213
 const LAYOUT = {
@@ -30,13 +30,7 @@ const QUOTE_DEC = { USDC: 6, SOL: 9 };
 const { _b58: b58 } = require('./dexspot');
 const u128 = (b, o) => { let v = 0n; for (let i = 15; i >= 0; i--) v = (v << 8n) | BigInt(b[o + i]); return v; };
 
-async function rpc(method, params) {
-  const r = await fetch(SOL_RPC(), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(10000) });
-  if (!r.ok) throw new Error(`solana rpc http ${r.status}`);
-  const j = await r.json();
-  if (j.error) throw new Error(`solana rpc: ${String(j.error.message || '').slice(0, 80)}`);
-  return j.result;
-}
+const rpc = (method, params) => SR.rpc(method, params, { timeoutMs: 10_000 });
 
 /** pool account bytes + vault amounts -> { price_usd, liq_usd } ; quoteUsd is 1 for USDC, the SOL price for SOL */
 function priceOf(p, data, a0, a1, quoteUsd) {

@@ -532,7 +532,7 @@ Sampled every 5 minutes. Deviation is measured against the underlying's last rea
 | `get_token_holders` | $0.02 | `/api/token-holders/:mint` | Top holders of any SPL token: per-account share with top-1, top-5 and top-10 concentration for a Solana mint. A deeper cut than the summary in /api/token-risk. |
 | `get_wallet_activity` | $0.02 | `/api/wallet-activity/:wallet` | Solana wallet activity: recent transactions for any address, each with the wallet's SOL and token balance changes, the fee, failures and the programs invoked. Read from the chain and summarised by us. |
 | `get_priority_fees` | $0.005 | `/api/priority-fees` | Solana priority fees right now: percentiles from min to max of the per-slot minimum fee paid on the busiest SOL/USDC pools over the last ~150 slots, in micro-lamports per compute unit, with a recommended level. For bots that need their transactions to land. |
-| `get_jito_tips` | $0.005 | `/api/jito-tips` | Jito tips sampled on-chain: p25 to p99 in SOL of the newest transfers into Jito's tip accounts, what landed bundles actually paid, refreshed every 5 minutes, with a landing recommendation. |
+| `get_jito_tips` | $0.005 | `/api/jito-tips` | Jito tips sampled on-chain: p25 to p99 in SOL of the newest transfers into Jito's tip accounts, what landed bundles actually paid, refreshed every 15 minutes (the age is in the answer), with a landing recommendation. |
 | `get_sol_network` | $0.005 | `/api/sol-network` | Solana network health: recent average TPS, the current slot, the current epoch and epoch progress in %. |
 | `get_sol_token_check` | $0.025 | `/api/sol-token-check/:mint` | Use when an agent needs a pre-trade check on a Solana token. Returns mint and freeze authority, Token-2022 traps, top holders, deepest pool and USD depth, the price impact of $100 and $1,000 buys, pump.fun progress, and a verdict with every rule. |
 | `get_sol_token_flow` | $0.008 | `/api/sol-token-flow/:mint` | Use when an agent needs to know who is trading a Solana token. Returns the unique traders over its latest swaps, top-5 share of volume, round-trip wallets, share of brand-new buyer wallets and launch-slot bundle size for mints under 7 days. |
@@ -784,9 +784,11 @@ on — `MPP_SECRET_KEY` have no working default.
 | Variable | Default | Notes |
 |---|---|---|
 | `PORT` | `3006` | |
-| `HELIUS_API_KEY` | — | **required**; the Solana RPC transport for chain state, and DAS for wallet-holdings |
+| `HELIUS_API_KEY` | — | **required**; builds the primary Solana RPC URL (chain state only, no DAS). If Helius is out of credits or down, calls move to `RPC_FALLBACKS` (below) |
 | `HELIUS_RPC` | `https://mainnet.helius-rpc.com/?api-key=$HELIUS_API_KEY` | |
-| `SOLANA_RPC_URL` | Helius, from `HELIUS_API_KEY` | standard-RPC reads: on-chain spot, the peg tape, token and wallet routes |
+| `SOLANA_RPC_URL` | Helius, from `HELIUS_API_KEY` | the PRIMARY standard-RPC endpoint for every Solana read: on-chain spot, the peg tape, token and wallet routes (`lib/solrpc.js`) |
+| `RPC_FALLBACKS` | `https://api.mainnet-beta.solana.com` | comma list of https URLs (empty = none). On HTTP 429, 402, 403, 5xx, a dropped connection or a timeout from the primary the same call goes to the next URL, and the primary is left alone for 10 minutes. No endpoint answering is a 503 (not charged), never a stale or partial paid answer. A devnet or testnet primary gets no fallbacks. One `rpc_usage` line every 10 minutes counts calls per method and host (hosts only, never a key) |
+| `JITO_RPC_PRIMARY`, `JITO_RPC_FALLBACKS` | the public mainnet RPC; the primary above | the Jito tip collector (`bin/jito-tips-collect.js`, every 15 minutes) reads from the free public RPC first and uses Helius only as its fallback |
 | `X402_MODE` | `on` | `off` serves every route free |
 | `X402_NETWORK` | — | **required** when `X402_MODE` is on: `mainnet` in production, `devnet` for tests; boot fails without it |
 | `PAY_TO` | — | **required**; Solana treasury that receives USDC |

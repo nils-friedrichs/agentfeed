@@ -50,6 +50,7 @@ test.before(async () => {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   process.env.HL_API = `http://127.0.0.1:${server.address().port}/info`;
   process.env.SOLANA_RPC_URL = 'http://127.0.0.1:9';
+  process.env.RPC_FALLBACKS = ''; require('../lib/solrpc')._reset();   // R20: no default public fallback behind the closed port
 
   // the tape: SOLUSDT has recent prints (a live tape); ZQQ8USDT was recorded three days ago and is on no venue
   const db = new Database(path.join(tmp, 'liq.db'));

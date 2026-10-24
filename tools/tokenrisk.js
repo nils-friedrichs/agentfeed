@@ -2,8 +2,7 @@
 // Standard Solana RPC only since R5 C4 (lib/solrpc.js mintInfo, no DAS).
 // v1 honest scope: no LP-lock or honeypot claims. Concentration fails soft on
 // mega-holder tokens (USDC-scale) where getTokenLargestAccounts times out.
-const HELIUS_URL = () =>
-  `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`;
+const SR = require('../lib/solrpc');   // every Solana read: the failover endpoint list (R20)
 
 const BASE58_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
@@ -11,18 +10,7 @@ const BASE58_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 // from real service failures; an unmarked throw stays status 'error'
 const badRequest = (msg) => Object.assign(new Error(msg), { kind: 'bad_request' });
 
-async function rpc(method, params) {
-  const res = await fetch(HELIUS_URL(), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 'agentfeed', method, params }),
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!res.ok) throw new Error(`helius ${res.status}`);
-  const j = await res.json();
-  if (j.error) throw new Error(`helius rpc: ${j.error.message}`);
-  return j.result;
-}
+const rpc = SR.rpc;
 
 async function getTokenRisk(mint) {
   if (mint == null || mint === '') {
@@ -31,10 +19,12 @@ async function getTokenRisk(mint) {
   if (!BASE58_RE.test(mint)) throw badRequest('invalid mint address');
 
   const [mi, largestRes] = await Promise.all([
-    require('../lib/solrpc').mintInfo(mint),
+    SR.mintInfo(mint),
     rpc('getTokenLargestAccounts', [mint])
       .then(v => ({ ok: true, v }))
-      .catch(e => ({ ok: false, err: e.message })),
+      // Only the node's own answer ("too many accounts", a JSON-RPC error) means "this mint cannot be ranked". No answer at all (every endpoint rate
+      // limited, out of credits or down) is an outage, and a paid answer must not read as if the mint were too big: that throws, a 503, not charged.
+      .catch(e => { if (!e.rpcError) throw e; return { ok: false, err: e.message }; }),
   ]);
 
   const meta = mi.metadata || {};

@@ -216,7 +216,7 @@ const EXP = [
     tags: ['solana', 'fees', 'network', 'onchain'],
     schema: {}, run: () => S.getPriorityFees() },
   { name: 'get_jito_tips', route: 'GET /api/jito-tips', usd: 0.005,
-    desc: 'Jito tips sampled on-chain: p25 to p99 in SOL of the newest transfers into Jito\'s tip accounts, what landed bundles actually paid, refreshed every 5 minutes, with a landing recommendation.',
+    desc: 'Jito tips sampled on-chain: p25 to p99 in SOL of the newest transfers into Jito\'s tip accounts, what landed bundles actually paid, refreshed every 15 minutes (the age is in the answer), with a landing recommendation.',
     tags: ['solana', 'jito', 'mev', 'fees'],
     schema: {}, run: () => S.getJitoTips() },
   { name: 'get_sol_network', route: 'GET /api/sol-network', usd: 0.005,

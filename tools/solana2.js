@@ -3,10 +3,10 @@
 // API, no getPriorityFeeEstimate, no Jito tip_floor. Jito tips are sampled on-chain by root cron
 // (bin/jito-tips-collect.js) into jito-tips.json. Everything cached; RPC credits are metered.
 'use strict';
-const { cached, fetchJson } = require('../lib/cache');
+const { cached } = require('../lib/cache');
 const SR = require('../lib/solrpc');
+const JITO_AGE = require('../lib/jito-age');
 
-const HELIUS_RPC = () => process.env.HELIUS_RPC || `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`;
 const BASE58_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 // Mints whose holder set Helius will not rank: getTokenLargestAccounts answers "Too many
@@ -33,33 +33,12 @@ function rememberLarge(mint) {
   try { fs.writeFileSync(LARGE_MINTS_FILE + '.tmp', JSON.stringify([...LARGE_MINTS], null, 1)); fs.renameSync(LARGE_MINTS_FILE + '.tmp', LARGE_MINTS_FILE); } catch { /* kept in memory */ }
 }
 
-async function rpc(method, params) {
-  const j = await fetchJson(HELIUS_RPC(), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 'agentfeed', method, params }),
-    timeoutMs: 10_000,
-  });
-  if (j.error) {
-    const e = new Error(`helius rpc: ${j.error.message}`);
-    // A mint whose holder set is too large to enumerate is the CALLER naming
-    // something the upstream cannot answer for, not a fault here. Same class as
-    // an exchange's parameter error on an HTTP 200 (once handled in derivs/micro/positioning), and tagged at the shared
-    // helper for the same reason those are. Without this the three most obvious
-    // mints anyone would try - SOL, USDC, BONK - return 502 from
-    // /telegraph/api/token-holders, and telegraph's validator FAILS an endpoint
-    // on 5xx while passing a 4xx, so a registered route reads as dead.
-    //
-    // Matched on BOTH the JSON-RPC code and the wording, deliberately narrow:
-    // -32600 is the generic "Invalid Request" and Helius reuses it, so matching
-    // the code alone would blame the caller for unrelated upstream failures.
-    if (j.error.code === -32600 && /too many accounts/i.test(j.error.message || '')) {
-      e.badRequest = true;
-    }
-    throw e;
-  }
-  return j.result;
-}
+// Every Solana read goes through lib/solrpc (the failover endpoint list, R20): a JSON-RPC error object throws an error tagged badRequest for a mint
+// whose holder set is too large to enumerate (the CALLER named something the node cannot answer, not a fault here: without that tag the three most
+// obvious mints, SOL, USDC and BONK, returned 502 from /telegraph/api/token-holders and telegraph's validator FAILS an endpoint on 5xx while passing a
+// 4xx). It is matched on BOTH the JSON-RPC code and the wording (-32600 is the generic "Invalid Request" and Helius reuses it). When no endpoint
+// answers (rate limited, out of credits, down) the call throws a 503 and x402 does not settle.
+const rpc = SR.rpc;
 
 // ---- get_token_holders ($0.02) — top holders + concentration metrics
 async function getTokenHolders(p = {}) {
@@ -105,7 +84,9 @@ async function getWalletActivity(p = {}) {
   const limit = Math.min(Math.max(parseInt(p.limit) || 10, 1), 25);
   return cached(`activity:${wallet}:${limit}`, 30_000, async () => {
     const sigs = await SR.rpc('getSignaturesForAddress', [wallet, { limit }]);
-    const txs = await Promise.all((sigs || []).map((s) => SR.rpc('getTransaction', [s.signature, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 1, commitment: 'confirmed' }]).catch(() => null)));
+    const txs = await Promise.all((sigs || []).map((s) => SR.rpc('getTransaction', [s.signature, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 1, commitment: 'confirmed' }])
+      // a pruned or unreadable transaction is skipped; no endpoint answering at all is an outage, and an outage is not "this wallet has fewer transactions"
+      .catch((e) => { if (e.transport) throw e; return null; })));
     const rows = txs.filter(Boolean).map((t) => SR.summarizeTx(t, wallet));
     return {
       wallet, tx_count: rows.length, transactions: rows,
@@ -137,14 +118,15 @@ async function getPriorityFees() {
 }
 
 // ---- get_jito_tips ($0.005) — Jito bundle tips, sampled on-chain
-// bin/jito-tips-collect.js (root cron, every 5 minutes) reads the newest transfers into Jito's
-// eight tip accounts and writes their percentiles; a snapshot over 12 minutes old is a 503.
+// bin/jito-tips-collect.js (root cron, every 15 minutes since R20, from the free public RPC) reads the newest transfers into Jito's
+// eight tip accounts and writes their percentiles. The answer carries age_s and as_of; a snapshot over 45 minutes old (three missed runs) is a 503, not charged.
 const JITO_SNAPSHOT = () => process.env.JITO_TIPS_FILE || path.join(__dirname, '..', 'jito-tips.json');
 async function getJitoTips() {
   let s;
   try { s = JSON.parse(fs.readFileSync(JITO_SNAPSHOT(), 'utf8')); } catch { throw SR.unavailable('Jito tip sample not built yet. Not charged.'); }
   const age = Math.round((Date.now() - Date.parse(s.as_of)) / 1000);
-  if (!(age <= 12 * 60)) throw SR.unavailable(`Jito tip sample is ${age}s old (limit 720s). Not charged.`);
+  const limit = JITO_AGE.MAX_AGE_S();
+  if (!(age <= limit)) throw SR.unavailable(`Jito tip sample is ${age}s old (limit ${limit}s; it is rebuilt every ${JITO_AGE.REFRESH_S / 60} minutes and its last run could not read enough tips). Not charged.`);
   return { ...s, age_s: age };
 }
 

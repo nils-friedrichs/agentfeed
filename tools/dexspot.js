@@ -44,7 +44,7 @@ const POOLS = {
 };
 // mainnet.base.org and eth.drpc.org are clean in docs/SOURCES.md; base.drpc.org is the Base fallback
 const EVM_RPCS = { ethereum: ['https://eth.drpc.org'], base: ['https://mainnet.base.org', 'https://base.drpc.org'] };
-const SOL_RPC = () => process.env.SOLANA_RPC_URL || `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY || ''}`;
+const SR = require('../lib/solrpc');   // the Solana read: the failover endpoint list (R20); the EVM reads below keep their own RPCs
 
 async function rpc(url, method, params) {
   const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(5000) });
@@ -101,7 +101,7 @@ function solanaPrice(data, p) {
   return s * s * 10 ** (p.decA - p.decB);
 }
 async function readSolana(pools) {
-  const res = await rpc(SOL_RPC(), 'getMultipleAccounts', [pools.map((p) => p.address), { encoding: 'base64', commitment: 'confirmed' }]);
+  const res = await SR.rpc('getMultipleAccounts', [pools.map((p) => p.address), { encoding: 'base64', commitment: 'confirmed' }], { timeoutMs: 5000 });
   return pools.map((p, i) => {
     const acc = res && res.value && res.value[i];
     if (!acc) return { error: 'account not found' };

@@ -113,6 +113,7 @@ function makeCtx(opts = {}) {
       const left = ctx.deadline - Date.now();
       const callOpts = Number.isFinite(left) ? { ...(o || {}), timeoutMs: Math.max(1000, Math.min(10000, left)) } : o;
       try { const r = await ctx.raw(method, params, callOpts); if (PACED.has(method)) pacer.gap = Math.max(floor, pacer.gap * 0.97); return r; } catch (e) {
+        if (e && e.transport && !ctx.outage) ctx.outage = e;   // no endpoint answered (R20): see outageGuard, no route answers around it
         if (/http 429/.test(e.message || '') && attempt < 4) { pacer.gap = Math.min(1200, pacer.gap * 1.6); await sleep(300 * (attempt + 1)); continue; }
         throw e;
       }
@@ -356,8 +357,19 @@ async function tokenCheck(p = {}, deps = {}) {
   if (QUOTE_ASSETS.has(mint)) throw bad('this is a quote asset (SOL or a major stablecoin) with thousands of pools: a pre-trade check on it is not served. Use /api/prices for SOL.');
   return memo(checkCache, mint, deps.ttl ?? 60e3, () => tokenCheckRun(mint, deps), deps.now);
 }
+// R20: several reads below tolerate a failed call (a pool that cannot be read becomes a "gap", a holder lookup is skipped). That is right for a pruned
+// transaction or a refused scan, and wrong when NO endpoint answered: a Solana outage would come back as a paid, partial answer. The first such failure
+// is remembered on the ctx (ctx.outage, set in ctx.rpc) and the request ends in a 503, not charged, whatever the tolerant code did with it.
+async function outageGuard(ctx, run) {
+  const out = await run();
+  if (ctx.outage) throw unavailable(`the Solana RPC did not answer (${String(ctx.outage.message).replace(/\.?\s*Not charged\.?$/, '').slice(0, 120)}). Not charged.`, { retryAfter: 30 });
+  return out;
+}
 async function tokenCheckRun(mint, deps) {
   const ctx = deps.ctx || makeCtx({ rpc: deps.rpc, budget: 70, deadline: Date.now() + 40e3 });
+  return outageGuard(ctx, () => tokenCheckBody(ctx, mint, deps));
+}
+async function tokenCheckBody(ctx, mint, deps) {
   const m = await readMint(ctx, mint);
   const [metadata, curve, disc] = await Promise.all([readMetadata(ctx, mint, m.ext), readCurve(ctx, mint, deps).catch((e) => { if (e.status === 503) throw e; return null; }), discoverPools(ctx, mint)]);
   const ranked = await priceAndDepth(ctx, disc.pools, mint, m.decimals, deps);
@@ -463,6 +475,9 @@ async function tokenFlow(p = {}, deps = {}) {
 }
 async function tokenFlowRun(mint, swaps, deps) {
   const ctx = deps.ctx || makeCtx({ rpc: deps.rpc, budget: 400, deadline: Date.now() + (deps.budgetMs ?? 20e3) });
+  return outageGuard(ctx, () => tokenFlowBody(ctx, mint, swaps, deps));
+}
+async function tokenFlowBody(ctx, mint, swaps, deps) {
   const now = deps.nowMs ? deps.nowMs() : Date.now();
   const m = await readMint(ctx, mint);
   const market = await findMarket(ctx, mint, m, deps);
@@ -592,6 +607,9 @@ async function funderOf(ctx, wallet) {
 }
 async function holderClustersRun(mint, deps) {
   const ctx = deps.ctx || makeCtx({ rpc: deps.rpc, budget: 220, deadline: Date.now() + 50e3 });
+  return outageGuard(ctx, () => holderClustersBody(ctx, mint, deps));
+}
+async function holderClustersBody(ctx, mint, deps) {
   const m = await readMint(ctx, mint);
   const disc = await discoverPools(ctx, mint).catch((e) => { if (e.status === 503 && /budget/.test(e.message)) throw e; return { pools: [] }; });
   const ranked = await priceAndDepth(ctx, disc.pools, mint, m.decimals, deps).catch(() => []);
