@@ -6,4 +6,6 @@ const t0 = Date.now();
 require('../tools/pegonchain').collect().then((r) => {
   console.log(`${new Date().toISOString()} peg ok rows=${r.ok} errors=${r.errors.length}${r.errors.length ? ' ' + r.errors.join('; ').slice(0, 300) : ''} ${Date.now() - t0}ms rss=${Math.round(process.memoryUsage().rss / 1048576)}MB`);
   if (!r.ok) process.exitCode = 1;
-}).catch((e) => { console.log(`${new Date().toISOString()} peg FAILED ${String(e && e.message).slice(0, 200)} ${Date.now() - t0}ms`); process.exitCode = 1; });
+}).catch((e) => { console.log(`${new Date().toISOString()} peg FAILED ${String(e && e.message).slice(0, 200)} ${Date.now() - t0}ms`); process.exitCode = 1; })
+  // R20: one rpc_usage line per run (calls per method and per endpoint host, never a key): this cron is the one steady Solana reader left on Helius
+  .finally(() => require('../lib/solrpc').endpoints().logUsage((l) => console.log(l)));

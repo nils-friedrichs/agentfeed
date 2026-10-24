@@ -364,6 +364,22 @@ test('R20 jito collector: with NOTHING configured it still leads with the public
   } finally { pub.close(); hel.close(); }
 });
 
+test('R20 peg collector: one run reads through the failover and prints its rpc_usage line (this cron is the steady Helius reader left)', async () => {
+  const primary = await serve(refuse(429)); const fb = await serve(fakeChain());
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'r20-peg-'));
+  try {
+    const out = await new Promise((resolve) => {
+      const c = spawn(process.execPath, [path.join(__dirname, '..', 'bin', 'peg-collect.js')], { env: { PATH: process.env.PATH, SOLANA_RPC_URL: `${primary.url}/?api-key=${KEY}`, RPC_FALLBACKS: fb.url, HELIUS_API_KEY: 'x', PEG_ONCHAIN_DB: path.join(tmp, 'peg.db'), PEGWATCH_DB: path.join(tmp, 'none.db') } });
+      let o = ''; c.stdout.on('data', (d) => { o += d; }); c.stderr.on('data', (d) => { o += d; });
+      const kill = setTimeout(() => c.kill('SIGKILL'), 30_000); c.on('close', () => { clearTimeout(kill); resolve(o); });
+    });
+    const line = out.split('\n').find((l) => /rpc_usage/.test(l)); assert.ok(line, out);
+    const u = JSON.parse(line.slice(line.indexOf('{')));
+    assert.ok(u.getMultipleAccounts >= 1 && u.failovers === 1 && !out.includes(KEY), out);
+    assert.ok(fb.calls.includes('getMultipleAccounts') && primary.calls.length === 1, 'the fallback answered, the primary was asked once');
+  } finally { primary.close(); fb.close(); }
+});
+
 test('R20 jito collector: a public RPC that answers 429 moves the run to the Helius fallback (and says so); both down writes nothing and fails loudly, the old snapshot just ages', async () => {
   const pub = await serve(refuse(429)); const hel = await serve(tipChain());
   try {
